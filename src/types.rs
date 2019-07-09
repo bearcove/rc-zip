@@ -15,10 +15,29 @@ pub(crate) struct EndOfCentralDirectoryRecord {
     pub(crate) directory_records: u16,
     // size of the central directory
     pub(crate) directory_size: u32,
-    /// offset of start of central directory with respect to the starting diskn umber
+    /// offset of start of central directory with respect to the starting disk number
     pub(crate) directory_offset: u32,
     /// .ZIP file comment
     pub(crate) comment: ZipString,
+}
+
+impl EndOfCentralDirectoryRecord {
+    /// does not include comment size & comment data
+    pub(crate) const LENGTH: usize = 20;
+}
+
+#[derive(Debug)]
+pub(crate) struct EndOfCentralDirectory64Locator {
+    /// number of the disk with the start of the zip64 end of central directory
+    pub(crate) dir_disk_number: u32,
+    /// relative offset of the zip64 end of central directory record
+    pub(crate) directory_offset: u64,
+    /// total number of disks
+    pub(crate) total_disks: u32,
+}
+
+impl EndOfCentralDirectory64Locator {
+    pub(crate) const LENGTH: usize = 20;
 }
 
 #[derive(Debug)]
@@ -44,11 +63,31 @@ pub(crate) struct EndOfCentralDirectory64Record {
     pub(crate) directory_offset: u64,
 }
 
+impl EndOfCentralDirectory64Record {
+    pub(crate) const LENGTH: usize = 56;
+}
+
 #[derive(Debug)]
 pub(crate) struct EndOfCentralDirectory {
-    pub(crate) directory_end: EndOfCentralDirectoryRecord,
-    pub(crate) directory64_end: Option<EndOfCentralDirectory64Record>,
+    pub(crate) dir: EndOfCentralDirectoryRecord,
+    pub(crate) dir64: Option<EndOfCentralDirectory64Record>,
     pub(crate) start_skip_len: usize,
+}
+
+impl EndOfCentralDirectory {
+    pub(crate) fn directory_offset(&self) -> usize {
+        match self.dir64.as_ref() {
+            Some(d64) => d64.directory_offset as usize,
+            None => self.dir.directory_offset as usize,
+        }
+    }
+
+    pub(crate) fn set_directory_offset(&mut self, offset: usize) {
+        match self.dir64.as_mut() {
+            Some(d64) => d64.directory_offset = offset as u64,
+            None => self.dir.directory_offset = offset as u32,
+        };
+    }
 }
 
 pub struct ZipString(pub Vec<u8>);

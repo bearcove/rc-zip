@@ -13,6 +13,7 @@ pub enum Error<'a> {
 #[derive(Debug)]
 pub enum FormatError {
     DirectoryEndSignatureNotFound,
+    DirectoryOffsetPointsOutsideFile,
 }
 
 impl<'a> error::Error for Error<'a> {}

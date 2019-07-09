@@ -1,8 +1,7 @@
 mod error;
 mod parser;
-mod types;
 
-pub use types::ZipReader;
+pub use parser::ZipReader;
 
 #[cfg(test)]
 mod tests {

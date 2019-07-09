@@ -1,5 +1,7 @@
 # rc-zip
 
+[![Build Status](https://travis-ci.org/rust-compress/rc-zip.svg?branch=master)](https://travis-ci.org/rust-compress/rc-zip)
+
 ### Intent
 
 The goals are as follows:

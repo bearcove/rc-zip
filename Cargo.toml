@@ -21,3 +21,4 @@ maintenance = { status = "experimental" }
 nom = "5.0.0"
 positioned-io = "0.2.2"
 pretty-hex = "0.1.0"
+hex_fmt = "0.3.0"

@@ -1,8 +1,19 @@
 [package]
 name = "rc-zip"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
 edition = "2018"
+description = "zip reading and writing"
+repository = "https://github.com/rust-compress/rc-zip"
+readme = "README.md"
+license = "MIT"
+
+keywords = ["zip", "unzip"]
+categories = ["compression"]
+
+[badges]
+travis-ci = { repository = "rust-compress/rc-zip" }
+maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

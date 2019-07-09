@@ -18,7 +18,7 @@ The goals are as follows:
   * Pluggable decompression:
     * Always allow enumerating files, even if the compression method is unsupported
   * Allow concurrent entry readers
-    * Rely on a positional I/O trait, like ReadAt (current candidate is [olio](https://crates.io/crates/olio))
+    * Rely on a positional I/O trait, like ReadAt
   * No manual parsing
     * Use [nom](https://crates.io/crates/nom) instead
 

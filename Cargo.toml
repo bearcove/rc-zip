@@ -19,4 +19,5 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 nom = "5.0.0"
-olio = "1.1.0"
+positioned-io = "0.2.2"
+pretty-hex = "0.1.0"

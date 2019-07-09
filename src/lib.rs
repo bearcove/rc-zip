@@ -62,6 +62,7 @@ impl<'a> ZipEntry<'a> {
 const DIRECTORY_END_LEN: usize = 22; // + comment
 
 pub fn open<'a>(reader: &'a dyn ReadAt, size: usize) -> Result<ZipReader<'a>, Error> {
+    // Reference code: https://github.com/itchio/arkive/blob/master/zip/reader.go
     fn find_signature_in_block(b: &[u8]) -> Option<usize> {
         for i in (0..(b.len() - DIRECTORY_END_LEN + 1)).rev() {
             if b[i] == ('P' as u8)

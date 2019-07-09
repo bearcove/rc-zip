@@ -152,7 +152,7 @@ pub fn open<'a>(reader: &'a dyn ReadAt, size: usize) -> Result<ZipReader<'a>, Er
     fn find_signature(reader: &dyn ReadAt, size: usize) -> Result<Option<usize>, Error> {
         let ranges: [usize; 2] = [1024, 65 * 1024];
         for &b_len in &ranges {
-            let b_len = if b_len > size { size } else { b_len };
+            let b_len = std::cmp::min(b_len, size);
             let mut buf = vec![0; b_len];
             reader.read_exact_at((size - b_len) as u64, &mut buf)?;
 

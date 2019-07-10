@@ -17,12 +17,32 @@ use nom::{
     IResult,
 };
 
-macro_rules! nom_fields {
-    ({ $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
-        |i| {
-            let (i, ($($name),+)) = nom::sequence::tuple(($($combinator),+))(i)?;
+macro_rules! fields_raw {
+    ($input:ident, { $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
+        |$input| {
+            let ($input, ($($name),+)) = nom::sequence::tuple(($($combinator),+))($input)?;
             $body
         }
+    };
+}
+
+macro_rules! fields_res {
+    ({ $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
+        fields_raw!(i, { $($name: $combinator,)+ } => $body)
+    };
+}
+
+macro_rules! fields_map {
+    ({ $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
+        fields_raw!(i, { $($name: $combinator,)+ } => { Ok((i, $body)) })
+    };
+}
+
+macro_rules! fields_struct {
+    ({ $($name:ident : $combinator:expr),+ $(,)* } => $struct:ident) => {
+        fields_raw!(i, { $($name: $combinator,)+ } => {
+            Ok((i, $struct { $($name,)+ }))
+        })
     };
 }
 
@@ -301,31 +321,13 @@ impl EndOfCentralDirectory64Locator {
     const SIGNATURE: &'static str = "PK\x06\x07";
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
-        // preceded(
-        //     tag(Self::SIGNATURE),
-        //     map(
-        //         tuple((le_u32, le_u64, le_u32)),
-        //         |(dir_disk_number, directory_offset, total_disks)| Self {
-        //             dir_disk_number,
-        //             directory_offset,
-        //             total_disks,
-        //         },
-        //     ),
-        // )(i)
-
         preceded(
             tag(Self::SIGNATURE),
-            nom_fields!({
+            fields_struct!({
                 dir_disk_number: le_u32,
                 directory_offset: le_u64,
                 total_disks: le_u32,
-            } => {
-                Ok((i, Self {
-                    dir_disk_number,
-                    directory_offset,
-                    total_disks,
-                }))
-            }),
+            } => Self),
         )(i)
     }
 }

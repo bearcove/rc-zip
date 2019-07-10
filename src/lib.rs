@@ -1,5 +1,7 @@
+#![allow(clippy::all)]
 mod error;
 mod parser;
+mod types;
 
 pub use parser::ZipReader;
 
@@ -18,7 +20,7 @@ mod tests {
         for name in &["zip64.zip", "readme.trailingzip"] {
             let test_file = zips_dir.join(name);
             let contents = std::fs::read(test_file).unwrap();
-            super::ZipReader::new(&contents, contents.len()).unwrap();
+            super::ZipReader::new(&contents, contents.len() as u64).unwrap();
         }
     }
 }

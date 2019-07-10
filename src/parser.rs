@@ -1,9 +1,8 @@
-// TODO: remove when all tests pass
 #![allow(unused)]
 
 use super::error::*;
 use hex_fmt::HexFmt;
-use positioned_io::ReadAt;
+use positioned_io::{Cursor, ReadAt};
 use std::fmt;
 use std::io::Read;
 
@@ -55,25 +54,6 @@ macro_rules! fields_struct {
 // Reference code for zip handling:
 // https://github.com/itchio/arkive/blob/master/zip/reader.go
 
-/// Constants for the first byte in creator_version
-#[repr(u16)]
-enum CreatorVersion {
-    FAT = 0,
-    Unix = 3,
-    NTFS = 11,
-    VFAT = 14,
-    MacOSX = 19,
-}
-
-/// Version numbers
-#[repr(u16)]
-enum ZipVersion {
-    /// 2.0
-    Version20 = 20,
-    /// 4.5 (reads and writes zip64 archives)
-    Version45 = 45,
-}
-
 #[repr(u16)]
 enum ExtraHeaderID {
     /// Zip64 extended information
@@ -90,7 +70,7 @@ enum ExtraHeaderID {
 
 #[derive(Debug)]
 /// 4.3.7 Local file header
-struct LocalFileHeader {
+struct LocalFileHeaderRecord {
     /// version needed to extract
     reader_version: u16,
     /// general purpose bit flag
@@ -113,7 +93,7 @@ struct LocalFileHeader {
     extra: ZipBytes,
 }
 
-impl LocalFileHeader {
+impl LocalFileHeaderRecord {
     /// Does not include filename size & data, extra size & data
     const LENGTH: usize = 30;
     const SIGNATURE: &'static str = "PK\x03\x04";
@@ -121,7 +101,7 @@ impl LocalFileHeader {
 
 // 4.3.12 Central directory structure: File header
 #[derive(Debug)]
-struct FileHeader {
+struct FileHeaderRecord {
     // version made by
     creator_version: u16,
     // version needed to extract
@@ -157,7 +137,7 @@ struct FileHeader {
     comment: ZipString,
 }
 
-impl FileHeader {
+impl FileHeaderRecord {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
@@ -232,15 +212,15 @@ impl EndOfCentralDirectoryRecord {
     const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
-    fn read<R: ReadAt>(reader: &R, size: usize) -> Result<Option<(usize, Self)>, Error> {
-        let ranges: [usize; 2] = [1024, 65 * 1024];
+    fn read<R: ReadAt>(reader: &R, size: u64) -> Result<Option<(u64, Self)>, Error> {
+        let ranges: [u64; 2] = [1024, 65 * 1024];
         for &b_len in &ranges {
             let b_len = std::cmp::min(b_len, size);
-            let mut buf = vec![0u8; b_len];
-            reader.read_exact_at((size - b_len) as u64, &mut buf)?;
+            let mut buf = vec![0u8; b_len as usize];
+            reader.read_exact_at(size - b_len, &mut buf)?;
 
             if let Some((offset, directory)) = Self::find_in_block(&buf[..]) {
-                let offset = size - b_len + offset;
+                let offset = size - b_len + offset as u64;
                 return Ok(Some((offset, directory)));
             }
         }
@@ -350,16 +330,16 @@ impl EndOfCentralDirectory64Record {
 
     fn read<R: ReadAt>(
         reader: &R,
-        directory_end_offset: usize,
-    ) -> Result<Option<(usize, Self)>, Error> {
-        if directory_end_offset < EndOfCentralDirectory64Locator::LENGTH {
+        directory_end_offset: u64,
+    ) -> Result<Option<(u64, Self)>, Error> {
+        if directory_end_offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
             // no need to look for a header outside the file
             return Ok(None);
         }
-        let loc_offset = directory_end_offset - EndOfCentralDirectory64Locator::LENGTH;
+        let loc_offset = directory_end_offset - EndOfCentralDirectory64Locator::LENGTH as u64;
 
         let mut locbuf = vec![0u8; EndOfCentralDirectory64Locator::LENGTH];
-        reader.read_exact_at(loc_offset as u64, &mut locbuf)?;
+        reader.read_exact_at(loc_offset, &mut locbuf)?;
         let locres = EndOfCentralDirectory64Locator::parse::<DecodingError>(&locbuf[..]);
 
         if let Ok((_, locator)) = locres {
@@ -373,9 +353,9 @@ impl EndOfCentralDirectory64Record {
                 return Ok(None);
             }
 
-            let offset = locator.directory_offset as usize;
+            let offset = locator.directory_offset;
             let mut recbuf = vec![0u8; EndOfCentralDirectory64Record::LENGTH];
-            reader.read_exact_at(offset as u64, &mut recbuf)?;
+            reader.read_exact_at(offset, &mut recbuf)?;
             let recres = Self::parse::<DecodingError>(&recbuf[..]);
 
             if let Ok((_, record)) = recres {
@@ -411,11 +391,11 @@ impl EndOfCentralDirectory64Record {
 struct EndOfCentralDirectory {
     dir: EndOfCentralDirectoryRecord,
     dir64: Option<EndOfCentralDirectory64Record>,
-    start_skip_len: usize,
+    start_skip_len: u64,
 }
 
 impl EndOfCentralDirectory {
-    fn read<R: ReadAt>(reader: &R, size: usize) -> Result<Self, Error> {
+    fn read<R: ReadAt>(reader: &R, size: u64) -> Result<Self, Error> {
         let (d_offset, d) = EndOfCentralDirectoryRecord::read(reader, size)?
             .ok_or(FormatError::DirectoryEndSignatureNotFound)?;
 
@@ -427,7 +407,7 @@ impl EndOfCentralDirectory {
             || d.directory_size == 0xffff
             || d.directory_offset == 0xffff;
 
-        let mut d64_info: Option<(usize, EndOfCentralDirectory64Record)> = None;
+        let mut d64_info: Option<(u64, EndOfCentralDirectory64Record)> = None;
 
         let res64 = EndOfCentralDirectory64Record::read(reader, d_offset);
         match res64 {
@@ -448,8 +428,8 @@ impl EndOfCentralDirectory {
             //  - Zip64 end of central directory record
             //  - Zip64 end of central directory locator
             // and we don't want to be a few bytes off, now do we.
-            Some((d64_offset, d64)) => *d64_offset - d64.directory_size as usize,
-            None => d_offset - d.directory_size as usize,
+            Some((d64_offset, d64)) => *d64_offset - d64.directory_size,
+            None => d_offset - d.directory_size as u64,
         };
 
         //
@@ -505,24 +485,24 @@ impl EndOfCentralDirectory {
         Ok(res)
     }
 
-    fn directory_offset(&self) -> usize {
+    fn directory_offset(&self) -> u64 {
         match self.dir64.as_ref() {
-            Some(d64) => d64.directory_offset as usize,
-            None => self.dir.directory_offset as usize,
+            Some(d64) => d64.directory_offset,
+            None => self.dir.directory_offset as u64,
         }
     }
 
-    fn set_directory_offset(&mut self, offset: usize) {
+    fn set_directory_offset(&mut self, offset: u64) {
         match self.dir64.as_mut() {
-            Some(d64) => d64.directory_offset = offset as u64,
+            Some(d64) => d64.directory_offset = offset,
             None => self.dir.directory_offset = offset as u32,
         };
     }
 
-    fn directory_records(&self) -> usize {
+    fn directory_records(&self) -> u64 {
         match self.dir64.as_ref() {
-            Some(d64) => d64.directory_records as usize,
-            None => self.dir.directory_records as usize,
+            Some(d64) => d64.directory_records,
+            None => self.dir.directory_records as u64,
         }
     }
 }
@@ -593,18 +573,18 @@ where
     R: ReadAt,
 {
     reader: &'a R,
-    size: usize,
+    size: u64,
 }
 
 impl<'a, R> ZipReader<'a, R>
 where
     R: ReadAt,
 {
-    pub fn new(reader: &'a R, size: usize) -> Result<Self, Error> {
+    pub fn new(reader: &'a R, size: u64) -> Result<Self, Error> {
         let directory_end = super::parser::EndOfCentralDirectory::read(reader, size)?;
         println!("directory_end = {:#?}", directory_end);
 
-        if directory_end.directory_records() > size / LocalFileHeader::LENGTH {
+        if directory_end.directory_records() > size / LocalFileHeaderRecord::LENGTH as u64 {
             return Err(FormatError::ImpossibleNumberOfFiles {
                 claimed_records_count: directory_end.directory_records(),
                 zip_size: size,
@@ -612,26 +592,26 @@ where
             .into());
         }
 
-        let mut dr =
-            positioned_io::Cursor::new_pos(reader, directory_end.directory_offset() as u64);
-        let mut capacity = 1000;
-        let mut b = circular::Buffer::with_capacity(1000);
+        {
+            let mut reader = Cursor::new_pos(reader, directory_end.directory_offset());
+            let mut b = circular::Buffer::with_capacity(1000);
 
-        'read_headers: loop {
-            let sz = dr.read(b.space()).expect("should write");
-            b.fill(sz);
+            'read_headers: loop {
+                let sz = reader.read(b.space()).expect("should write");
+                b.fill(sz);
 
-            let length = {
-                let res = FileHeader::parse::<DecodingError>(b.data());
-                match res {
-                    Ok((remaining, h)) => {
-                        println!("parsed header: {:#?}", h);
-                        b.data().offset(remaining)
+                let length = {
+                    let res = FileHeaderRecord::parse::<DecodingError>(b.data());
+                    match res {
+                        Ok((remaining, h)) => {
+                            println!("parsed header: {:#?}", h);
+                            b.data().offset(remaining)
+                        }
+                        Err(e) => break 'read_headers,
                     }
-                    Err(e) => break 'read_headers,
-                }
-            };
-            b.consume(length);
+                };
+                b.consume(length);
+            }
         }
 
         Ok(Self { reader, size })

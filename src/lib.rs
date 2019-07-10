@@ -1,4 +1,5 @@
 #![allow(clippy::all)]
+
 mod encoding;
 mod error;
 mod parser;
@@ -18,6 +19,7 @@ mod tests {
             .join("test-zips");
 
         // for name in &["test.zip", "zip64.zip", "unix.zip", "winxp.zip", "dd.zip"] {
+        // for name in &["zip64.zip", "readme.trailingzip", "cp-437.zip"] {
         for name in &["zip64.zip", "readme.trailingzip"] {
             let test_file = zips_dir.join(name);
             let contents = std::fs::read(test_file).unwrap();

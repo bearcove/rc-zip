@@ -1,6 +1,9 @@
 #![allow(unused)]
 
 use super::{encoding::detect_utf8, error::*, types::*};
+#[macro_use]
+mod nom_macros;
+
 use encoding::Encoding;
 use hex_fmt::HexFmt;
 use positioned_io::{Cursor, ReadAt};
@@ -16,41 +19,6 @@ use nom::{
     sequence::{preceded, tuple},
     IResult, Offset,
 };
-
-macro_rules! fields_raw {
-    ($input:ident, { $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
-        |$input| {
-            let ($input, ($($name),+)) = nom::sequence::tuple(($($combinator),+))($input)?;
-            $body
-        }
-    };
-}
-
-macro_rules! fields_chain {
-    ({ $($name:ident : $combinator:expr),+ $(,)* } => $next:expr) => {
-        fields_raw!(i, { $($name: $combinator,)+ } => $next(i))
-    };
-}
-
-macro_rules! fields_res {
-    ({ $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
-        fields_raw!(i, { $($name: $combinator,)+ } => $body)
-    };
-}
-
-macro_rules! fields_map {
-    ({ $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
-        fields_raw!(i, { $($name: $combinator,)+ } => { Ok((i, $body)) })
-    };
-}
-
-macro_rules! fields_struct {
-    ({ $($name:ident : $combinator:expr),+ $(,)* } => $struct:ident) => {
-        fields_raw!(i, { $($name: $combinator,)+ } => {
-            Ok((i, $struct { $($name,)+ }))
-        })
-    };
-}
 
 // Reference code for zip handling:
 // https://github.com/itchio/arkive/blob/master/zip/reader.go
@@ -144,7 +112,7 @@ impl FileHeaderRecord {
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
         preceded(
             tag(Self::SIGNATURE),
-            fields_chain!({
+            fields!({
                 creator_version: le_u16,
                 reader_version: le_u16,
                 flags: le_u16,
@@ -161,12 +129,12 @@ impl FileHeaderRecord {
                 internal_attrs: le_u16,
                 external_attrs: le_u32,
                 header_offset: le_u32,
-            } => {
-                fields_map!({
+            } chain {
+                fields!({
                     name: zip_string(name_len),
                     extra: zip_bytes(extra_len),
                     comment: zip_string(comment_len),
-                } => Self {
+                } map Self {
                     creator_version,
                     reader_version,
                     flags,
@@ -335,11 +303,11 @@ impl EndOfCentralDirectory64Locator {
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
         preceded(
             tag(Self::SIGNATURE),
-            fields_struct!({
+            fields!(Self {
                 dir_disk_number: le_u32,
                 directory_offset: le_u64,
                 total_disks: le_u32,
-            } => Self),
+            }),
         )(i)
     }
 }
@@ -415,7 +383,7 @@ impl EndOfCentralDirectory64Record {
     ) -> IResult<&'a [u8], EndOfCentralDirectory64Record, E> {
         preceded(
             tag(Self::SIGNATURE),
-            fields_struct!({
+            fields!(Self {
                 record_size: le_u64,
                 creator_version: le_u16,
                 reader_version: le_u16,
@@ -425,7 +393,7 @@ impl EndOfCentralDirectory64Record {
                 directory_records: le_u64,
                 directory_size: le_u64,
                 directory_offset: le_u64,
-            } => Self),
+            }),
         )(i)
     }
 }
@@ -592,7 +560,6 @@ where
 {
     pub fn new(reader: &'a R, size: u64) -> Result<Self, Error> {
         let directory_end = super::parser::EndOfCentralDirectory::read(reader, size)?;
-        println!("directory_end = {:#?}", directory_end);
 
         if directory_end.directory_records() > size / LocalFileHeaderRecord::LENGTH as u64 {
             return Err(FormatError::ImpossibleNumberOfFiles {
@@ -616,7 +583,6 @@ where
                     let res = FileHeaderRecord::parse::<DecodingError>(b.data());
                     match res {
                         Ok((remaining, h)) => {
-                            println!("parsed header: {:#?}", h);
                             header_records.push(h);
                             b.data().offset(remaining)
                         }

@@ -1,4 +1,6 @@
 #![allow(unused)]
+use hex_fmt::HexFmt;
+use std::fmt;
 
 // Describes a file within a zip file.
 pub struct FileHeader {
@@ -9,8 +11,6 @@ pub struct FileHeader {
 
     // Comment is any arbitrary user-defined string shorter than 64KiB
     pub comment: Option<String>,
-
-    pub non_utf8: bool,
 
     pub creator_version: u16,
     pub reader_version: u16,
@@ -36,6 +36,13 @@ pub enum Method {
     LZMA = 14,
 }
 
+pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
+    chrono::DateTime::from_utc(
+        chrono::naive::NaiveDateTime::from_timestamp(0, 0),
+        chrono::offset::Utc,
+    )
+}
+
 impl FileHeader {
     pub fn new<S>(name: S, uncompressed_size: u64, method: Method) -> Self
     where
@@ -44,16 +51,12 @@ impl FileHeader {
         Self {
             name: name.into(),
             comment: None,
-            non_utf8: false,
 
             creator_version: ZipVersion::Version45 as u16,
             reader_version: ZipVersion::Version45 as u16,
             flags: 0,
 
-            modified: chrono::DateTime::from_utc(
-                chrono::naive::NaiveDateTime::from_timestamp(0, 0),
-                chrono::offset::Utc,
-            ),
+            modified: zero_datetime(),
 
             crc32: 0,
             compressed_size: 0,
@@ -82,4 +85,59 @@ enum ZipVersion {
     Version20 = 20,
     /// 4.5 (reads and writes zip64 archives)
     Version45 = 45,
+}
+
+pub struct ZipString(pub Vec<u8>);
+
+impl<'a> From<&'a [u8]> for ZipString {
+    fn from(slice: &'a [u8]) -> Self {
+        Self(slice.into())
+    }
+}
+
+impl ZipString {
+    pub(crate) fn as_option(self) -> Option<ZipString> {
+        if self.0.len() > 0 {
+            Some(self)
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for ZipString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match std::str::from_utf8(&self.0) {
+            Ok(s) => write!(f, "{:?}", s),
+            Err(_) => write!(f, "[non-utf8 string: {:x}]", HexFmt(&self.0)),
+        }
+    }
+}
+pub struct ZipBytes(pub Vec<u8>);
+
+impl ZipBytes {
+    pub(crate) fn as_option(self) -> Option<ZipBytes> {
+        if self.0.len() > 0 {
+            Some(self)
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for ZipBytes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        const MAX_SHOWN_SIZE: usize = 10;
+        let data = &self.0[..];
+        let (slice, extra) = if data.len() > MAX_SHOWN_SIZE {
+            (&self.0[..MAX_SHOWN_SIZE], Some(data.len() - MAX_SHOWN_SIZE))
+        } else {
+            (&self.0[..], None)
+        };
+        write!(f, "{:x}", HexFmt(slice))?;
+        if let Some(extra) = extra {
+            write!(f, " (+ {} bytes)", extra)?;
+        }
+        Ok(())
+    }
 }

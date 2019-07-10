@@ -1,6 +1,7 @@
 #![allow(unused)]
 
-use super::error::*;
+use super::{encoding::detect_utf8, error::*, types::*};
+use encoding::Encoding;
 use hex_fmt::HexFmt;
 use positioned_io::{Cursor, ReadAt};
 use std::fmt;
@@ -185,6 +186,49 @@ impl FileHeaderRecord {
                 })
             }),
         )(i)
+    }
+}
+
+impl FileHeaderRecord {
+    fn is_non_utf8(&self) -> bool {
+        let (valid1, require1) = detect_utf8(&self.name.0[..]);
+        let (valid2, require2) = detect_utf8(&self.comment.0[..]);
+        if !valid1 || !valid2 {
+            // definitely not utf-8
+            return true;
+        }
+
+        if !require1 && !require2 {
+            // name and comment only use single-byte runes that overlap with UTF-8
+            return false;
+        }
+
+        // Might be UTF-8, might be some other encoding; preserve existing flag.
+        // Some ZIP writers use UTF-8 encoding without setting the UTF-8 flag.
+        // Since it is impossible to always distinguish valid UTF-8 from some
+        // other encoding (e.g., GBK or Shift-JIS), we trust the flag.
+        self.flags & 0x800 == 0
+    }
+
+    fn as_file_header(self, encoding: Option<Box<Encoding>>) -> FileHeader {
+        FileHeader {
+            name: String::from_utf8(self.name.0).expect("zip file name should be valid utf-8"),
+            comment: self
+                .comment
+                .as_option()
+                .map(|x| String::from_utf8(x.0).expect("zip file comment must be valid utf-8")),
+            creator_version: self.creator_version,
+            reader_version: self.reader_version,
+            flags: self.flags,
+            modified: zero_datetime(),
+
+            crc32: self.crc32,
+            compressed_size: self.compressed_size as u64,
+            uncompressed_size: self.uncompressed_size as u64,
+
+            extra: self.extra.as_option().map(|x| x.0),
+            external_attrs: self.external_attrs,
+        }
     }
 }
 
@@ -507,23 +551,6 @@ impl EndOfCentralDirectory {
     }
 }
 
-pub struct ZipString(pub Vec<u8>);
-
-impl<'a> From<&'a [u8]> for ZipString {
-    fn from(slice: &'a [u8]) -> Self {
-        Self(slice.into())
-    }
-}
-
-impl fmt::Debug for ZipString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match std::str::from_utf8(&self.0) {
-            Ok(s) => write!(f, "{:?}", s),
-            Err(_) => write!(f, "[non-utf8 string: {:x}]", HexFmt(&self.0)),
-        }
-    }
-}
-
 pub fn zip_string<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipString, E>
 where
     C: nom::ToUsize,
@@ -533,25 +560,6 @@ where
         map(take(count.to_usize()), |slice: &'a [u8]| {
             ZipString::from(slice)
         })(i)
-    }
-}
-
-pub struct ZipBytes(pub Vec<u8>);
-
-impl fmt::Debug for ZipBytes {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        const MAX_SHOWN_SIZE: usize = 10;
-        let data = &self.0[..];
-        let (slice, extra) = if data.len() > MAX_SHOWN_SIZE {
-            (&self.0[..MAX_SHOWN_SIZE], Some(data.len() - MAX_SHOWN_SIZE))
-        } else {
-            (&self.0[..], None)
-        };
-        write!(f, "{:x}", HexFmt(slice))?;
-        if let Some(extra) = extra {
-            write!(f, " (+ {} bytes)", extra)?;
-        }
-        Ok(())
     }
 }
 
@@ -574,6 +582,8 @@ where
 {
     reader: &'a R,
     size: u64,
+
+    entries: Vec<FileHeader>,
 }
 
 impl<'a, R> ZipReader<'a, R>
@@ -592,6 +602,8 @@ where
             .into());
         }
 
+        let mut header_records = Vec::<FileHeaderRecord>::new();
+
         {
             let mut reader = Cursor::new_pos(reader, directory_end.directory_offset());
             let mut b = circular::Buffer::with_capacity(1000);
@@ -605,6 +617,7 @@ where
                     match res {
                         Ok((remaining, h)) => {
                             println!("parsed header: {:#?}", h);
+                            header_records.push(h);
                             b.data().offset(remaining)
                         }
                         Err(e) => break 'read_headers,
@@ -614,20 +627,19 @@ where
             }
         }
 
-        Ok(Self { reader, size })
+        let entries: Vec<FileHeader> = header_records
+            .into_iter()
+            .map(|x| x.as_file_header(None))
+            .collect();
+
+        Ok(Self {
+            reader,
+            size,
+            entries,
+        })
     }
 
-    pub fn entries(&self) -> &[ZipEntry<'a>] {
-        unimplemented!()
-    }
-}
-
-pub struct ZipEntry<'a> {
-    name: &'a str,
-}
-
-impl<'a> ZipEntry<'a> {
-    pub fn name(&self) -> &'a str {
-        self.name
+    pub fn entries(&self) -> &[FileHeader] {
+        &self.entries[..]
     }
 }

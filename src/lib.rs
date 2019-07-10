@@ -2,15 +2,15 @@
 
 mod encoding;
 mod error;
-mod parser;
+mod reader;
 mod types;
 
-pub use parser::ZipReader;
+pub use reader::ZipReader;
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn parse_test_files() {
+    fn read_test_files() {
         color_backtrace::install();
 
         use std::path::PathBuf;

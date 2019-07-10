@@ -559,7 +559,7 @@ where
     R: ReadAt,
 {
     pub fn new(reader: &'a R, size: u64) -> Result<Self, Error> {
-        let directory_end = super::parser::EndOfCentralDirectory::read(reader, size)?;
+        let directory_end = EndOfCentralDirectory::read(reader, size)?;
 
         if directory_end.directory_records() > size / LocalFileHeaderRecord::LENGTH as u64 {
             return Err(FormatError::ImpossibleNumberOfFiles {

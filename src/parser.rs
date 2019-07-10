@@ -17,6 +17,15 @@ use nom::{
     IResult,
 };
 
+macro_rules! nom_fields {
+    ({ $($name:ident : $combinator:expr),+ $(,)* } => $body:expr) => {
+        |i| {
+            let (i, ($($name),+)) = nom::sequence::tuple(($($combinator),+))(i)?;
+            $body
+        }
+    };
+}
+
 // Reference code for zip handling:
 // https://github.com/itchio/arkive/blob/master/zip/reader.go
 
@@ -292,16 +301,31 @@ impl EndOfCentralDirectory64Locator {
     const SIGNATURE: &'static str = "PK\x06\x07";
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
+        // preceded(
+        //     tag(Self::SIGNATURE),
+        //     map(
+        //         tuple((le_u32, le_u64, le_u32)),
+        //         |(dir_disk_number, directory_offset, total_disks)| Self {
+        //             dir_disk_number,
+        //             directory_offset,
+        //             total_disks,
+        //         },
+        //     ),
+        // )(i)
+
         preceded(
             tag(Self::SIGNATURE),
-            map(
-                tuple((le_u32, le_u64, le_u32)),
-                |(dir_disk_number, directory_offset, total_disks)| Self {
+            nom_fields!({
+                dir_disk_number: le_u32,
+                directory_offset: le_u64,
+                total_disks: le_u32,
+            } => {
+                Ok((i, Self {
                     dir_disk_number,
                     directory_offset,
                     total_disks,
-                },
-            ),
+                }))
+            }),
         )(i)
     }
 }
@@ -375,6 +399,7 @@ impl EndOfCentralDirectory64Record {
     fn parse<'a, E: ParseError<&'a [u8]>>(
         i: &'a [u8],
     ) -> IResult<&'a [u8], EndOfCentralDirectory64Record, E> {
+        use nom::do_parse;
         preceded(
             tag(Self::SIGNATURE),
             map(

@@ -1,10 +1,14 @@
+// TODO: remove when all tests pass
+#![allow(unused)]
+
 use super::error::*;
 use hex_fmt::HexFmt;
 use positioned_io::ReadAt;
 use std::fmt;
+use std::io::Read;
 
 use nom::{
-    bytes::complete::tag,
+    bytes::complete::{tag, take},
     combinator::map,
     error::ParseError,
     multi::length_data,
@@ -16,28 +20,200 @@ use nom::{
 // Reference code for zip handling:
 // https://github.com/itchio/arkive/blob/master/zip/reader.go
 
+/// Constants for the first byte in creator_version
+#[repr(u16)]
+enum CreatorVersion {
+    FAT = 0,
+    Unix = 3,
+    NTFS = 11,
+    VFAT = 14,
+    MacOSX = 19,
+}
+
+/// Version numbers
+#[repr(u16)]
+enum ZipVersion {
+    /// 2.0
+    Version20 = 20,
+    /// 4.5 (reads and writes zip64 archives)
+    Version45 = 45,
+}
+
+#[repr(u16)]
+enum ExtraHeaderID {
+    /// Zip64 extended information
+    Zip64 = 0x0001,
+    /// NTFS
+    NTFS = 0x000a,
+    /// UNIX
+    Unix = 0x000d,
+    // Extended timestamp
+    ExtTime = 0x5455,
+    /// Info-ZIP Unix extension
+    InfoZipUnix = 0x5855,
+}
+
+#[derive(Debug)]
+/// 4.3.7 Local file header
+struct LocalFileHeader {
+    /// version needed to extract
+    reader_version: u16,
+    /// general purpose bit flag
+    flags: u16,
+    /// compression method
+    method: u16,
+    /// last mod file time
+    modified_time: u16,
+    /// last mod file date
+    modified_date: u16,
+    /// crc-32
+    crc32: u32,
+    /// compressed size
+    compressed_size: u32,
+    /// uncompressed size
+    uncompressed_size: u32,
+    // file name
+    name: ZipString,
+    // extra field
+    extra: ZipString,
+}
+
+impl LocalFileHeader {
+    /// Does not include filename size & data, extra size & data
+    const LENGTH: usize = 30;
+    const SIGNATURE: &'static str = "PK\x03\x04";
+}
+
+// 4.3.12 Central directory structure: File header
+struct FileHeader {
+    // version made by
+    creator_version: u16,
+    // version needed to extract
+    reader_version: u16,
+    // general purpose bit flag
+    flags: u16,
+    // compression method
+    method: u16,
+    // last mod file time
+    modified_time: u16,
+    // last mod file date
+    modified_date: u16,
+    // crc32
+    crc32: u32,
+    // compressed size
+    compressed_size: u32,
+    // uncompressed size
+    uncompressed_size: u32,
+    // disk number start
+    disk_nbr_start: u16,
+    // internal file attributes
+    internal_attrs: u16,
+    // external file attributes
+    external_attrs: u32,
+    // relative offset of local header
+    header_offset: u32,
+
+    // name
+    name: ZipString,
+    // extra
+    extra: ZipString,
+    // comment
+    comment: ZipString,
+}
+
+impl FileHeader {
+    const SIGNATURE: &'static str = "PK\x01\x02";
+
+    fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
+        let (
+            i,
+            (
+                creator_version,
+                reader_version,
+                flags,
+                method,
+                modified_time,
+                modified_date,
+                crc32,
+                compressed_size,
+                uncompressed_size,
+                name_len,
+                extra_len,
+                comment_len,
+                disk_nbr_start,
+                internal_attrs,
+                external_attrs,
+                header_offset,
+            ),
+        ) = preceded(
+            tag(Self::SIGNATURE),
+            tuple((
+                le_u16, // creator_version
+                le_u16, // reader_version
+                le_u16, // flags
+                le_u16, // method
+                le_u16, // modified time
+                le_u16, // modified date
+                le_u32, // crc32
+                le_u32, // compressed size
+                le_u32, // uncompressed size
+                le_u16, // filename length
+                le_u16, // extra length
+                le_u16, // comment length
+                le_u16, // start disk number
+                le_u16, // internal attrs
+                le_u32, // external attrs
+                le_u32, // header offset
+            )),
+        )(i)?;
+
+        map(
+            tuple((take(name_len), take(extra_len), take(comment_len))),
+            move |(name, extra, comment): (&[u8], &[u8], &[u8])| Self {
+                creator_version,
+                reader_version,
+                flags,
+                method,
+                modified_time,
+                modified_date,
+                crc32,
+                compressed_size,
+                uncompressed_size,
+                disk_nbr_start,
+                internal_attrs,
+                external_attrs,
+                header_offset,
+                name: name.into(),
+                extra: extra.into(),
+                comment: comment.into(),
+            },
+        )(i)
+    }
+}
+
 #[derive(Debug)]
 /// 4.3.16  End of central directory record:
-pub(crate) struct EndOfCentralDirectoryRecord {
+struct EndOfCentralDirectoryRecord {
     /// number of this disk
-    pub(crate) disk_nbr: u16,
+    disk_nbr: u16,
     /// number of the disk with the start of the central directory
-    pub(crate) dir_disk_nbr: u16,
+    dir_disk_nbr: u16,
     /// total number of entries in the central directory on this disk
-    pub(crate) dir_records_this_disk: u16,
+    dir_records_this_disk: u16,
     /// total number of entries in the central directory
-    pub(crate) directory_records: u16,
+    directory_records: u16,
     // size of the central directory
-    pub(crate) directory_size: u32,
+    directory_size: u32,
     /// offset of start of central directory with respect to the starting disk number
-    pub(crate) directory_offset: u32,
+    directory_offset: u32,
     /// .ZIP file comment
-    pub(crate) comment: ZipString,
+    comment: ZipString,
 }
 
 impl EndOfCentralDirectoryRecord {
     /// does not include comment size & comment data
-    pub(crate) const LENGTH: usize = 20;
+    const LENGTH: usize = 20;
+    const SIGNATURE: &'static str = "PK\x05\x06";
 
     fn read<R: ReadAt>(reader: &R, size: usize) -> Result<Option<(usize, Self)>, Error> {
         let ranges: [usize; 2] = [1024, 65 * 1024];
@@ -67,7 +243,7 @@ impl EndOfCentralDirectoryRecord {
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
         preceded(
-            tag("PK\x05\x06"),
+            tag(Self::SIGNATURE),
             map(
                 tuple((
                     le_u16,
@@ -78,14 +254,22 @@ impl EndOfCentralDirectoryRecord {
                     le_u32,
                     length_data(le_u16),
                 )),
-                |t| Self {
-                    disk_nbr: t.0,
-                    dir_disk_nbr: t.1,
-                    dir_records_this_disk: t.2,
-                    directory_records: t.3,
-                    directory_size: t.4,
-                    directory_offset: t.5,
-                    comment: ZipString(t.6.into()),
+                |(
+                    disk_nbr,
+                    dir_disk_nbr,
+                    dir_records_this_disk,
+                    directory_records,
+                    directory_size,
+                    directory_offset,
+                    comment,
+                )| Self {
+                    disk_nbr,
+                    dir_disk_nbr,
+                    dir_records_this_disk,
+                    directory_records,
+                    directory_size,
+                    directory_offset,
+                    comment: comment.into(),
                 },
             ),
         )(i)
@@ -94,56 +278,61 @@ impl EndOfCentralDirectoryRecord {
 
 #[derive(Debug)]
 /// 4.3.15 Zip64 end of central directory locator
-pub(crate) struct EndOfCentralDirectory64Locator {
+struct EndOfCentralDirectory64Locator {
     /// number of the disk with the start of the zip64 end of central directory
-    pub(crate) dir_disk_number: u32,
+    dir_disk_number: u32,
     /// relative offset of the zip64 end of central directory record
-    pub(crate) directory_offset: u64,
+    directory_offset: u64,
     /// total number of disks
-    pub(crate) total_disks: u32,
+    total_disks: u32,
 }
 
 impl EndOfCentralDirectory64Locator {
-    pub(crate) const LENGTH: usize = 20;
+    const LENGTH: usize = 20;
+    const SIGNATURE: &'static str = "PK\x06\x07";
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
         preceded(
-            tag("PK\x06\x07"),
-            map(tuple((le_u32, le_u64, le_u32)), |t| Self {
-                dir_disk_number: t.0,
-                directory_offset: t.1,
-                total_disks: t.2,
-            }),
+            tag(Self::SIGNATURE),
+            map(
+                tuple((le_u32, le_u64, le_u32)),
+                |(dir_disk_number, directory_offset, total_disks)| Self {
+                    dir_disk_number,
+                    directory_offset,
+                    total_disks,
+                },
+            ),
         )(i)
     }
 }
 
 #[derive(Debug)]
 /// 4.3.14  Zip64 end of central directory record
-pub(crate) struct EndOfCentralDirectory64Record {
+struct EndOfCentralDirectory64Record {
     /// size of zip64 end of central directory record
-    pub(crate) record_size: u64,
+    record_size: u64,
     /// version made by
-    pub(crate) version_made_by: u16,
+    version_made_by: u16,
     /// version needed to extract
-    pub(crate) version_needed: u16,
+    version_needed: u16,
     /// number of this disk
-    pub(crate) disk_nbr: u32,
+    disk_nbr: u32,
     /// number of the disk with the start of the central directory
-    pub(crate) dir_disk_nbr: u32,
+    dir_disk_nbr: u32,
     // total number of entries in the central directory on this disk
-    pub(crate) dir_records_this_disk: u64,
+    dir_records_this_disk: u64,
     // total number of entries in the central directory
-    pub(crate) directory_records: u64,
+    directory_records: u64,
     // size of the central directory
-    pub(crate) directory_size: u64,
+    directory_size: u64,
     // offset of the start of central directory with respect to the
     // starting disk number
-    pub(crate) directory_offset: u64,
+    directory_offset: u64,
 }
 
 impl EndOfCentralDirectory64Record {
-    pub(crate) const LENGTH: usize = 56;
+    const LENGTH: usize = 56;
+    const SIGNATURE: &'static str = "PK\x06\x06";
 
     fn read<R: ReadAt>(
         reader: &R,
@@ -187,21 +376,31 @@ impl EndOfCentralDirectory64Record {
         i: &'a [u8],
     ) -> IResult<&'a [u8], EndOfCentralDirectory64Record, E> {
         preceded(
-            tag("PK\x06\x06"),
+            tag(Self::SIGNATURE),
             map(
                 tuple((
                     le_u64, le_u16, le_u16, le_u32, le_u32, le_u64, le_u64, le_u64, le_u64,
                 )),
-                |t| EndOfCentralDirectory64Record {
-                    record_size: t.0,
-                    version_made_by: t.1,
-                    version_needed: t.2,
-                    disk_nbr: t.3,
-                    dir_disk_nbr: t.4,
-                    dir_records_this_disk: t.5,
-                    directory_records: t.6,
-                    directory_size: t.7,
-                    directory_offset: t.8,
+                |(
+                    record_size,
+                    version_made_by,
+                    version_needed,
+                    disk_nbr,
+                    dir_disk_nbr,
+                    dir_records_this_disk,
+                    directory_records,
+                    directory_size,
+                    directory_offset,
+                )| EndOfCentralDirectory64Record {
+                    record_size,
+                    version_made_by,
+                    version_needed,
+                    disk_nbr,
+                    dir_disk_nbr,
+                    dir_records_this_disk,
+                    directory_records,
+                    directory_size,
+                    directory_offset,
                 },
             ),
         )(i)
@@ -210,14 +409,14 @@ impl EndOfCentralDirectory64Record {
 
 #[derive(Debug)]
 /// Coalesces zip and zip64 "end of central directory" record info
-pub(crate) struct EndOfCentralDirectory {
-    pub(crate) dir: EndOfCentralDirectoryRecord,
-    pub(crate) dir64: Option<EndOfCentralDirectory64Record>,
-    pub(crate) start_skip_len: usize,
+struct EndOfCentralDirectory {
+    dir: EndOfCentralDirectoryRecord,
+    dir64: Option<EndOfCentralDirectory64Record>,
+    start_skip_len: usize,
 }
 
 impl EndOfCentralDirectory {
-    pub(crate) fn read<R: ReadAt>(reader: &R, size: usize) -> Result<Self, Error> {
+    fn read<R: ReadAt>(reader: &R, size: usize) -> Result<Self, Error> {
         let (d_offset, d) = EndOfCentralDirectoryRecord::read(reader, size)?
             .ok_or(FormatError::DirectoryEndSignatureNotFound)?;
 
@@ -307,22 +506,35 @@ impl EndOfCentralDirectory {
         Ok(res)
     }
 
-    pub(crate) fn directory_offset(&self) -> usize {
+    fn directory_offset(&self) -> usize {
         match self.dir64.as_ref() {
             Some(d64) => d64.directory_offset as usize,
             None => self.dir.directory_offset as usize,
         }
     }
 
-    pub(crate) fn set_directory_offset(&mut self, offset: usize) {
+    fn set_directory_offset(&mut self, offset: usize) {
         match self.dir64.as_mut() {
             Some(d64) => d64.directory_offset = offset as u64,
             None => self.dir.directory_offset = offset as u32,
         };
     }
+
+    fn directory_records(&self) -> usize {
+        match self.dir64.as_ref() {
+            Some(d64) => d64.directory_records as usize,
+            None => self.dir.directory_records as usize,
+        }
+    }
 }
 
 pub struct ZipString(pub Vec<u8>);
+
+impl<'a> From<&'a [u8]> for ZipString {
+    fn from(slice: &'a [u8]) -> Self {
+        Self(slice.into())
+    }
+}
 
 impl fmt::Debug for ZipString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -338,8 +550,8 @@ pub struct ZipReader<'a, R>
 where
     R: ReadAt,
 {
-    pub(crate) reader: &'a R,
-    pub(crate) size: usize,
+    reader: &'a R,
+    size: usize,
 }
 
 impl<'a, R> ZipReader<'a, R>
@@ -349,6 +561,28 @@ where
     pub fn new(reader: &'a R, size: usize) -> Result<Self, Error> {
         let directory_end = super::parser::EndOfCentralDirectory::read(reader, size)?;
         println!("directory_end = {:#?}", directory_end);
+
+        if directory_end.directory_records() > size / LocalFileHeader::LENGTH {
+            return Err(FormatError::ImpossibleNumberOfFiles {
+                claimed_records_count: directory_end.directory_records(),
+                zip_size: size,
+            }
+            .into());
+        }
+
+        // let mut dr =
+        //     positioned_io::Cursor::new_pos(reader, directory_end.directory_offset() as u64);
+        // let mut capacity = 1000;
+        // let mut b = circular::Buffer::with_capacity(1000);
+        // let sz = dr.read(b.space()).expect("should write");
+        // b.fill(sz);
+        // println!("write {:#?}", sz);
+
+        // loop {
+        //     let length = {
+        //         b.data();
+        //     };
+        // }
 
         Ok(Self { reader, size })
     }

@@ -1,6 +1,6 @@
 use std::{error, fmt};
 
-pub(crate) type DecodingError<'a> = (&'a [u8], nom::error::ErrorKind);
+pub type DecodingError<'a> = (&'a [u8], nom::error::ErrorKind);
 
 #[derive(Debug)]
 pub enum Error<'a> {
@@ -14,6 +14,10 @@ pub enum Error<'a> {
 pub enum FormatError {
     DirectoryEndSignatureNotFound,
     DirectoryOffsetPointsOutsideFile,
+    ImpossibleNumberOfFiles {
+        claimed_records_count: usize,
+        zip_size: usize,
+    },
 }
 
 impl<'a> error::Error for Error<'a> {}

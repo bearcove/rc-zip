@@ -14,7 +14,7 @@ use nom::{
     multi::length_data,
     number::complete::{le_u16, le_u32, le_u64},
     sequence::{preceded, tuple},
-    IResult,
+    IResult, Offset,
 };
 
 macro_rules! fields_raw {
@@ -23,6 +23,12 @@ macro_rules! fields_raw {
             let ($input, ($($name),+)) = nom::sequence::tuple(($($combinator),+))($input)?;
             $body
         }
+    };
+}
+
+macro_rules! fields_chain {
+    ({ $($name:ident : $combinator:expr),+ $(,)* } => $next:expr) => {
+        fields_raw!(i, { $($name: $combinator,)+ } => $next(i))
     };
 }
 
@@ -104,7 +110,7 @@ struct LocalFileHeader {
     // file name
     name: ZipString,
     // extra field
-    extra: ZipString,
+    extra: ZipBytes,
 }
 
 impl LocalFileHeader {
@@ -114,6 +120,7 @@ impl LocalFileHeader {
 }
 
 // 4.3.12 Central directory structure: File header
+#[derive(Debug)]
 struct FileHeader {
     // version made by
     creator_version: u16,
@@ -145,7 +152,7 @@ struct FileHeader {
     // name
     name: ZipString,
     // extra
-    extra: ZipString,
+    extra: ZipBytes,
     // comment
     comment: ZipString,
 }
@@ -154,68 +161,49 @@ impl FileHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
-        let (
-            i,
-            (
-                creator_version,
-                reader_version,
-                flags,
-                method,
-                modified_time,
-                modified_date,
-                crc32,
-                compressed_size,
-                uncompressed_size,
-                name_len,
-                extra_len,
-                comment_len,
-                disk_nbr_start,
-                internal_attrs,
-                external_attrs,
-                header_offset,
-            ),
-        ) = preceded(
+        preceded(
             tag(Self::SIGNATURE),
-            tuple((
-                le_u16, // creator_version
-                le_u16, // reader_version
-                le_u16, // flags
-                le_u16, // method
-                le_u16, // modified time
-                le_u16, // modified date
-                le_u32, // crc32
-                le_u32, // compressed size
-                le_u32, // uncompressed size
-                le_u16, // filename length
-                le_u16, // extra length
-                le_u16, // comment length
-                le_u16, // start disk number
-                le_u16, // internal attrs
-                le_u32, // external attrs
-                le_u32, // header offset
-            )),
-        )(i)?;
-
-        map(
-            tuple((take(name_len), take(extra_len), take(comment_len))),
-            move |(name, extra, comment): (&[u8], &[u8], &[u8])| Self {
-                creator_version,
-                reader_version,
-                flags,
-                method,
-                modified_time,
-                modified_date,
-                crc32,
-                compressed_size,
-                uncompressed_size,
-                disk_nbr_start,
-                internal_attrs,
-                external_attrs,
-                header_offset,
-                name: name.into(),
-                extra: extra.into(),
-                comment: comment.into(),
-            },
+            fields_chain!({
+                creator_version: le_u16,
+                reader_version: le_u16,
+                flags: le_u16,
+                method: le_u16,
+                modified_time: le_u16,
+                modified_date: le_u16,
+                crc32: le_u32,
+                compressed_size: le_u32,
+                uncompressed_size: le_u32,
+                name_len: le_u16,
+                extra_len: le_u16,
+                comment_len: le_u16,
+                disk_nbr_start: le_u16,
+                internal_attrs: le_u16,
+                external_attrs: le_u32,
+                header_offset: le_u32,
+            } => {
+                fields_map!({
+                    name: zip_string(name_len),
+                    extra: zip_bytes(extra_len),
+                    comment: zip_string(comment_len),
+                } => Self {
+                    creator_version,
+                    reader_version,
+                    flags,
+                    method,
+                    modified_time,
+                    modified_date,
+                    crc32,
+                    compressed_size,
+                    uncompressed_size,
+                    disk_nbr_start,
+                    internal_attrs,
+                    external_attrs,
+                    header_offset,
+                    name: name,
+                    extra: extra,
+                    comment: comment,
+                })
+            }),
         )(i)
     }
 }
@@ -338,9 +326,9 @@ struct EndOfCentralDirectory64Record {
     /// size of zip64 end of central directory record
     record_size: u64,
     /// version made by
-    version_made_by: u16,
+    creator_version: u16,
     /// version needed to extract
-    version_needed: u16,
+    reader_version: u16,
     /// number of this disk
     disk_nbr: u32,
     /// number of the disk with the start of the central directory
@@ -401,35 +389,19 @@ impl EndOfCentralDirectory64Record {
     fn parse<'a, E: ParseError<&'a [u8]>>(
         i: &'a [u8],
     ) -> IResult<&'a [u8], EndOfCentralDirectory64Record, E> {
-        use nom::do_parse;
         preceded(
             tag(Self::SIGNATURE),
-            map(
-                tuple((
-                    le_u64, le_u16, le_u16, le_u32, le_u32, le_u64, le_u64, le_u64, le_u64,
-                )),
-                |(
-                    record_size,
-                    version_made_by,
-                    version_needed,
-                    disk_nbr,
-                    dir_disk_nbr,
-                    dir_records_this_disk,
-                    directory_records,
-                    directory_size,
-                    directory_offset,
-                )| EndOfCentralDirectory64Record {
-                    record_size,
-                    version_made_by,
-                    version_needed,
-                    disk_nbr,
-                    dir_disk_nbr,
-                    dir_records_this_disk,
-                    directory_records,
-                    directory_size,
-                    directory_offset,
-                },
-            ),
+            fields_struct!({
+                record_size: le_u64,
+                creator_version: le_u16,
+                reader_version: le_u16,
+                disk_nbr: le_u32,
+                dir_disk_nbr: le_u32,
+                dir_records_this_disk: le_u64,
+                directory_records: le_u64,
+                directory_size: le_u64,
+                directory_offset: le_u64,
+            } => Self),
         )(i)
     }
 }
@@ -572,6 +544,49 @@ impl fmt::Debug for ZipString {
     }
 }
 
+pub fn zip_string<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipString, E>
+where
+    C: nom::ToUsize,
+    E: ParseError<&'a [u8]>,
+{
+    move |i: &'a [u8]| {
+        map(take(count.to_usize()), |slice: &'a [u8]| {
+            ZipString::from(slice)
+        })(i)
+    }
+}
+
+pub struct ZipBytes(pub Vec<u8>);
+
+impl fmt::Debug for ZipBytes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        const MAX_SHOWN_SIZE: usize = 10;
+        let data = &self.0[..];
+        let (slice, extra) = if data.len() > MAX_SHOWN_SIZE {
+            (&self.0[..MAX_SHOWN_SIZE], Some(data.len() - MAX_SHOWN_SIZE))
+        } else {
+            (&self.0[..], None)
+        };
+        write!(f, "{:x}", HexFmt(slice))?;
+        if let Some(extra) = extra {
+            write!(f, " (+ {} bytes)", extra)?;
+        }
+        Ok(())
+    }
+}
+
+pub fn zip_bytes<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipBytes, E>
+where
+    C: nom::ToUsize,
+    E: ParseError<&'a [u8]>,
+{
+    move |i: &'a [u8]| {
+        map(take(count.to_usize()), |slice: &'a [u8]| {
+            ZipBytes(slice.into())
+        })(i)
+    }
+}
+
 #[allow(unused)]
 pub struct ZipReader<'a, R>
 where
@@ -597,19 +612,27 @@ where
             .into());
         }
 
-        // let mut dr =
-        //     positioned_io::Cursor::new_pos(reader, directory_end.directory_offset() as u64);
-        // let mut capacity = 1000;
-        // let mut b = circular::Buffer::with_capacity(1000);
-        // let sz = dr.read(b.space()).expect("should write");
-        // b.fill(sz);
-        // println!("write {:#?}", sz);
+        let mut dr =
+            positioned_io::Cursor::new_pos(reader, directory_end.directory_offset() as u64);
+        let mut capacity = 1000;
+        let mut b = circular::Buffer::with_capacity(1000);
 
-        // loop {
-        //     let length = {
-        //         b.data();
-        //     };
-        // }
+        'read_headers: loop {
+            let sz = dr.read(b.space()).expect("should write");
+            b.fill(sz);
+
+            let length = {
+                let res = FileHeader::parse::<DecodingError>(b.data());
+                match res {
+                    Ok((remaining, h)) => {
+                        println!("parsed header: {:#?}", h);
+                        b.data().offset(remaining)
+                    }
+                    Err(e) => break 'read_headers,
+                }
+            };
+            b.consume(length);
+        }
 
         Ok(Self { reader, size })
     }

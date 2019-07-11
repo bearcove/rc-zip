@@ -581,7 +581,7 @@ impl ZipReader {
             let mut b = circular::Buffer::with_capacity(1000);
 
             'read_headers: loop {
-                let sz = reader.read(b.space()).expect("should write");
+                let sz = reader.read(b.space())?;
                 b.fill(sz);
 
                 let length = {
@@ -608,8 +608,7 @@ impl ZipReader {
             let mut feed = |slice: &[u8]| {
                 detector.feed(slice);
                 total_fed += slice.len();
-                // total_fed < max_feed
-                true
+                total_fed < max_feed
             };
 
             'recognize_encoding: for fh in header_records.iter().filter(|fh| fh.is_non_utf8()) {

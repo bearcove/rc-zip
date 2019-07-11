@@ -15,7 +15,11 @@ categories = ["compression"]
 travis-ci = { repository = "rust-compress/rc-zip" }
 maintenance = { status = "experimental" }
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.test]
+opt-level = 1
+
+[profile.dev]
+opt-level = 1
 
 [dependencies]
 nom = "5.0.0"

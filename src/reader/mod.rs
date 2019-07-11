@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use super::{
-    encoding::{detect_utf8, Encoding, OtherEncoding},
+    encoding::{self, Encoding},
     error::*,
     types::*,
 };
@@ -163,8 +163,8 @@ impl FileHeaderRecord {
 
 impl FileHeaderRecord {
     fn is_non_utf8(&self) -> bool {
-        let (valid1, require1) = detect_utf8(&self.name.0[..]);
-        let (valid2, require2) = detect_utf8(&self.comment.0[..]);
+        let (valid1, require1) = encoding::detect_utf8(&self.name.0[..]);
+        let (valid2, require2) = encoding::detect_utf8(&self.comment.0[..]);
         if !valid1 || !valid2 {
             // definitely not utf-8
             return true;
@@ -182,17 +182,15 @@ impl FileHeaderRecord {
         self.flags & 0x800 == 0
     }
 
-    // FIXME: don't panic
-    fn as_file_header(self, encoding: Encoding) -> FileHeader {
-        FileHeader {
-            name: encoding
-                .decode(&self.name.0)
-                .expect("zip file name should decode"),
-            comment: self.comment.as_option().map(|x| {
-                encoding
-                    .decode(&x.0)
-                    .expect("zip file comment should decode")
-            }),
+    fn as_file_header(self, encoding: Encoding) -> Result<FileHeader, encoding::DecodingError> {
+        let mut comment: Option<String> = None;
+        if let Some(comment_field) = self.comment.as_option() {
+            comment = Some(encoding.decode(&comment_field.0)?);
+        }
+
+        Ok(FileHeader {
+            name: encoding.decode(&self.name.0)?,
+            comment,
             creator_version: self.creator_version,
             reader_version: self.reader_version,
             flags: self.flags,
@@ -204,7 +202,7 @@ impl FileHeaderRecord {
 
             extra: self.extra.as_option().map(|x| x.0),
             external_attrs: self.external_attrs,
-        }
+        })
     }
 }
 
@@ -251,7 +249,7 @@ impl EndOfCentralDirectoryRecord {
         for i in (0..(b.len() - Self::LENGTH + 1)).rev() {
             let slice = &b[i..];
 
-            if let Ok((_, directory)) = Self::parse::<DecodingError>(slice) {
+            if let Ok((_, directory)) = Self::parse::<ZipParseError>(slice) {
                 return Some((i, directory));
             }
         }
@@ -357,7 +355,7 @@ impl EndOfCentralDirectory64Record {
 
         let mut locbuf = vec![0u8; EndOfCentralDirectory64Locator::LENGTH];
         reader.read_exact_at(loc_offset, &mut locbuf)?;
-        let locres = EndOfCentralDirectory64Locator::parse::<DecodingError>(&locbuf[..]);
+        let locres = EndOfCentralDirectory64Locator::parse::<ZipParseError>(&locbuf[..]);
 
         if let Ok((_, locator)) = locres {
             if locator.dir_disk_number != 0 {
@@ -373,7 +371,7 @@ impl EndOfCentralDirectory64Record {
             let offset = locator.directory_offset;
             let mut recbuf = vec![0u8; EndOfCentralDirectory64Record::LENGTH];
             reader.read_exact_at(offset, &mut recbuf)?;
-            let recres = Self::parse::<DecodingError>(&recbuf[..]);
+            let recres = Self::parse::<ZipParseError>(&recbuf[..]);
 
             if let Ok((_, record)) = recres {
                 return Ok(Some((offset, record)));
@@ -555,21 +553,17 @@ where
 }
 
 #[allow(unused)]
-pub struct ZipReader<R>
-where
-    R: ReadAt,
-{
-    reader: R,
+pub struct ZipReader {
     size: u64,
     encoding: Encoding,
     entries: Vec<FileHeader>,
 }
 
-impl<R> ZipReader<R>
-where
-    R: ReadAt,
-{
-    pub fn new(reader: R, size: u64) -> Result<Self, Error> {
+impl ZipReader {
+    pub fn new<R>(reader: R, size: u64) -> Result<Self, Error>
+    where
+        R: ReadAt,
+    {
         let directory_end = EndOfCentralDirectory::read(&reader, size)?;
 
         if directory_end.directory_records() > size / LocalFileHeaderRecord::LENGTH as u64 {
@@ -591,9 +585,10 @@ where
                 b.fill(sz);
 
                 let length = {
-                    let res = FileHeaderRecord::parse::<DecodingError>(b.data());
+                    let res = FileHeaderRecord::parse::<ZipParseError>(b.data());
                     match res {
                         Ok((remaining, h)) => {
+                            debug!("Parsed header: {:#?}", h);
                             header_records.push(h);
                             b.data().offset(remaining)
                         }
@@ -634,20 +629,20 @@ where
                 debug!("Detected charset {} with confidence {}", label, confidence);
 
                 match label {
-                    "SHIFT_JIS" => Encoding::Other(OtherEncoding::ShiftJis),
+                    "SHIFT_JIS" => Encoding::ShiftJis,
                     "utf-8" => Encoding::Utf8,
                     _ => Encoding::Cp437,
                 }
             }
         };
 
-        let entries: Vec<FileHeader> = header_records
+        let entries: Result<Vec<FileHeader>, encoding::DecodingError> = header_records
             .into_iter()
             .map(|x| x.as_file_header(encoding))
             .collect();
+        let entries = entries?;
 
         Ok(Self {
-            reader,
             size,
             entries,
             encoding,

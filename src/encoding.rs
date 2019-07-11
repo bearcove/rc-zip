@@ -28,11 +28,11 @@ pub(crate) fn detect_utf8(input: &[u8]) -> (bool, bool) {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Encoding {
     Utf8,
     Cp437,
-    Other(OtherEncoding),
+    ShiftJis,
 }
 
 impl fmt::Display for Encoding {
@@ -41,20 +41,6 @@ impl fmt::Display for Encoding {
         match self {
             T::Utf8 => write!(f, "utf-8"),
             T::Cp437 => write!(f, "cp-437"),
-            T::Other(other) => write!(f, "{}", other),
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum OtherEncoding {
-    ShiftJis,
-}
-
-impl fmt::Display for OtherEncoding {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use OtherEncoding as T;
-        match self {
             T::ShiftJis => write!(f, "shift-jis"),
         }
     }
@@ -63,6 +49,8 @@ impl fmt::Display for OtherEncoding {
 #[derive(Debug)]
 pub enum DecodingError {
     Utf8Error(std::str::Utf8Error),
+    StringTooLarge,
+    EncodingError(&'static str),
 }
 
 impl From<std::str::Utf8Error> for DecodingError {
@@ -83,30 +71,25 @@ impl Encoding {
                 let s = String::borrow_from_cp437(i, &CP437_CONTROL);
                 Ok(s.to_string())
             }
-            Encoding::Other(o) => o.decode(i),
+            Encoding::ShiftJis => self.decode_as(i, encoding_rs::SHIFT_JIS),
         }
     }
-}
 
-impl OtherEncoding {
-    // FIXME: don't panic
-    fn decode(&self, i: &[u8]) -> Result<String, DecodingError> {
-        let encoding = match self {
-            OtherEncoding::ShiftJis => encoding_rs::SHIFT_JIS,
-        };
-
+    fn decode_as(
+        &self,
+        i: &[u8],
+        encoding: &'static encoding_rs::Encoding,
+    ) -> Result<String, DecodingError> {
         let mut decoder = encoding.new_decoder();
-        // FIXME: don't panic
         let len = decoder
             .max_utf8_buffer_length(i.len())
-            .expect("decoded string should fit into usize");
+            .ok_or(DecodingError::StringTooLarge)?;
         let mut v = vec![0u8; len];
         let last = true;
         let (_decoder_result, _decoder_read, decoder_written, had_errors) =
             decoder.decode_to_utf8(i, &mut v, last);
         if had_errors {
-            // FIXME: don't panic
-            panic!("could not decode encoding {}", encoding.name());
+            return Err(DecodingError::EncodingError(encoding.name()));
         }
         v.resize(decoder_written, 0u8);
         Ok(unsafe { String::from_utf8_unchecked(v) })

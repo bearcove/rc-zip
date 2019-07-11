@@ -1,13 +1,14 @@
+use super::encoding;
 use std::{error, fmt};
 
-pub type DecodingError<'a> = (&'a [u8], nom::error::ErrorKind);
+pub type ZipParseError<'a> = (&'a [u8], nom::error::ErrorKind);
 
 #[derive(Debug)]
 pub enum Error {
     IO(std::io::Error),
-    Decoding(nom::error::ErrorKind),
+    Parsing(nom::error::ErrorKind),
+    Encoding(encoding::DecodingError),
     Format(FormatError),
-    String(String),
 }
 
 #[derive(Debug)]
@@ -26,9 +27,9 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::IO(e) => write!(f, "rc-zip IO error: {}", e),
-            Error::Decoding(e) => write!(f, "rc-zip decoding error: {:#?}", e),
+            Error::Parsing(e) => write!(f, "rc-zip parse error: {:#?}", e),
+            Error::Encoding(e) => write!(f, "rc-zip encoding error: {:#?}", e),
             Error::Format(e) => write!(f, "rc-zip error: invalid zip file: {:#?}", e),
-            Error::String(e) => write!(f, "rc-zip error: {}", e),
         }
     }
 }
@@ -45,8 +46,14 @@ impl From<FormatError> for Error {
     }
 }
 
-impl<'a> From<DecodingError<'a>> for Error {
-    fn from(e: DecodingError<'a>) -> Self {
-        Error::Decoding(e.1)
+impl<'a> From<ZipParseError<'a>> for Error {
+    fn from(e: ZipParseError<'a>) -> Self {
+        Error::Parsing(e.1)
+    }
+}
+
+impl From<encoding::DecodingError> for Error {
+    fn from(e: encoding::DecodingError) -> Self {
+        Error::Encoding(e)
     }
 }

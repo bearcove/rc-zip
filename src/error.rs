@@ -3,9 +3,9 @@ use std::{error, fmt};
 pub type DecodingError<'a> = (&'a [u8], nom::error::ErrorKind);
 
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     IO(std::io::Error),
-    Decoding(DecodingError<'a>),
+    Decoding(nom::error::ErrorKind),
     Format(FormatError),
     String(String),
 }
@@ -20,9 +20,9 @@ pub enum FormatError {
     },
 }
 
-impl<'a> error::Error for Error<'a> {}
+impl error::Error for Error {}
 
-impl<'a> fmt::Display for Error<'a> {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::IO(e) => write!(f, "rc-zip IO error: {}", e),
@@ -33,20 +33,20 @@ impl<'a> fmt::Display for Error<'a> {
     }
 }
 
-impl<'a> From<std::io::Error> for Error<'a> {
+impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Error::IO(e)
     }
 }
 
-impl<'a> From<FormatError> for Error<'a> {
+impl From<FormatError> for Error {
     fn from(e: FormatError) -> Self {
         Error::Format(e)
     }
 }
 
-impl<'a> From<DecodingError<'a>> for Error<'a> {
+impl<'a> From<DecodingError<'a>> for Error {
     fn from(e: DecodingError<'a>) -> Self {
-        Error::Decoding(e)
+        Error::Decoding(e.1)
     }
 }

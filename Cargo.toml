@@ -25,7 +25,9 @@ hex_fmt = "0.3.0"
 circular = "0.3.0"
 chrono = "0.4.7"
 chardet = "0.2.4"
-encoding = "0.2.33"
+encoding_rs = "0.8.17"
+codepage-437 = "0.1.0"
+log = "0.4.7"
 
 [dev-dependencies]
 color-backtrace = "0.2.2"

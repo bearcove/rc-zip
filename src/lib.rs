@@ -5,6 +5,7 @@ mod error;
 mod reader;
 mod types;
 
+pub use positioned_io;
 pub use reader::ZipReader;
 
 #[cfg(test)]
@@ -19,8 +20,7 @@ mod tests {
             .join("test-zips");
 
         // for name in &["test.zip", "zip64.zip", "unix.zip", "winxp.zip", "dd.zip"] {
-        // for name in &["zip64.zip", "readme.trailingzip", "cp-437.zip"] {
-        for name in &["zip64.zip", "readme.trailingzip"] {
+        for name in &["zip64.zip", "readme.trailingzip", "cp-437.zip"] {
             let test_file = zips_dir.join(name);
             let contents = std::fs::read(test_file).unwrap();
             super::ZipReader::new(&contents, contents.len() as u64).unwrap();

@@ -1,10 +1,14 @@
 #![allow(unused)]
 
-use super::{encoding::detect_utf8, error::*, types::*};
+use super::{
+    encoding::{detect_utf8, Encoding, OtherEncoding},
+    error::*,
+    types::*,
+};
+use log::*;
 #[macro_use]
 mod nom_macros;
 
-use encoding::Encoding;
 use hex_fmt::HexFmt;
 use positioned_io::{Cursor, ReadAt};
 use std::fmt;
@@ -178,13 +182,17 @@ impl FileHeaderRecord {
         self.flags & 0x800 == 0
     }
 
-    fn as_file_header(self, encoding: Option<Box<Encoding>>) -> FileHeader {
+    // FIXME: don't panic
+    fn as_file_header(self, encoding: Encoding) -> FileHeader {
         FileHeader {
-            name: String::from_utf8(self.name.0).expect("zip file name should be valid utf-8"),
-            comment: self
-                .comment
-                .as_option()
-                .map(|x| String::from_utf8(x.0).expect("zip file comment must be valid utf-8")),
+            name: encoding
+                .decode(&self.name.0)
+                .expect("zip file name should decode"),
+            comment: self.comment.as_option().map(|x| {
+                encoding
+                    .decode(&x.0)
+                    .expect("zip file comment should decode")
+            }),
             creator_version: self.creator_version,
             reader_version: self.reader_version,
             flags: self.flags,
@@ -224,7 +232,7 @@ impl EndOfCentralDirectoryRecord {
     const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
-    fn read<R: ReadAt>(reader: &R, size: u64) -> Result<Option<(u64, Self)>, Error> {
+    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Option<(u64, Self)>, Error> {
         let ranges: [u64; 2] = [1024, 65 * 1024];
         for &b_len in &ranges {
             let b_len = std::cmp::min(b_len, size);
@@ -340,10 +348,7 @@ impl EndOfCentralDirectory64Record {
     const LENGTH: usize = 56;
     const SIGNATURE: &'static str = "PK\x06\x06";
 
-    fn read<R: ReadAt>(
-        reader: &R,
-        directory_end_offset: u64,
-    ) -> Result<Option<(u64, Self)>, Error> {
+    fn read<R: ReadAt>(reader: R, directory_end_offset: u64) -> Result<Option<(u64, Self)>, Error> {
         if directory_end_offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
             // no need to look for a header outside the file
             return Ok(None);
@@ -403,12 +408,12 @@ impl EndOfCentralDirectory64Record {
 struct EndOfCentralDirectory {
     dir: EndOfCentralDirectoryRecord,
     dir64: Option<EndOfCentralDirectory64Record>,
-    start_skip_len: u64,
+    global_offset: i64,
 }
 
 impl EndOfCentralDirectory {
-    fn read<R: ReadAt>(reader: &R, size: u64) -> Result<Self, Error> {
-        let (d_offset, d) = EndOfCentralDirectoryRecord::read(reader, size)?
+    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Self, Error> {
+        let (d_offset, d) = EndOfCentralDirectoryRecord::read(&reader, size)?
             .ok_or(FormatError::DirectoryEndSignatureNotFound)?;
 
         // These values mean that the file can be a zip64 file
@@ -421,7 +426,7 @@ impl EndOfCentralDirectory {
 
         let mut d64_info: Option<(u64, EndOfCentralDirectory64Record)> = None;
 
-        let res64 = EndOfCentralDirectory64Record::read(reader, d_offset);
+        let res64 = EndOfCentralDirectory64Record::read(&reader, d_offset);
         match res64 {
             Ok(Some(found_d64_info)) => {
                 d64_info = Some(found_d64_info);
@@ -455,10 +460,10 @@ impl EndOfCentralDirectory {
         //
         // But there exist some valid zip archives with padding at the beginning, like so:
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // <-start_skip_len->                    <------directory_size----->
+        // <--global_offset->                    <------directory_size----->
         // [    Padding     ][ Data 1 ][ Data 2 ][    Central directory    ][ ??? ]
         // ^                 ^                   ^                         ^
-        // 0                 start_skip_len      computed_directory_offset directory_end_offset
+        // 0                 global_offset       computed_directory_offset directory_end_offset
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         //
         // (e.g. https://www.icculus.org/mojosetup/ installers are ELF binaries with a .zip file appended)
@@ -476,20 +481,26 @@ impl EndOfCentralDirectory {
         let mut res = Self {
             dir: d,
             dir64: d64_info.map(|(_offset, record)| record),
-            start_skip_len: 0,
+            global_offset: 0,
         };
 
         // did we find a valid offset?
         if (0..size).contains(&computed_directory_offset) {
             // that's different from the recorded one?
             if computed_directory_offset != res.directory_offset() {
-                // then assume `start_skip_len` padding
-                res.start_skip_len = computed_directory_offset - res.directory_offset();
+                // then assume the whole file is offset
+                res.global_offset =
+                    computed_directory_offset as i64 - res.directory_offset() as i64;
                 res.set_directory_offset(computed_directory_offset);
             }
         }
 
         // make sure directory_offset points to somewhere in our file
+        debug!(
+            "directory offset = {}, valid range = 0..{}",
+            res.directory_offset(),
+            size
+        );
         if !(0..size).contains(&res.directory_offset()) {
             return Err(FormatError::DirectoryOffsetPointsOutsideFile.into());
         }
@@ -544,22 +555,22 @@ where
 }
 
 #[allow(unused)]
-pub struct ZipReader<'a, R>
+pub struct ZipReader<R>
 where
     R: ReadAt,
 {
-    reader: &'a R,
+    reader: R,
     size: u64,
-
+    encoding: Encoding,
     entries: Vec<FileHeader>,
 }
 
-impl<'a, R> ZipReader<'a, R>
+impl<R> ZipReader<R>
 where
     R: ReadAt,
 {
-    pub fn new(reader: &'a R, size: u64) -> Result<Self, Error> {
-        let directory_end = EndOfCentralDirectory::read(reader, size)?;
+    pub fn new(reader: R, size: u64) -> Result<Self, Error> {
+        let directory_end = EndOfCentralDirectory::read(&reader, size)?;
 
         if directory_end.directory_records() > size / LocalFileHeaderRecord::LENGTH as u64 {
             return Err(FormatError::ImpossibleNumberOfFiles {
@@ -572,7 +583,7 @@ where
         let mut header_records = Vec::<FileHeaderRecord>::new();
 
         {
-            let mut reader = Cursor::new_pos(reader, directory_end.directory_offset());
+            let mut reader = Cursor::new_pos(&reader, directory_end.directory_offset());
             let mut b = circular::Buffer::with_capacity(1000);
 
             'read_headers: loop {
@@ -593,19 +604,65 @@ where
             }
         }
 
+        let mut detector = chardet::UniversalDetector::new();
+        let mut all_utf8 = true;
+
+        {
+            let max_feed: usize = 4096;
+            let mut total_fed: usize = 0;
+            let mut feed = |slice: &[u8]| {
+                detector.feed(slice);
+                total_fed += slice.len();
+                // total_fed < max_feed
+                true
+            };
+
+            'recognize_encoding: for fh in header_records.iter().filter(|fh| fh.is_non_utf8()) {
+                all_utf8 = false;
+                if (!feed(&fh.name.0) || !feed(&fh.comment.0)) {
+                    break 'recognize_encoding;
+                }
+            }
+        }
+
+        let encoding = {
+            if all_utf8 {
+                Encoding::Utf8
+            } else {
+                let (charset, confidence, _language) = detector.close();
+                let label = chardet::charset2encoding(&charset);
+                debug!("Detected charset {} with confidence {}", label, confidence);
+
+                match label {
+                    "SHIFT_JIS" => Encoding::Other(OtherEncoding::ShiftJis),
+                    "utf-8" => Encoding::Utf8,
+                    _ => Encoding::Cp437,
+                }
+            }
+        };
+
         let entries: Vec<FileHeader> = header_records
             .into_iter()
-            .map(|x| x.as_file_header(None))
+            .map(|x| x.as_file_header(encoding))
             .collect();
 
         Ok(Self {
             reader,
             size,
             entries,
+            encoding,
         })
     }
 
+    /// Return a list of all files in this zip, read from the
+    /// central directory.
     pub fn entries(&self) -> &[FileHeader] {
         &self.entries[..]
+    }
+
+    /// Returns the detected character encoding for text fields
+    /// (paths, comments) inside this ZIP file
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
     }
 }

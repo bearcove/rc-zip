@@ -526,6 +526,10 @@ impl EndOfCentralDirectory {
             None => self.dir.directory_records as u64,
         }
     }
+
+    fn comment(&self) -> &ZipString {
+        &self.dir.comment
+    }
 }
 
 pub fn zip_string<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipString, E>
@@ -552,11 +556,12 @@ where
     }
 }
 
-#[allow(unused)]
+#[derive(Debug)]
 pub struct ZipReader {
     size: u64,
     encoding: Encoding,
     entries: Vec<FileHeader>,
+    comment: Option<String>,
 }
 
 impl ZipReader {
@@ -641,10 +646,16 @@ impl ZipReader {
             .collect();
         let entries = entries?;
 
+        let mut comment: Option<String> = None;
+        if !directory_end.comment().0.is_empty() {
+            comment = Some(encoding.decode(&directory_end.comment().0)?);
+        }
+
         Ok(Self {
             size,
             entries,
             encoding,
+            comment,
         })
     }
 
@@ -658,5 +669,13 @@ impl ZipReader {
     /// (paths, comments) inside this ZIP file
     pub fn encoding(&self) -> Encoding {
         self.encoding
+    }
+
+    pub fn comment(&self) -> Option<&String> {
+        self.comment.as_ref()
+    }
+
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&FileHeader> {
+        self.entries.iter().find(|&x| x.name == name.as_ref())
     }
 }

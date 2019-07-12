@@ -3,6 +3,7 @@ use hex_fmt::HexFmt;
 use std::fmt;
 
 // Describes a file within a zip file.
+#[derive(Debug)]
 pub struct FileHeader {
     // Name of the file
     // Must be a relative path, not start with a drive letter (e.g. C:),

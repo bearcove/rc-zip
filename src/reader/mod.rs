@@ -679,3 +679,117 @@ impl ZipReader {
         self.entries.iter().find(|&x| x.name == name.as_ref())
     }
 }
+
+pub struct ArchiveReader {
+    // Size of the entire zip file
+    size: u64,
+    state: ArchiveReaderState,
+    buffer: circular::Buffer,
+}
+
+#[derive(Debug)]
+pub enum ArchiveReaderResult {
+    /// should continue
+    Continue,
+    /// done reading
+    Done,
+}
+
+enum ArchiveReaderState {
+    ReadEOCD {
+        haystack_size: u64,
+    },
+    ReadEOCD64Locator {
+        eocd_offset: u64,
+        eocd_record: EndOfCentralDirectoryRecord,
+    },
+    ReadEOCD64 {
+        eocd_offset: u64,
+        eocd_64_offset: u64,
+        eocd_record: EndOfCentralDirectoryRecord,
+    },
+    ReadCentralDirectory {
+        eocd_offset: u64,
+        eocd: EndOfCentralDirectory,
+    },
+}
+
+impl ArchiveReader {
+    pub fn new(size: u64) -> Self {
+        let haystack_size: u64 = 65 * 1024;
+        let haystack_size = if size < haystack_size {
+            size
+        } else {
+            haystack_size
+        };
+
+        Self {
+            size,
+            state: ArchiveReaderState::ReadEOCD { haystack_size },
+            buffer: circular::Buffer::with_capacity(128 * 1024), // 128KB buffer
+        }
+    }
+
+    pub fn wants_read(&self) -> Option<u64> {
+        let avail_bytes = self.buffer.available_data() as u64;
+
+        use ArchiveReaderState as S;
+        match self.state {
+            S::ReadEOCD { haystack_size } => {
+                if avail_bytes < haystack_size {
+                    let offset = self.size - haystack_size + avail_bytes;
+                    Some(offset)
+                } else {
+                    None
+                }
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
+        match rd.read(self.buffer.space()) {
+            Ok(written) => {
+                self.buffer.fill(written);
+                Ok(written)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn process(&mut self) -> Result<ArchiveReaderResult, Error> {
+        use ArchiveReaderResult as R;
+        use ArchiveReaderState as S;
+        match self.state {
+            S::ReadEOCD { haystack_size } => {
+                if (self.buffer.available_data() as u64) < haystack_size {
+                    println!("ReadEnd needs more data");
+                } else {
+                    println!("Ok, should find EOCD now");
+                    let haystack = self.buffer.data();
+
+                    if let Some((eocd_offset_in_haystack, eocd_record)) =
+                        EndOfCentralDirectoryRecord::find_in_block(haystack)
+                    {
+                        println!(
+                            "Found (and read) EOCD, it's at {} in block",
+                            eocd_offset_in_haystack
+                        );
+                        let eocd_offset =
+                            self.size - haystack.len() as u64 + eocd_offset_in_haystack as u64;
+                        println!("Its offset in the file is {}", eocd_offset);
+                        println!("Here it is: {:#?}", eocd_record);
+                        self.state = S::ReadEOCD64Locator {
+                            eocd_offset,
+                            eocd_record,
+                        }
+                    } else {
+                        return Err(Error::Format(FormatError::DirectoryEndSignatureNotFound));
+                    }
+                }
+                Ok(R::Continue)
+            }
+            _ => unimplemented!(),
+        }
+    }
+}

@@ -9,6 +9,7 @@ pub enum Error {
     Parsing(nom::error::ErrorKind),
     Encoding(encoding::DecodingError),
     Format(FormatError),
+    Unimplemented,
 }
 
 #[derive(Debug)]
@@ -30,6 +31,7 @@ impl fmt::Display for Error {
             Error::Parsing(e) => write!(f, "rc-zip parse error: {:#?}", e),
             Error::Encoding(e) => write!(f, "rc-zip encoding error: {:#?}", e),
             Error::Format(e) => write!(f, "rc-zip error: invalid zip file: {:#?}", e),
+            Error::Unimplemented => write!(f, "rc-zip error: unimplemented"),
         }
     }
 }

@@ -230,4 +230,61 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_fsm() {
+        use super::reader::{ArchiveReader, ArchiveReaderResult};
+
+        let cases = test_cases();
+        let case = cases.first().unwrap();
+        let bs = case.bytes();
+        let mut zar = ArchiveReader::new(bs.len() as u64);
+
+        'read_zip: loop {
+            match zar.wants_read() {
+                Some(offset) => {
+                    let increment = 128usize;
+                    let offset = offset as usize;
+                    let mut slice = 
+                        if offset + increment > bs.len() {
+                            &bs[offset..]
+                        } else {
+                            &bs[offset..offset + increment]
+                        };
+
+                    match zar.read(&mut slice) {
+                        Ok(0) => {
+                            panic!("reached end of file!")
+                        },
+                        Ok(read_bytes) => {
+                            println!("at {}, zar read {} bytes", offset, read_bytes);
+                        },
+                        Err(err) => {
+                            println!("at {}, zar encountered an error:", offset);
+                            panic!(err)
+                        }
+                    }
+                },
+                None => {} // ok, cool, proceed,
+            }
+
+            match zar.process() {
+                Ok(res) => match res {
+                    ArchiveReaderResult::Continue => {
+                        println!("continuing!");
+                    }
+                    ArchiveReaderResult::Done => {
+                        println!("done!");
+                        break 'read_zip;
+                    }
+                },
+                Err(err) => {
+                    println!("zar processing error:");
+                    panic!(err)
+                }
+            }
+        }
+
+        println!("All done!");
+    }
 }

@@ -216,7 +216,17 @@ mod tests {
                 let entry = reader
                     .by_name(f.name)
                     .expect("should have specific test file");
-                println!("test entry: {:#?}", entry);
+
+                #[cfg(dates_implemented)]
+                {
+                    if let Some(expected) = f.modified {
+                        assert_eq!(
+                            expected, entry.modified,
+                            "entry {} should have modified = {:?}",
+                            entry.name, expected
+                        )
+                    }
+                }
             }
         }
     }

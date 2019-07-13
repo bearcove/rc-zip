@@ -1,4 +1,5 @@
 #![allow(clippy::all)]
+#![allow(unused)]
 
 mod encoding;
 mod error;
@@ -123,6 +124,10 @@ mod tests {
     fn test_cases() -> Vec<ZipTest> {
         vec![
             ZipTest {
+                source: ZipSource::File("zip64.zip"),
+                ..Default::default()
+            },
+            ZipTest {
                 source: ZipSource::File("test.zip"),
                 comment: Some("This is a zipfile comment."),
                 expected_encoding: Some(Encoding::Utf8),
@@ -236,7 +241,7 @@ mod tests {
         use super::reader::{ArchiveReader, ArchiveReaderResult};
 
         let cases = test_cases();
-        let case = cases.first().unwrap();
+        let case = cases.iter().find(|x| x.name() == "zip64.zip").unwrap();
         let bs = case.bytes();
         let mut zar = ArchiveReader::new(bs.len() as u64);
 

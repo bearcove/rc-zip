@@ -15,6 +15,7 @@ pub enum Error {
 #[derive(Debug)]
 pub enum FormatError {
     DirectoryEndSignatureNotFound,
+    Directory64EndRecordInvalid,
     DirectoryOffsetPointsOutsideFile,
     ImpossibleNumberOfFiles {
         claimed_records_count: u64,

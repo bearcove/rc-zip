@@ -230,27 +230,30 @@ impl EndOfCentralDirectoryRecord {
     const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
-    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Option<(u64, Self)>, Error> {
+    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Option<Located<Self>>, Error> {
         let ranges: [u64; 2] = [1024, 65 * 1024];
         for &b_len in &ranges {
             let b_len = std::cmp::min(b_len, size);
             let mut buf = vec![0u8; b_len as usize];
             reader.read_exact_at(size - b_len, &mut buf)?;
 
-            if let Some((offset, directory)) = Self::find_in_block(&buf[..]) {
-                let offset = size - b_len + offset as u64;
-                return Ok(Some((offset, directory)));
+            if let Some(mut eocd) = Self::find_in_block(&buf[..]) {
+                eocd.offset += (size - b_len);
+                return Ok(Some(eocd));
             }
         }
         Ok(None)
     }
 
-    fn find_in_block(b: &[u8]) -> Option<(usize, Self)> {
+    fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
         for i in (0..(b.len() - Self::LENGTH + 1)).rev() {
             let slice = &b[i..];
 
             if let Ok((_, directory)) = Self::parse::<ZipParseError>(slice) {
-                return Some((i, directory));
+                return Some(Located {
+                    offset: i as u64,
+                    inner: directory,
+                });
             }
         }
         None
@@ -288,6 +291,25 @@ impl EndOfCentralDirectoryRecord {
                 },
             ),
         )(i)
+    }
+
+    /// Returns true if this EOCD record belongs to a file
+    /// that is *probably* valid zip64.
+    ///
+    /// However: it can return false and the zip file can still
+    /// be a zip64 file (some macOS .zip files).
+    /// It can also return true, and the file can be non-zip64:
+    /// it can contain exactly 65536 files, for example.
+    ///
+    /// Its only purpose is: if it returns true, and we find
+    /// a zip64 EOCD locator, but we fail to read the zip64 EOCD,
+    /// then it's definitely an invalid zip file.
+    ///
+    /// cf. https://github.com/itchio/butler/issues/141
+    fn is_suspiciously_zip64_like(&self) -> bool {
+        self.directory_records == 0xffff
+            || self.directory_size == 0xffff
+            || self.directory_offset == 0xffff
     }
 }
 
@@ -346,7 +368,10 @@ impl EndOfCentralDirectory64Record {
     const LENGTH: usize = 56;
     const SIGNATURE: &'static str = "PK\x06\x06";
 
-    fn read<R: ReadAt>(reader: R, directory_end_offset: u64) -> Result<Option<(u64, Self)>, Error> {
+    fn read<R: ReadAt>(
+        reader: R,
+        directory_end_offset: u64,
+    ) -> Result<Option<Located<Self>>, Error> {
         if directory_end_offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
             // no need to look for a header outside the file
             return Ok(None);
@@ -374,10 +399,14 @@ impl EndOfCentralDirectory64Record {
             let recres = Self::parse::<ZipParseError>(&recbuf[..]);
 
             if let Ok((_, record)) = recres {
-                return Ok(Some((offset, record)));
+                return Ok(Some(Located {
+                    offset,
+                    inner: record,
+                }));
+            } else {
+                return Err(FormatError::Directory64EndRecordInvalid.into());
             }
         }
-
         Ok(None)
     }
 
@@ -402,49 +431,42 @@ impl EndOfCentralDirectory64Record {
 }
 
 #[derive(Debug)]
+struct Located<T> {
+    offset: u64,
+    inner: T,
+}
+
+impl<T> std::ops::Deref for Located<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> std::ops::DerefMut for Located<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+#[derive(Debug)]
 /// Coalesces zip and zip64 "end of central directory" record info
 struct EndOfCentralDirectory {
-    dir: EndOfCentralDirectoryRecord,
-    dir64: Option<EndOfCentralDirectory64Record>,
+    dir: Located<EndOfCentralDirectoryRecord>,
+    dir64: Option<Located<EndOfCentralDirectory64Record>>,
     global_offset: i64,
 }
 
 impl EndOfCentralDirectory {
-    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Self, Error> {
-        let (d_offset, d) = EndOfCentralDirectoryRecord::read(&reader, size)?
-            .ok_or(FormatError::DirectoryEndSignatureNotFound)?;
-
-        // These values mean that the file can be a zip64 file
-        //
-        // However, on macOS, some .zip files have a zip64 directory
-        // but doesn't have these values, cf. https://github.com/itchio/butler/issues/141
-        let probably_zip64 = d.directory_records == 0xffff
-            || d.directory_size == 0xffff
-            || d.directory_offset == 0xffff;
-
-        let mut d64_info: Option<(u64, EndOfCentralDirectory64Record)> = None;
-
-        let res64 = EndOfCentralDirectory64Record::read(&reader, d_offset);
-        match res64 {
-            Ok(Some(found_d64_info)) => {
-                d64_info = Some(found_d64_info);
-            }
-            Ok(None) => { /* not a zip64 file, that's ok! */ }
-            Err(e) => {
-                if probably_zip64 {
-                    return Err(e);
-                }
-            }
-        }
-
-        let computed_directory_offset = match d64_info.as_ref() {
-            // cf. https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html
-            // `directorySize` does not include
-            //  - Zip64 end of central directory record
-            //  - Zip64 end of central directory locator
-            // and we don't want to be a few bytes off, now do we.
-            Some((d64_offset, d64)) => *d64_offset - d64.directory_size,
-            None => d_offset - d.directory_size as u64,
+    fn new(
+        size: u64,
+        dir: Located<EndOfCentralDirectoryRecord>,
+        dir64: Option<Located<EndOfCentralDirectory64Record>>,
+    ) -> Result<Self, Error> {
+        let mut res = Self {
+            dir,
+            dir64,
+            global_offset: 0,
         };
 
         //
@@ -476,11 +498,7 @@ impl EndOfCentralDirectory {
         // 0                   directory_offset - woops!                   directory_end_offset
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        let mut res = Self {
-            dir: d,
-            dir64: d64_info.map(|(_offset, record)| record),
-            global_offset: 0,
-        };
+        let computed_directory_offset = res.located_directory_offset() - res.directory_size();
 
         // did we find a valid offset?
         if (0..size).contains(&computed_directory_offset) {
@@ -506,10 +524,41 @@ impl EndOfCentralDirectory {
         Ok(res)
     }
 
+    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Self, Error> {
+        let d = EndOfCentralDirectoryRecord::read(&reader, size)?
+            .ok_or(FormatError::DirectoryEndSignatureNotFound)?;
+
+        let d64 = match EndOfCentralDirectory64Record::read(&reader, d.offset) {
+            Ok(d64) => d64,
+            Err(e) => {
+                if d.is_suspiciously_zip64_like() {
+                    return Err(e);
+                }
+                None
+            }
+        };
+
+        Self::new(size, d, d64)
+    }
+
+    fn located_directory_offset(&self) -> u64 {
+        match self.dir64.as_ref() {
+            Some(d64) => d64.offset,
+            None => self.dir.offset,
+        }
+    }
+
     fn directory_offset(&self) -> u64 {
         match self.dir64.as_ref() {
             Some(d64) => d64.directory_offset,
             None => self.dir.directory_offset as u64,
+        }
+    }
+
+    fn directory_size(&self) -> u64 {
+        match self.dir64.as_ref() {
+            Some(d64) => d64.directory_size,
+            None => self.dir.directory_size as u64,
         }
     }
 
@@ -696,20 +745,20 @@ pub enum ArchiveReaderResult {
 }
 
 enum ArchiveReaderState {
-    ReadEOCD {
+    /// Dummy state, used while transitioning because
+    /// ownership rules are tough.
+    Transitioning,
+    ReadEocd {
         haystack_size: u64,
     },
-    ReadEOCD64Locator {
-        eocd_offset: u64,
-        eocd_record: EndOfCentralDirectoryRecord,
+    ReadEocd64Locator {
+        eocdr: Located<EndOfCentralDirectoryRecord>,
     },
-    ReadEOCD64 {
-        eocd_offset: u64,
-        eocd_64_offset: u64,
-        eocd_record: EndOfCentralDirectoryRecord,
+    ReadEocd64 {
+        eocd64_offset: u64,
+        eocdr: Located<EndOfCentralDirectoryRecord>,
     },
     ReadCentralDirectory {
-        eocd_offset: u64,
         eocd: EndOfCentralDirectory,
     },
 }
@@ -725,7 +774,7 @@ impl ArchiveReader {
 
         Self {
             size,
-            state: ArchiveReaderState::ReadEOCD { haystack_size },
+            state: ArchiveReaderState::ReadEocd { haystack_size },
             buffer: circular::Buffer::with_capacity(128 * 1024), // 128KB buffer
         }
     }
@@ -735,9 +784,18 @@ impl ArchiveReader {
 
         use ArchiveReaderState as S;
         match self.state {
-            S::ReadEOCD { haystack_size } => {
+            S::ReadEocd { haystack_size } => {
                 if avail_bytes < haystack_size {
                     let offset = self.size - haystack_size + avail_bytes;
+                    Some(offset)
+                } else {
+                    None
+                }
+            }
+            S::ReadEocd64Locator { ref eocdr } => {
+                let wanted = EndOfCentralDirectory64Locator::LENGTH as u64;
+                if avail_bytes < wanted {
+                    let offset = eocdr.offset - wanted + avail_bytes;
                     Some(offset)
                 } else {
                     None
@@ -761,33 +819,74 @@ impl ArchiveReader {
         use ArchiveReaderResult as R;
         use ArchiveReaderState as S;
         match self.state {
-            S::ReadEOCD { haystack_size } => {
+            S::ReadEocd { haystack_size } => {
                 if (self.buffer.available_data() as u64) < haystack_size {
-                    println!("ReadEnd needs more data");
-                } else {
-                    println!("Ok, should find EOCD now");
-                    let haystack = self.buffer.data();
+                    println!("ReadEOCD needs more data");
+                    return Ok(R::Continue);
+                }
 
-                    if let Some((eocd_offset_in_haystack, eocd_record)) =
-                        EndOfCentralDirectoryRecord::find_in_block(haystack)
-                    {
-                        println!(
-                            "Found (and read) EOCD, it's at {} in block",
-                            eocd_offset_in_haystack
-                        );
-                        let eocd_offset =
-                            self.size - haystack.len() as u64 + eocd_offset_in_haystack as u64;
-                        println!("Its offset in the file is {}", eocd_offset);
-                        println!("Here it is: {:#?}", eocd_record);
-                        self.state = S::ReadEOCD64Locator {
-                            eocd_offset,
-                            eocd_record,
+                println!("Ok, looking for EOCD now");
+                match {
+                    let haystack = &self.buffer.data()[..haystack_size as usize];
+                    EndOfCentralDirectoryRecord::find_in_block(haystack)
+                } {
+                    None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
+                    Some(mut eocdr) => {
+                        self.buffer.reset();
+                        eocdr.offset += (self.size - haystack_size);
+                        println!("Found (and read) EOCD, it's at {}", eocdr.offset);
+                        println!("Here it is: {:#?}", eocdr.inner);
+
+                        if eocdr.offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
+                            // no room for an EOCD64 locator, definitely not a zip64 file
+                            self.state = S::ReadCentralDirectory {
+                                eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
+                            };
+                            Ok(R::Continue)
+                        } else {
+                            self.buffer.grow(EndOfCentralDirectory64Locator::LENGTH);
+                            self.state = S::ReadEocd64Locator { eocdr };
+                            Ok(R::Continue)
                         }
-                    } else {
-                        return Err(Error::Format(FormatError::DirectoryEndSignatureNotFound));
                     }
                 }
-                Ok(R::Continue)
+            }
+            S::ReadEocd64Locator { .. } => {
+                match EndOfCentralDirectory64Locator::parse::<ZipParseError>(self.buffer.data()) {
+                    Err(nom::Err::Incomplete(needed)) => {
+                        // need more data
+                        Ok(R::Continue)
+                    }
+                    Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                        // we don't have a zip64 end of central directory locator - that's ok!
+                        self.buffer.reset();
+                        self.state = if let S::ReadEocd64Locator { eocdr } =
+                            std::mem::replace(&mut self.state, S::Transitioning)
+                        {
+                            S::ReadCentralDirectory {
+                                eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
+                            }
+                        } else {
+                            unreachable!()
+                        };
+                        Ok(R::Continue)
+                    }
+                    Ok((_, locator)) => {
+                        println!("got locator! {:#?}", locator);
+                        self.buffer.reset();
+                        self.state = if let S::ReadEocd64Locator { eocdr } =
+                            std::mem::replace(&mut self.state, S::Transitioning)
+                        {
+                            S::ReadEocd64 {
+                                eocd64_offset: locator.directory_offset,
+                                eocdr,
+                            }
+                        } else {
+                            unreachable!()
+                        };
+                        unimplemented!();
+                    }
+                }
             }
             _ => unimplemented!(),
         }

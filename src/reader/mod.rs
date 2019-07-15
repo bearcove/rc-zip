@@ -182,9 +182,9 @@ impl FileHeaderRecord {
         self.flags & 0x800 == 0
     }
 
-    fn as_file_header(self, encoding: Encoding) -> Result<FileHeader, encoding::DecodingError> {
+    fn as_file_header(&self, encoding: Encoding) -> Result<FileHeader, encoding::DecodingError> {
         let mut comment: Option<String> = None;
-        if let Some(comment_field) = self.comment.as_option() {
+        if let Some(comment_field) = self.comment.clone().as_option() {
             comment = Some(encoding.decode(&comment_field.0)?);
         }
 
@@ -200,7 +200,7 @@ impl FileHeaderRecord {
             compressed_size: self.compressed_size as u64,
             uncompressed_size: self.uncompressed_size as u64,
 
-            extra: self.extra.as_option().map(|x| x.0),
+            extra: self.extra.clone().as_option().map(|x| x.0),
             external_attrs: self.external_attrs,
         })
     }
@@ -742,7 +742,7 @@ pub enum ArchiveReaderResult {
     /// should continue
     Continue,
     /// done reading
-    Done,
+    Done(Archive),
 }
 
 enum ArchiveReaderState {
@@ -887,7 +887,7 @@ impl ArchiveReader {
                 offset: eocd.directory_offset(),
                 length: eocd.directory_size(),
             }),
-            S::Done => panic!("Called wants_read() on ArchiveReader in Done state"),
+            S::Done { .. } => panic!("Called wants_read() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
         }
     }
@@ -1019,8 +1019,66 @@ impl ArchiveReader {
 
                         // only compare 16 bits here
                         if (file_header_records.len() as u16) == (eocd.directory_records() as u16) {
+                            let mut detector = chardet::UniversalDetector::new();
+                            let mut all_utf8 = true;
+
+                            {
+                                let max_feed: usize = 4096;
+                                let mut total_fed: usize = 0;
+                                let mut feed = |slice: &[u8]| {
+                                    detector.feed(slice);
+                                    total_fed += slice.len();
+                                    total_fed < max_feed
+                                };
+
+                                'recognize_encoding: for fh in
+                                    file_header_records.iter().filter(|fh| fh.is_non_utf8())
+                                {
+                                    all_utf8 = false;
+                                    if (!feed(&fh.name.0) || !feed(&fh.comment.0)) {
+                                        break 'recognize_encoding;
+                                    }
+                                }
+                            }
+
+                            let encoding = {
+                                if all_utf8 {
+                                    Encoding::Utf8
+                                } else {
+                                    let (charset, confidence, _language) = detector.close();
+                                    let label = chardet::charset2encoding(&charset);
+                                    debug!(
+                                        "Detected charset {} with confidence {}",
+                                        label, confidence
+                                    );
+
+                                    match label {
+                                        "SHIFT_JIS" => Encoding::ShiftJis,
+                                        "utf-8" => Encoding::Utf8,
+                                        _ => Encoding::Cp437,
+                                    }
+                                }
+                            };
+
+                            let entries: Result<Vec<FileHeader>, encoding::DecodingError> =
+                                file_header_records
+                                    .into_iter()
+                                    .map(|x| x.as_file_header(encoding))
+                                    .collect();
+                            let entries = entries?;
+
+                            let mut comment: Option<String> = None;
+                            if !eocd.comment().0.is_empty() {
+                                comment = Some(encoding.decode(&eocd.comment().0)?);
+                            }
+
                             self.state = S::Done;
-                            Ok(R::Done)
+                            Ok(R::Done(Archive {
+                                size: self.size,
+                                comment,
+                                entries,
+                                encoding,
+                            }))
                         } else {
                             // if we read the wrong number of directory entries,
                             // error out.
@@ -1037,8 +1095,38 @@ impl ArchiveReader {
                     }
                 }
             }
-            S::Done => panic!("Called process() on ArchiveReader in Done state"),
+            S::Done { .. } => panic!("Called process() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Archive {
+    size: u64,
+    encoding: Encoding,
+    entries: Vec<FileHeader>,
+    comment: Option<String>,
+}
+
+impl Archive {
+    /// Return a list of all files in this zip, read from the
+    /// central directory.
+    pub fn entries(&self) -> &[FileHeader] {
+        &self.entries[..]
+    }
+
+    /// Returns the detected character encoding for text fields
+    /// (paths, comments) inside this ZIP file
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+
+    pub fn comment(&self) -> Option<&String> {
+        self.comment.as_ref()
+    }
+
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&FileHeader> {
+        self.entries.iter().find(|&x| x.name == name.as_ref())
     }
 }

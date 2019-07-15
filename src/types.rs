@@ -88,6 +88,7 @@ enum ZipVersion {
     Version45 = 45,
 }
 
+#[derive(Clone)]
 pub struct ZipString(pub Vec<u8>);
 
 impl<'a> From<&'a [u8]> for ZipString {
@@ -114,6 +115,7 @@ impl fmt::Debug for ZipString {
         }
     }
 }
+#[derive(Clone)]
 pub struct ZipBytes(pub Vec<u8>);
 
 impl ZipBytes {

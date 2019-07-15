@@ -256,7 +256,7 @@ mod tests {
         let bs = case.bytes();
         let mut zar = ArchiveReader::new(bs.len() as u64);
 
-        'read_zip: loop {
+        let archive = 'read_zip: loop {
             match zar.wants_read() {
                 Some(offset) => {
                     let increment = 128usize;
@@ -283,15 +283,15 @@ mod tests {
             match zar.process() {
                 Ok(res) => match res {
                     ArchiveReaderResult::Continue => {},
-                    ArchiveReaderResult::Done => { break 'read_zip },
+                    ArchiveReaderResult::Done(archive) => { break 'read_zip archive },
                 },
                 Err(err) => {
                     println!("zar processing error: {:#?}", err);
                     panic!(err)
                 }
             }
-        }
+        };
 
-        println!("All done!");
+        println!("All done! Archive = {:#?}", archive);
     }
 }

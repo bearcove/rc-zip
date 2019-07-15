@@ -258,12 +258,8 @@ mod tests {
                         };
 
                     match zar.read(&mut slice) {
-                        Ok(0) => {
-                            panic!("reached end of file!")
-                        },
-                        Ok(read_bytes) => {
-                            println!("at {}, zar read {} bytes", offset, read_bytes);
-                        },
+                        Ok(0) => { panic!("EOF!") },
+                        Ok(read_bytes) => { println!("at {}, zar read {} bytes", offset, read_bytes); },
                         Err(err) => {
                             println!("at {}, zar encountered an error:", offset);
                             panic!(err)
@@ -275,16 +271,11 @@ mod tests {
 
             match zar.process() {
                 Ok(res) => match res {
-                    ArchiveReaderResult::Continue => {
-                        println!("continuing!");
-                    }
-                    ArchiveReaderResult::Done => {
-                        println!("done!");
-                        break 'read_zip;
-                    }
+                    ArchiveReaderResult::Continue => {},
+                    ArchiveReaderResult::Done => { break 'read_zip },
                 },
                 Err(err) => {
-                    println!("zar processing error:");
+                    println!("zar processing error: {:#?}", err);
                     panic!(err)
                 }
             }

@@ -755,12 +755,27 @@ enum ArchiveReaderState {
         eocdr: Located<EndOfCentralDirectoryRecord>,
     },
     ReadEocd64 {
-        eocd64_offset: u64,
+        eocdr64_offset: u64,
         eocdr: Located<EndOfCentralDirectoryRecord>,
     },
     ReadCentralDirectory {
         eocd: EndOfCentralDirectory,
     },
+}
+
+macro_rules! transition {
+    ($state: expr => ($pattern: pat) $body: expr) => {
+        $state = if let $pattern = std::mem::replace(&mut $state, S::Transitioning) {
+            $body
+        } else {
+            unreachable!()
+        };
+    };
+}
+
+struct ReadOp {
+    offset: u64,
+    length: u64,
 }
 
 impl ArchiveReader {
@@ -784,24 +799,34 @@ impl ArchiveReader {
 
         use ArchiveReaderState as S;
         match self.state {
-            S::ReadEocd { haystack_size } => {
-                if avail_bytes < haystack_size {
-                    let offset = self.size - haystack_size + avail_bytes;
-                    Some(offset)
-                } else {
-                    None
-                }
-            }
+            S::ReadEocd { haystack_size } => self.read_op_state(ReadOp {
+                offset: self.size - haystack_size,
+                length: haystack_size,
+            }),
             S::ReadEocd64Locator { ref eocdr } => {
-                let wanted = EndOfCentralDirectory64Locator::LENGTH as u64;
-                if avail_bytes < wanted {
-                    let offset = eocdr.offset - wanted + avail_bytes;
-                    Some(offset)
-                } else {
-                    None
-                }
+                let length = EndOfCentralDirectory64Locator::LENGTH as u64;
+                self.read_op_state(ReadOp {
+                    offset: eocdr.offset - length,
+                    length,
+                })
+            }
+            S::ReadEocd64 { eocdr64_offset, .. } => {
+                let length = EndOfCentralDirectory64Record::LENGTH as u64;
+                self.read_op_state(ReadOp {
+                    offset: eocdr64_offset,
+                    length,
+                })
             }
             _ => unimplemented!(),
+        }
+    }
+
+    fn read_op_state(&self, op: ReadOp) -> Option<u64> {
+        let avail_bytes = self.buffer.available_data() as u64;
+        if avail_bytes < op.length {
+            Some(op.offset + avail_bytes)
+        } else {
+            None
         }
     }
 
@@ -860,31 +885,51 @@ impl ArchiveReader {
                     Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
                         self.buffer.reset();
-                        self.state = if let S::ReadEocd64Locator { eocdr } =
-                            std::mem::replace(&mut self.state, S::Transitioning)
-                        {
+                        transition!(self.state => (S::ReadEocd64Locator {eocdr}) {
                             S::ReadCentralDirectory {
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
                             }
-                        } else {
-                            unreachable!()
-                        };
+                        });
                         Ok(R::Continue)
                     }
                     Ok((_, locator)) => {
                         println!("got locator! {:#?}", locator);
                         self.buffer.reset();
-                        self.state = if let S::ReadEocd64Locator { eocdr } =
-                            std::mem::replace(&mut self.state, S::Transitioning)
-                        {
+                        transition!(self.state => (S::ReadEocd64Locator {eocdr}) {
                             S::ReadEocd64 {
-                                eocd64_offset: locator.directory_offset,
+                                eocdr64_offset: locator.directory_offset,
                                 eocdr,
                             }
-                        } else {
-                            unreachable!()
-                        };
-                        unimplemented!();
+                        });
+                        Ok(R::Continue)
+                    }
+                }
+            }
+            S::ReadEocd64 { .. } => {
+                match EndOfCentralDirectory64Record::parse::<ZipParseError>(self.buffer.data()) {
+                    Err(nom::Err::Incomplete(needed)) => {
+                        // need more data
+                        Ok(R::Continue)
+                    }
+                    Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                        // at this point, we really expected to have a zip64 end
+                        // of central directory record, so, we want to propagate
+                        // that error.
+                        println!("actual err: {:#?}", err);
+                        Err(FormatError::Directory64EndRecordInvalid.into())
+                    }
+                    Ok((_, eocdr64)) => {
+                        println!("got eocdr64: {:#?}", eocdr64);
+                        self.buffer.reset();
+                        transition!(self.state => (S::ReadEocd64 { eocdr, eocdr64_offset }) {
+                            S::ReadCentralDirectory {
+                                eocd: EndOfCentralDirectory::new(self.size, eocdr, Some(Located {
+                                    offset: eocdr64_offset,
+                                    inner: eocdr64
+                                }))?,
+                            }
+                        });
+                        Ok(R::Continue)
                     }
                 }
             }

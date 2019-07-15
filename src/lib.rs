@@ -125,6 +125,17 @@ mod tests {
         vec![
             ZipTest {
                 source: ZipSource::File("zip64.zip"),
+                files: vec![
+                    ZipTestFile {
+                        name: "README",
+                        content: FileContent::Bytes(
+                            "This small file is in ZIP64 format.\n".as_bytes().into(),
+                        ),
+                        modified: Some(date(2019, 8, 10, 14, 33, 32, 0, time_zone(0))),
+                        mode: Some(0644),
+                        ..Default::default()
+                    }
+                ],
                 ..Default::default()
             },
             ZipTest {

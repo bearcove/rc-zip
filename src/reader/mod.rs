@@ -733,7 +733,8 @@ pub struct ArchiveReader {
     // Size of the entire zip file
     size: u64,
     state: ArchiveReaderState,
-    buffer: circular::Buffer,
+
+    buffer: Buffer,
 }
 
 #[derive(Debug)]
@@ -760,7 +761,9 @@ enum ArchiveReaderState {
     },
     ReadCentralDirectory {
         eocd: EndOfCentralDirectory,
+        file_header_records: Vec<FileHeaderRecord>,
     },
+    Done,
 }
 
 macro_rules! transition {
@@ -778,6 +781,64 @@ struct ReadOp {
     length: u64,
 }
 
+struct Buffer {
+    buffer: circular::Buffer,
+    read_bytes: u64,
+}
+
+impl Buffer {
+    pub fn with_capacity(size: usize) -> Self {
+        Self {
+            buffer: circular::Buffer::with_capacity(size),
+            read_bytes: 0,
+        }
+    }
+
+    /// resets the buffer (so that data() returns an empty slice,
+    /// and space() returns the full capacity), along with th e
+    /// read bytes counter.
+    fn reset(&mut self) {
+        self.read_bytes = 0;
+        self.buffer.reset();
+    }
+
+    /// returns the number of read bytes since the last reset
+    fn read_bytes(&self) -> u64 {
+        self.read_bytes
+    }
+
+    /// returns a mutable slice with all the available space to write to
+    fn space(&mut self) -> &mut [u8] {
+        self.buffer.space()
+    }
+
+    /// returns a slice with all the available data
+    fn data(&self) -> &[u8] {
+        self.buffer.data()
+    }
+
+    /// advances the position tracker
+    ///
+    /// if the position gets past the buffer's half,
+    /// this will call `shift()` to move the remaining data
+    /// to the beginning of the buffer
+    fn consume(&mut self, count: usize) -> usize {
+        self.buffer.consume(count)
+    }
+
+    /// fill that buffer from the given Read
+    fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
+        match rd.read(self.buffer.space()) {
+            Ok(written) => {
+                self.read_bytes += written as u64;
+                self.buffer.fill(written);
+                Ok(written)
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
 impl ArchiveReader {
     pub fn new(size: u64) -> Self {
         let haystack_size: u64 = 65 * 1024;
@@ -790,54 +851,58 @@ impl ArchiveReader {
         Self {
             size,
             state: ArchiveReaderState::ReadEocd { haystack_size },
-            buffer: circular::Buffer::with_capacity(128 * 1024), // 128KB buffer
+            buffer: Buffer::with_capacity(128 * 1024), // 128KB buffer
         }
     }
 
     pub fn wants_read(&self) -> Option<u64> {
-        let avail_bytes = self.buffer.available_data() as u64;
+        match self.read_op() {
+            Some(op) => self.read_op_state(op),
+            None => None,
+        }
+    }
 
+    fn read_op(&self) -> Option<ReadOp> {
         use ArchiveReaderState as S;
         match self.state {
-            S::ReadEocd { haystack_size } => self.read_op_state(ReadOp {
+            S::ReadEocd { haystack_size } => Some(ReadOp {
                 offset: self.size - haystack_size,
                 length: haystack_size,
             }),
             S::ReadEocd64Locator { ref eocdr } => {
                 let length = EndOfCentralDirectory64Locator::LENGTH as u64;
-                self.read_op_state(ReadOp {
+                Some(ReadOp {
                     offset: eocdr.offset - length,
                     length,
                 })
             }
             S::ReadEocd64 { eocdr64_offset, .. } => {
                 let length = EndOfCentralDirectory64Record::LENGTH as u64;
-                self.read_op_state(ReadOp {
+                Some(ReadOp {
                     offset: eocdr64_offset,
                     length,
                 })
             }
-            _ => unimplemented!(),
+            S::ReadCentralDirectory { ref eocd, .. } => Some(ReadOp {
+                offset: eocd.directory_offset(),
+                length: eocd.directory_size(),
+            }),
+            S::Done => panic!("Called wants_read() on ArchiveReader in Done state"),
+            S::Transitioning => unreachable!(),
         }
     }
 
     fn read_op_state(&self, op: ReadOp) -> Option<u64> {
-        let avail_bytes = self.buffer.available_data() as u64;
-        if avail_bytes < op.length {
-            Some(op.offset + avail_bytes)
+        let read_bytes = self.buffer.read_bytes();
+        if read_bytes < op.length {
+            Some(op.offset + read_bytes)
         } else {
             None
         }
     }
 
     pub fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
-        match rd.read(self.buffer.space()) {
-            Ok(written) => {
-                self.buffer.fill(written);
-                Ok(written)
-            }
-            Err(e) => Err(e),
-        }
+        self.buffer.read(rd)
     }
 
     pub fn process(&mut self) -> Result<ArchiveReaderResult, Error> {
@@ -845,7 +910,7 @@ impl ArchiveReader {
         use ArchiveReaderState as S;
         match self.state {
             S::ReadEocd { haystack_size } => {
-                if (self.buffer.available_data() as u64) < haystack_size {
+                if self.buffer.read_bytes() < haystack_size {
                     println!("ReadEOCD needs more data");
                     return Ok(R::Continue);
                 }
@@ -866,10 +931,11 @@ impl ArchiveReader {
                             // no room for an EOCD64 locator, definitely not a zip64 file
                             self.state = S::ReadCentralDirectory {
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
+                                file_header_records: vec![],
                             };
                             Ok(R::Continue)
                         } else {
-                            self.buffer.grow(EndOfCentralDirectory64Locator::LENGTH);
+                            self.buffer.reset();
                             self.state = S::ReadEocd64Locator { eocdr };
                             Ok(R::Continue)
                         }
@@ -888,6 +954,7 @@ impl ArchiveReader {
                         transition!(self.state => (S::ReadEocd64Locator {eocdr}) {
                             S::ReadCentralDirectory {
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
+                                file_header_records: vec![],
                             }
                         });
                         Ok(R::Continue)
@@ -927,13 +994,51 @@ impl ArchiveReader {
                                     offset: eocdr64_offset,
                                     inner: eocdr64
                                 }))?,
+                                file_header_records: vec![],
                             }
                         });
                         Ok(R::Continue)
                     }
                 }
             }
-            _ => unimplemented!(),
+            S::ReadCentralDirectory {
+                ref eocd,
+                ref mut file_header_records,
+            } => {
+                match FileHeaderRecord::parse::<ZipParseError>(self.buffer.data()) {
+                    Err(nom::Err::Incomplete(needed)) => {
+                        // TODO: couldn't this happen when we have 0 bytes available?
+
+                        // need more data
+                        Ok(R::Continue)
+                    }
+                    Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                        // this is the normal end condition when reading
+                        // the central directory (due to 65536-entries non-zip64 files)
+                        // let's just check a few numbers first.
+
+                        // only compare 16 bits here
+                        if (file_header_records.len() as u16) == (eocd.directory_records() as u16) {
+                            self.state = S::Done;
+                            Ok(R::Done)
+                        } else {
+                            // if we read the wrong number of directory entries,
+                            // error out.
+                            Err(FormatError::InvalidCentralRecord.into())
+                        }
+                    }
+                    Ok((remaining, fhr)) => {
+                        let consumed = self.buffer.data().offset(remaining);
+                        drop(remaining);
+                        self.buffer.consume(consumed);
+                        println!("got an fhr: {:#?}", fhr);
+                        file_header_records.push(fhr);
+                        Ok(R::Continue)
+                    }
+                }
+            }
+            S::Done => panic!("Called process() on ArchiveReader in Done state"),
+            S::Transitioning => unreachable!(),
         }
     }
 }

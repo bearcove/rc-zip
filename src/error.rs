@@ -17,6 +17,7 @@ pub enum FormatError {
     DirectoryEndSignatureNotFound,
     Directory64EndRecordInvalid,
     DirectoryOffsetPointsOutsideFile,
+    InvalidCentralRecord,
     ImpossibleNumberOfFiles {
         claimed_records_count: u64,
         zip_size: u64,

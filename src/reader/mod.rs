@@ -178,19 +178,21 @@ impl FileHeaderRecord {
         self.flags & 0x800 == 0
     }
 
-    fn as_file_header(&self, encoding: Encoding) -> Result<FileHeader, encoding::DecodingError> {
+    fn as_entry(&self, encoding: Encoding) -> Result<Entry, encoding::DecodingError> {
         let mut comment: Option<String> = None;
         if let Some(comment_field) = self.comment.clone().as_option() {
             comment = Some(encoding.decode(&comment_field.0)?);
         }
 
-        Ok(FileHeader {
+        Ok(Entry {
             name: encoding.decode(&self.name.0)?,
             comment,
             creator_version: self.creator_version,
             reader_version: self.reader_version,
             flags: self.flags,
             modified: zero_datetime(),
+
+            method: self.method,
 
             crc32: self.crc32,
             compressed_size: self.compressed_size as u64,
@@ -869,10 +871,10 @@ impl ArchiveReader {
                                 }
                             };
 
-                            let entries: Result<Vec<FileHeader>, encoding::DecodingError> =
+                            let entries: Result<Vec<Entry>, encoding::DecodingError> =
                                 file_header_records
                                     .into_iter()
-                                    .map(|x| x.as_file_header(encoding))
+                                    .map(|x| x.as_entry(encoding))
                                     .collect();
                             let entries = entries?;
 
@@ -913,7 +915,7 @@ impl ArchiveReader {
 pub struct Archive {
     size: u64,
     encoding: Encoding,
-    entries: Vec<FileHeader>,
+    entries: Vec<Entry>,
     comment: Option<String>,
 }
 
@@ -941,7 +943,7 @@ impl Archive {
 
     /// Return a list of all files in this zip, read from the
     /// central directory.
-    pub fn entries(&self) -> &[FileHeader] {
+    pub fn entries(&self) -> &[Entry] {
         &self.entries[..]
     }
 
@@ -955,7 +957,7 @@ impl Archive {
         self.comment.as_ref()
     }
 
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&FileHeader> {
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&Entry> {
         self.entries.iter().find(|&x| x.name == name.as_ref())
     }
 }

@@ -11,7 +11,7 @@ pub use reader::{ArchiveReader, Archive};
 
 #[cfg(test)]
 mod tests {
-    use super::{encoding::Encoding, Error, ArchiveReader, Archive};
+    use super::{encoding::Encoding, Error, Archive};
     use chrono::{
         offset::{FixedOffset, Utc},
         DateTime, TimeZone,

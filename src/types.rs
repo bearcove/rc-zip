@@ -3,7 +3,7 @@ use std::fmt;
 
 // Describes a file within a zip file.
 #[derive(Debug)]
-pub struct FileHeader {
+pub struct Entry {
     // Name of the file
     // Must be a relative path, not start with a drive letter (e.g. C:),
     // and must use forward slashes instead of back slashes
@@ -11,6 +11,9 @@ pub struct FileHeader {
 
     // Comment is any arbitrary user-defined string shorter than 64KiB
     pub comment: Option<String>,
+
+    /// Compression method
+    pub method: u16,
 
     pub creator_version: u16,
     pub reader_version: u16,
@@ -43,7 +46,7 @@ pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
     )
 }
 
-impl FileHeader {
+impl Entry {
     pub fn new<S>(name: S, uncompressed_size: u64, method: Method) -> Self
     where
         S: Into<String>,
@@ -58,9 +61,11 @@ impl FileHeader {
 
             modified: zero_datetime(),
 
+            method: method as u16,
+
             crc32: 0,
             compressed_size: 0,
-            uncompressed_size: 0,
+            uncompressed_size,
 
             extra: None,
             external_attrs: 0,

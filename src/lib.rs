@@ -1,5 +1,4 @@
 #![allow(clippy::all)]
-#![allow(unused)]
 
 mod encoding;
 mod error;

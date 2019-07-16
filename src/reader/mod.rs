@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use super::{
     encoding::{self, Encoding},
     error::*,
@@ -9,9 +7,7 @@ use log::*;
 #[macro_use]
 mod nom_macros;
 
-use hex_fmt::HexFmt;
 use positioned_io::{Cursor, ReadAt};
-use std::fmt;
 use std::io::Read;
 
 use nom::{
@@ -230,21 +226,6 @@ impl EndOfCentralDirectoryRecord {
     const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
-    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Option<Located<Self>>, Error> {
-        let ranges: [u64; 2] = [1024, 65 * 1024];
-        for &b_len in &ranges {
-            let b_len = std::cmp::min(b_len, size);
-            let mut buf = vec![0u8; b_len as usize];
-            reader.read_exact_at(size - b_len, &mut buf)?;
-
-            if let Some(mut eocd) = Self::find_in_block(&buf[..]) {
-                eocd.offset += (size - b_len);
-                return Ok(Some(eocd));
-            }
-        }
-        Ok(None)
-    }
-
     fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
         for i in (0..(b.len() - Self::LENGTH + 1)).rev() {
             let slice = &b[i..];
@@ -291,25 +272,6 @@ impl EndOfCentralDirectoryRecord {
                 },
             ),
         )(i)
-    }
-
-    /// Returns true if this EOCD record belongs to a file
-    /// that is *probably* valid zip64.
-    ///
-    /// However: it can return false and the zip file can still
-    /// be a zip64 file (some macOS .zip files).
-    /// It can also return true, and the file can be non-zip64:
-    /// it can contain exactly 65536 files, for example.
-    ///
-    /// Its only purpose is: if it returns true, and we find
-    /// a zip64 EOCD locator, but we fail to read the zip64 EOCD,
-    /// then it's definitely an invalid zip file.
-    ///
-    /// cf. https://github.com/itchio/butler/issues/141
-    fn is_suspiciously_zip64_like(&self) -> bool {
-        self.directory_records == 0xffff
-            || self.directory_size == 0xffff
-            || self.directory_offset == 0xffff
     }
 }
 
@@ -524,23 +486,6 @@ impl EndOfCentralDirectory {
         Ok(res)
     }
 
-    fn read<R: ReadAt>(reader: R, size: u64) -> Result<Self, Error> {
-        let d = EndOfCentralDirectoryRecord::read(&reader, size)?
-            .ok_or(FormatError::DirectoryEndSignatureNotFound)?;
-
-        let d64 = match EndOfCentralDirectory64Record::read(&reader, d.offset) {
-            Ok(d64) => d64,
-            Err(e) => {
-                if d.is_suspiciously_zip64_like() {
-                    return Err(e);
-                }
-                None
-            }
-        };
-
-        Self::new(size, d, d64)
-    }
-
     fn located_directory_offset(&self) -> u64 {
         match self.dir64.as_ref() {
             Some(d64) => d64.offset,
@@ -602,130 +547,6 @@ where
         map(take(count.to_usize()), |slice: &'a [u8]| {
             ZipBytes(slice.into())
         })(i)
-    }
-}
-
-#[derive(Debug)]
-pub struct ZipReader {
-    size: u64,
-    encoding: Encoding,
-    entries: Vec<FileHeader>,
-    comment: Option<String>,
-}
-
-impl ZipReader {
-    pub fn new<R>(reader: R, size: u64) -> Result<Self, Error>
-    where
-        R: ReadAt,
-    {
-        let directory_end = EndOfCentralDirectory::read(&reader, size)?;
-
-        if directory_end.directory_records() > size / LocalFileHeaderRecord::LENGTH as u64 {
-            return Err(FormatError::ImpossibleNumberOfFiles {
-                claimed_records_count: directory_end.directory_records(),
-                zip_size: size,
-            }
-            .into());
-        }
-
-        let mut header_records = Vec::<FileHeaderRecord>::new();
-
-        {
-            let mut reader = Cursor::new_pos(&reader, directory_end.directory_offset());
-            let mut b = circular::Buffer::with_capacity(1000);
-
-            'read_headers: loop {
-                let sz = reader.read(b.space())?;
-                b.fill(sz);
-
-                let length = {
-                    let res = FileHeaderRecord::parse::<ZipParseError>(b.data());
-                    match res {
-                        Ok((remaining, h)) => {
-                            debug!("Parsed header: {:#?}", h);
-                            header_records.push(h);
-                            b.data().offset(remaining)
-                        }
-                        Err(e) => break 'read_headers,
-                    }
-                };
-                b.consume(length);
-            }
-        }
-
-        let mut detector = chardet::UniversalDetector::new();
-        let mut all_utf8 = true;
-
-        {
-            let max_feed: usize = 4096;
-            let mut total_fed: usize = 0;
-            let mut feed = |slice: &[u8]| {
-                detector.feed(slice);
-                total_fed += slice.len();
-                total_fed < max_feed
-            };
-
-            'recognize_encoding: for fh in header_records.iter().filter(|fh| fh.is_non_utf8()) {
-                all_utf8 = false;
-                if (!feed(&fh.name.0) || !feed(&fh.comment.0)) {
-                    break 'recognize_encoding;
-                }
-            }
-        }
-
-        let encoding = {
-            if all_utf8 {
-                Encoding::Utf8
-            } else {
-                let (charset, confidence, _language) = detector.close();
-                let label = chardet::charset2encoding(&charset);
-                debug!("Detected charset {} with confidence {}", label, confidence);
-
-                match label {
-                    "SHIFT_JIS" => Encoding::ShiftJis,
-                    "utf-8" => Encoding::Utf8,
-                    _ => Encoding::Cp437,
-                }
-            }
-        };
-
-        let entries: Result<Vec<FileHeader>, encoding::DecodingError> = header_records
-            .into_iter()
-            .map(|x| x.as_file_header(encoding))
-            .collect();
-        let entries = entries?;
-
-        let mut comment: Option<String> = None;
-        if !directory_end.comment().0.is_empty() {
-            comment = Some(encoding.decode(&directory_end.comment().0)?);
-        }
-
-        Ok(Self {
-            size,
-            entries,
-            encoding,
-            comment,
-        })
-    }
-
-    /// Return a list of all files in this zip, read from the
-    /// central directory.
-    pub fn entries(&self) -> &[FileHeader] {
-        &self.entries[..]
-    }
-
-    /// Returns the detected character encoding for text fields
-    /// (paths, comments) inside this ZIP file
-    pub fn encoding(&self) -> Encoding {
-        self.encoding
-    }
-
-    pub fn comment(&self) -> Option<&String> {
-        self.comment.as_ref()
-    }
-
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&FileHeader> {
-        self.entries.iter().find(|&x| x.name == name.as_ref())
     }
 }
 
@@ -805,11 +626,6 @@ impl Buffer {
     /// returns the number of read bytes since the last reset
     fn read_bytes(&self) -> u64 {
         self.read_bytes
-    }
-
-    /// returns a mutable slice with all the available space to write to
-    fn space(&mut self) -> &mut [u8] {
-        self.buffer.space()
     }
 
     /// returns a slice with all the available data
@@ -911,11 +727,9 @@ impl ArchiveReader {
         match self.state {
             S::ReadEocd { haystack_size } => {
                 if self.buffer.read_bytes() < haystack_size {
-                    println!("ReadEOCD needs more data");
                     return Ok(R::Continue);
                 }
 
-                println!("Ok, looking for EOCD now");
                 match {
                     let haystack = &self.buffer.data()[..haystack_size as usize];
                     EndOfCentralDirectoryRecord::find_in_block(haystack)
@@ -923,9 +737,7 @@ impl ArchiveReader {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
                     Some(mut eocdr) => {
                         self.buffer.reset();
-                        eocdr.offset += (self.size - haystack_size);
-                        println!("Found (and read) EOCD, it's at {}", eocdr.offset);
-                        println!("Here it is: {:#?}", eocdr.inner);
+                        eocdr.offset += self.size - haystack_size;
 
                         if eocdr.offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
                             // no room for an EOCD64 locator, definitely not a zip64 file
@@ -944,11 +756,11 @@ impl ArchiveReader {
             }
             S::ReadEocd64Locator { .. } => {
                 match EndOfCentralDirectory64Locator::parse::<ZipParseError>(self.buffer.data()) {
-                    Err(nom::Err::Incomplete(needed)) => {
+                    Err(nom::Err::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
                         self.buffer.reset();
                         transition!(self.state => (S::ReadEocd64Locator {eocdr}) {
@@ -960,7 +772,6 @@ impl ArchiveReader {
                         Ok(R::Continue)
                     }
                     Ok((_, locator)) => {
-                        println!("got locator! {:#?}", locator);
                         self.buffer.reset();
                         transition!(self.state => (S::ReadEocd64Locator {eocdr}) {
                             S::ReadEocd64 {
@@ -974,7 +785,7 @@ impl ArchiveReader {
             }
             S::ReadEocd64 { .. } => {
                 match EndOfCentralDirectory64Record::parse::<ZipParseError>(self.buffer.data()) {
-                    Err(nom::Err::Incomplete(needed)) => {
+                    Err(nom::Err::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
@@ -982,11 +793,9 @@ impl ArchiveReader {
                         // at this point, we really expected to have a zip64 end
                         // of central directory record, so, we want to propagate
                         // that error.
-                        println!("actual err: {:#?}", err);
                         Err(FormatError::Directory64EndRecordInvalid.into())
                     }
                     Ok((_, eocdr64)) => {
-                        println!("got eocdr64: {:#?}", eocdr64);
                         self.buffer.reset();
                         transition!(self.state => (S::ReadEocd64 { eocdr, eocdr64_offset }) {
                             S::ReadCentralDirectory {
@@ -1006,7 +815,7 @@ impl ArchiveReader {
                 ref mut file_header_records,
             } => {
                 match FileHeaderRecord::parse::<ZipParseError>(self.buffer.data()) {
-                    Err(nom::Err::Incomplete(needed)) => {
+                    Err(nom::Err::Incomplete(_needed)) => {
                         // TODO: couldn't this happen when we have 0 bytes available?
 
                         // need more data
@@ -1035,7 +844,7 @@ impl ArchiveReader {
                                     file_header_records.iter().filter(|fh| fh.is_non_utf8())
                                 {
                                     all_utf8 = false;
-                                    if (!feed(&fh.name.0) || !feed(&fh.comment.0)) {
+                                    if !feed(&fh.name.0) || !feed(&fh.comment.0) {
                                         break 'recognize_encoding;
                                     }
                                 }
@@ -1089,7 +898,6 @@ impl ArchiveReader {
                         let consumed = self.buffer.data().offset(remaining);
                         drop(remaining);
                         self.buffer.consume(consumed);
-                        println!("got an fhr: {:#?}", fhr);
                         file_header_records.push(fhr);
                         Ok(R::Continue)
                     }

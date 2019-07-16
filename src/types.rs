@@ -1,4 +1,3 @@
-#![allow(unused)]
 use hex_fmt::HexFmt;
 use std::fmt;
 

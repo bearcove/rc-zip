@@ -8,6 +8,7 @@ mod types;
 pub use error::Error;
 pub use positioned_io;
 pub use reader::{ArchiveReader, Archive};
+pub use types::*;
 
 #[cfg(test)]
 mod tests {

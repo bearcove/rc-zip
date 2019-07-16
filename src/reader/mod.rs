@@ -70,7 +70,7 @@ impl LocalFileHeaderRecord {
 
 // 4.3.12 Central directory structure: File header
 #[derive(Debug)]
-struct FileHeaderRecord {
+struct DirectoryHeader {
     // version made by
     creator_version: u16,
     // version needed to extract
@@ -106,7 +106,7 @@ struct FileHeaderRecord {
     comment: ZipString,
 }
 
-impl FileHeaderRecord {
+impl DirectoryHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
     fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
@@ -157,7 +157,7 @@ impl FileHeaderRecord {
     }
 }
 
-impl FileHeaderRecord {
+impl DirectoryHeader {
     fn is_non_utf8(&self) -> bool {
         let (valid1, require1) = encoding::detect_utf8(&self.name.0[..]);
         let (valid2, require2) = encoding::detect_utf8(&self.comment.0[..]);
@@ -584,7 +584,7 @@ enum ArchiveReaderState {
     },
     ReadCentralDirectory {
         eocd: EndOfCentralDirectory,
-        file_header_records: Vec<FileHeaderRecord>,
+        directory_headers: Vec<DirectoryHeader>,
     },
     Done,
 }
@@ -745,7 +745,7 @@ impl ArchiveReader {
                             // no room for an EOCD64 locator, definitely not a zip64 file
                             self.state = S::ReadCentralDirectory {
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
-                                file_header_records: vec![],
+                                directory_headers: vec![],
                             };
                             Ok(R::Continue)
                         } else {
@@ -768,7 +768,7 @@ impl ArchiveReader {
                         transition!(self.state => (S::ReadEocd64Locator {eocdr}) {
                             S::ReadCentralDirectory {
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
-                                file_header_records: vec![],
+                                directory_headers: vec![],
                             }
                         });
                         Ok(R::Continue)
@@ -805,7 +805,7 @@ impl ArchiveReader {
                                     offset: eocdr64_offset,
                                     inner: eocdr64
                                 }))?,
-                                file_header_records: vec![],
+                                directory_headers: vec![],
                             }
                         });
                         Ok(R::Continue)
@@ -814,9 +814,9 @@ impl ArchiveReader {
             }
             S::ReadCentralDirectory {
                 ref eocd,
-                ref mut file_header_records,
+                ref mut directory_headers,
             } => {
-                match FileHeaderRecord::parse::<ZipParseError>(self.buffer.data()) {
+                match DirectoryHeader::parse::<ZipParseError>(self.buffer.data()) {
                     Err(nom::Err::Incomplete(_needed)) => {
                         // TODO: couldn't this happen when we have 0 bytes available?
 
@@ -829,7 +829,7 @@ impl ArchiveReader {
                         // let's just check a few numbers first.
 
                         // only compare 16 bits here
-                        if (file_header_records.len() as u16) == (eocd.directory_records() as u16) {
+                        if (directory_headers.len() as u16) == (eocd.directory_records() as u16) {
                             let mut detector = chardet::UniversalDetector::new();
                             let mut all_utf8 = true;
 
@@ -843,7 +843,7 @@ impl ArchiveReader {
                                 };
 
                                 'recognize_encoding: for fh in
-                                    file_header_records.iter().filter(|fh| fh.is_non_utf8())
+                                    directory_headers.iter().filter(|fh| fh.is_non_utf8())
                                 {
                                     all_utf8 = false;
                                     if !feed(&fh.name.0) || !feed(&fh.comment.0) {
@@ -872,7 +872,7 @@ impl ArchiveReader {
                             };
 
                             let entries: Result<Vec<Entry>, encoding::DecodingError> =
-                                file_header_records
+                                directory_headers
                                     .into_iter()
                                     .map(|x| x.as_entry(encoding))
                                     .collect();

@@ -19,10 +19,10 @@ use std::io::Read;
 
 use nom::{
     bytes::complete::{tag, take},
-    combinator::{cond, map},
+    combinator::{cond, map, verify},
     error::ParseError,
     multi::length_data,
-    number::complete::{le_u16, le_u32, le_u64},
+    number::complete::{le_u16, le_u32, le_u64, le_u8},
     sequence::{preceded, tuple},
     IResult, Offset,
 };
@@ -201,6 +201,7 @@ struct ExtraFieldSettings {
 #[derive(Debug)]
 enum ExtraField {
     Zip64(ExtraZip64Field),
+    Timestamp(ExtraTimestampField),
     Unknown { tag: u16 },
 }
 
@@ -212,9 +213,24 @@ impl ExtraField {
         debug!("Got extra field record: {:#?}", rec);
 
         let variant = match rec.tag {
-            ExtraZip64Field::TAG => EF::Zip64(ExtraZip64Field::parse(rec.payload, settings)?.1),
-            _ => EF::Unknown { tag: rec.tag },
-        };
+            ExtraZip64Field::TAG => {
+                if let Ok((_, tag)) = ExtraZip64Field::parse(rec.payload, settings) {
+                    Some(EF::Zip64(tag))
+                } else {
+                    None
+                }
+            }
+            ExtraTimestampField::TAG => {
+                if let Ok((_, tag)) = ExtraTimestampField::parse(rec.payload) {
+                    Some(EF::Timestamp(tag))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+        .unwrap_or(EF::Unknown { tag: rec.tag });
+
         Ok((remaining, variant))
     }
 }
@@ -237,6 +253,28 @@ impl ExtraZip64Field {
             compressed_size: cond(settings.needs_compressed_size, le_u64),
             header_offset: cond(settings.needs_header_offset, le_u64),
         })(i)
+    }
+}
+
+/// Extended timestamp extra field
+#[derive(Debug)]
+struct ExtraTimestampField {
+    seconds_since_epoch: u32,
+}
+
+impl ExtraTimestampField {
+    const TAG: u16 = 0x5455;
+
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        preceded(
+            // note: no idea why there needs to be an u8 with the
+            // lsb set - but that's what Go's archive/zip checks for
+            // before using this as an extra timstamp field
+            verify(le_u8, |x| x & 1 != 0),
+            map(le_u32, |seconds_since_epoch| Self {
+                seconds_since_epoch,
+            }),
+        )(i)
     }
 }
 
@@ -294,7 +332,7 @@ impl DirectoryHeader {
         let mut compressed_size = self.compressed_size as u64;
         let mut uncompressed_size = self.uncompressed_size as u64;
         let mut header_offset = self.header_offset as u64;
-        let modified: Option<DateTime<Utc>> = None;
+        let mut modified: Option<DateTime<Utc>> = None;
 
         let settings = ExtraFieldSettings {
             needs_compressed_size: self.uncompressed_size == !0u32,
@@ -319,6 +357,9 @@ impl DirectoryHeader {
                             if let Some(n) = z64.header_offset {
                                 header_offset = n;
                             }
+                        }
+                        ExtraField::Timestamp(ts) => {
+                            modified = Some(Utc.timestamp(ts.seconds_since_epoch as i64, 0));
                         }
                         _ => {}
                     };

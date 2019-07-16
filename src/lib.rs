@@ -155,7 +155,7 @@ mod tests {
                     ZipTestFile {
                         name: "gophercolor16x16.png",
                         content: FileContent::File("gophercolor16x16.png"),
-                        modified: Some(date(2010, 9, 5, 12, 52, 58, 0, time_zone(10))),
+                        modified: Some(date(2010, 9, 5, 15, 52, 58, 0, time_zone(10))),
                         mode: Some(0644),
                         ..Default::default()
                     },

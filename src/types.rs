@@ -19,6 +19,12 @@ pub struct Entry {
 
     /// Modified timestamp
     pub modified: chrono::DateTime<chrono::offset::Utc>,
+
+    /// Created timestamp
+    pub created: Option<chrono::DateTime<chrono::offset::Utc>>,
+
+    /// Accessed timestamp
+    pub accessed: Option<chrono::DateTime<chrono::offset::Utc>>,
 }
 
 #[derive(Debug)]
@@ -76,6 +82,14 @@ impl StoredEntry {
     pub fn modified(&self) -> DateTime<Utc> {
         self.entry.modified
     }
+
+    pub fn created(&self) -> Option<&DateTime<Utc>> {
+        self.entry.created.as_ref()
+    }
+
+    pub fn accessed(&self) -> Option<&DateTime<Utc>> {
+        self.entry.accessed.as_ref()
+    }
 }
 
 // Compression method
@@ -130,6 +144,8 @@ impl Entry {
             name: name.into(),
             comment: None,
             modified: zero_datetime(),
+            created: None,
+            accessed: None,
             method,
         }
     }

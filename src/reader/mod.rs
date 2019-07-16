@@ -4,12 +4,14 @@ use super::{
     types::*,
 };
 use chrono::{
-    offset::{LocalResult, TimeZone, Utc},
+    offset::{TimeZone, Utc},
     DateTime,
 };
 use log::*;
 #[macro_use]
 mod nom_macros;
+pub mod dates;
+use dates::*;
 
 use hex_fmt::HexFmt;
 
@@ -21,7 +23,7 @@ use nom::{
     bytes::complete::{tag, take},
     combinator::{cond, map, verify},
     error::ParseError,
-    multi::length_data,
+    multi::{length_data, many0},
     number::complete::{le_u16, le_u32, le_u64, le_u8},
     sequence::{preceded, tuple},
     IResult, Offset,
@@ -72,10 +74,8 @@ struct DirectoryHeader {
     flags: u16,
     // compression method
     method: u16,
-    // last mod file time
-    modified_time: u16,
-    // last mod file date
-    modified_date: u16,
+    // last mod file datetime
+    modified: MsdosTimestamp,
     // crc32
     crc32: u32,
     // compressed size
@@ -102,7 +102,7 @@ struct DirectoryHeader {
 impl DirectoryHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
-    fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!({
@@ -110,8 +110,7 @@ impl DirectoryHeader {
                 reader_version: le_u16,
                 flags: le_u16,
                 method: le_u16,
-                modified_time: le_u16,
-                modified_date: le_u16,
+                modified: MsdosTimestamp::parse,
                 crc32: le_u32,
                 compressed_size: le_u32,
                 uncompressed_size: le_u32,
@@ -132,8 +131,7 @@ impl DirectoryHeader {
                     reader_version,
                     flags,
                     method,
-                    modified_time,
-                    modified_date,
+                    modified,
                     crc32,
                     compressed_size,
                     uncompressed_size,
@@ -189,6 +187,7 @@ pub enum ExtraField {
     Zip64(ExtraZip64Field),
     Timestamp(ExtraTimestampField),
     Unix(ExtraUnixField),
+    Ntfs(ExtraNtfsField),
     NewUnix(ExtraNewUnixField),
     Unknown { tag: u16 },
 }
@@ -210,6 +209,13 @@ impl ExtraField {
             ExtraTimestampField::TAG => {
                 if let Ok((_, tag)) = ExtraTimestampField::parse(rec.payload) {
                     Some(EF::Timestamp(tag))
+                } else {
+                    None
+                }
+            }
+            ExtraNtfsField::TAG => {
+                if let Ok((_, tag)) = ExtraNtfsField::parse(rec.payload) {
+                    Some(EF::Ntfs(tag))
                 } else {
                     None
                 }
@@ -269,10 +275,8 @@ impl ExtraTimestampField {
 
     fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         preceded(
-            // note: no idea why there needs to be an u8 with the
-            // lsb set - but that's what Go's archive/zip checks for
-            // before using this as an extra timstamp field
-            verify(le_u8, |x| x & 1 != 0),
+            // 1 byte of flags, if bit 0 is set, modification time is present
+            verify(le_u8, |x| x & 0b1 != 0),
             map(le_u32, |mtime| Self { mtime }),
         )(i)
     }
@@ -363,28 +367,54 @@ impl ExtraNewUnixField {
     }
 }
 
-fn convert_dos_date_and_time(dos_date: u16, dos_time: u16) -> Option<DateTime<Utc>> {
-    // see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
-    let date = match {
-        // bits 0-4: day of the month (1-31)
-        let d = (dos_date & 0b1111_1) as u32;
-        // bits 5-8: month (1 = january, 2 = february and so on)
-        let m = ((dos_date >> 5) & 0b1111) as u32;
-        // bits 9-15: year offset from 1980
-        let y = ((dos_date >> 9) + 1980) as i32;
-        Utc.ymd_opt(y, m, d)
-    } {
-        LocalResult::Single(date) => date,
-        _ => return None,
-    };
+/// 4.5.5 -NTFS Extra Field (0x000a):
+#[derive(Debug)]
+pub struct ExtraNtfsField {
+    attrs: Vec<NtfsAttr>,
+}
 
-    // bits 0-4: second divided by 2
-    let s = (dos_time & 0b1111_1) as u32 * 2;
-    // bits 5-10: minute (0-59)
-    let m = (dos_time >> 5 & 0b1111_11) as u32;
-    // bits 11-15: hour (0-23 on a 24-hour clock)
-    let h = (dos_time >> 11) as u32;
-    date.and_hms_opt(h, m, s)
+impl ExtraNtfsField {
+    const TAG: u16 = 0x000a;
+
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        preceded(
+            take(4usize), /* reserved (unused) */
+            map(many0(NtfsAttr::parse), |attrs| Self { attrs }),
+        )(i)
+    }
+}
+
+#[derive(Debug)]
+pub enum NtfsAttr {
+    Attr1(NtfsAttr1),
+    Unknown { tag: u16 },
+}
+
+impl NtfsAttr {
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        let (i, (tag, payload)) = tuple((le_u16, length_data(le_u16)))(i)?;
+        match tag {
+            0x0001 => NtfsAttr1::parse(payload).map(|(i, x)| (i, NtfsAttr::Attr1(x))),
+            _ => Ok((i, NtfsAttr::Unknown { tag })),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NtfsAttr1 {
+    mtime: NtfsTimestamp,
+    atime: NtfsTimestamp,
+    ctime: NtfsTimestamp,
+}
+
+impl NtfsAttr1 {
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        fields!(Self {
+            mtime: NtfsTimestamp::parse,
+            atime: NtfsTimestamp::parse,
+            ctime: NtfsTimestamp::parse,
+        })(i)
+    }
 }
 
 impl DirectoryHeader {
@@ -419,7 +449,11 @@ impl DirectoryHeader {
         let mut compressed_size = self.compressed_size as u64;
         let mut uncompressed_size = self.uncompressed_size as u64;
         let mut header_offset = self.header_offset as u64;
+
         let mut modified: Option<DateTime<Utc>> = None;
+        let mut created: Option<DateTime<Utc>> = None;
+        let mut accessed: Option<DateTime<Utc>> = None;
+
         let mut uid: Option<u32> = None;
         let mut gid: Option<u32> = None;
 
@@ -449,6 +483,18 @@ impl DirectoryHeader {
                         }
                         ExtraField::Timestamp(ts) => {
                             modified = Some(Utc.timestamp(ts.mtime as i64, 0));
+                        }
+                        ExtraField::Ntfs(nf) => {
+                            for attr in &nf.attrs {
+                                match attr {
+                                    NtfsAttr::Attr1(attr) => {
+                                        modified = attr.mtime.to_datetime();
+                                        created = attr.ctime.to_datetime();
+                                        accessed = attr.atime.to_datetime();
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                         ExtraField::Unix(uf) => {
                             modified = Some(Utc.timestamp(uf.mtime as i64, 0));
@@ -481,7 +527,7 @@ impl DirectoryHeader {
 
         let modified = match modified {
             Some(m) => Some(m),
-            None => convert_dos_date_and_time(self.modified_date, self.modified_time),
+            None => self.modified.to_datetime(),
         };
 
         Ok(StoredEntry {
@@ -490,6 +536,8 @@ impl DirectoryHeader {
                 method: self.method.into(),
                 comment,
                 modified: modified.unwrap_or_else(|| zero_datetime()),
+                created,
+                accessed,
             },
 
             creator_version: self.creator_version,
@@ -539,7 +587,7 @@ impl EndOfCentralDirectoryRecord {
         for i in (0..(b.len() - Self::LENGTH + 1)).rev() {
             let slice = &b[i..];
 
-            if let Ok((_, directory)) = Self::parse::<ZipParseError>(slice) {
+            if let Ok((_, directory)) = Self::parse(slice) {
                 return Some(Located {
                     offset: i as u64,
                     inner: directory,
@@ -549,7 +597,7 @@ impl EndOfCentralDirectoryRecord {
         None
     }
 
-    fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         preceded(
             tag(Self::SIGNATURE),
             map(
@@ -599,7 +647,7 @@ impl EndOfCentralDirectory64Locator {
     const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x06\x07";
 
-    fn parse<'a, E: ParseError<&'a [u8]>>(i: &'a [u8]) -> IResult<&'a [u8], Self, E> {
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!(Self {
@@ -639,9 +687,7 @@ impl EndOfCentralDirectory64Record {
     const LENGTH: usize = 56;
     const SIGNATURE: &'static str = "PK\x06\x06";
 
-    fn parse<'a, E: ParseError<&'a [u8]>>(
-        i: &'a [u8],
-    ) -> IResult<&'a [u8], EndOfCentralDirectory64Record, E> {
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!(Self {
@@ -1022,7 +1068,7 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64Locator { .. } => {
-                match EndOfCentralDirectory64Locator::parse::<ZipParseError>(self.buffer.data()) {
+                match EndOfCentralDirectory64Locator::parse(self.buffer.data()) {
                     Err(nom::Err::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
@@ -1051,7 +1097,7 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64 { .. } => {
-                match EndOfCentralDirectory64Record::parse::<ZipParseError>(self.buffer.data()) {
+                match EndOfCentralDirectory64Record::parse(self.buffer.data()) {
                     Err(nom::Err::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
@@ -1081,7 +1127,7 @@ impl ArchiveReader {
                 ref eocd,
                 ref mut directory_headers,
             } => {
-                match DirectoryHeader::parse::<ZipParseError>(self.buffer.data()) {
+                match DirectoryHeader::parse(self.buffer.data()) {
                     Err(nom::Err::Incomplete(_needed)) => {
                         // TODO: couldn't this happen when we have 0 bytes available?
 

@@ -30,20 +30,6 @@ use nom::{
 // Reference code for zip handling:
 // https://github.com/itchio/arkive/blob/master/zip/reader.go
 
-#[repr(u16)]
-enum ExtraHeaderID {
-    /// Zip64 extended information
-    Zip64 = 0x0001,
-    /// NTFS
-    NTFS = 0x000a,
-    /// UNIX
-    Unix = 0x000d,
-    // Extended timestamp
-    ExtTime = 0x5455,
-    /// Info-ZIP Unix extension
-    InfoZipUnix = 0x5855,
-}
-
 #[derive(Debug)]
 /// 4.3.7 Local file header
 struct LocalFileHeaderRecord {
@@ -199,9 +185,11 @@ struct ExtraFieldSettings {
 }
 
 #[derive(Debug)]
-enum ExtraField {
+pub enum ExtraField {
     Zip64(ExtraZip64Field),
     Timestamp(ExtraTimestampField),
+    Unix(ExtraUnixField),
+    NewUnix(ExtraNewUnixField),
     Unknown { tag: u16 },
 }
 
@@ -210,7 +198,6 @@ impl ExtraField {
         use ExtraField as EF;
 
         let (remaining, rec) = ExtraFieldRecord::parse(i)?;
-        debug!("Got extra field record: {:#?}", rec);
 
         let variant = match rec.tag {
             ExtraZip64Field::TAG => {
@@ -227,6 +214,20 @@ impl ExtraField {
                     None
                 }
             }
+            ExtraUnixField::TAG | ExtraUnixField::TAG_INFOZIP => {
+                if let Ok((_, tag)) = ExtraUnixField::parse(rec.payload) {
+                    Some(EF::Unix(tag))
+                } else {
+                    None
+                }
+            }
+            ExtraNewUnixField::TAG => {
+                if let Ok((_, tag)) = ExtraNewUnixField::parse(rec.payload) {
+                    Some(EF::NewUnix(tag))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
         .unwrap_or(EF::Unknown { tag: rec.tag });
@@ -237,10 +238,10 @@ impl ExtraField {
 
 /// 4.5.3 -Zip64 Extended Information Extra Field (0x0001)
 #[derive(Debug)]
-struct ExtraZip64Field {
-    uncompressed_size: Option<u64>,
-    compressed_size: Option<u64>,
-    header_offset: Option<u64>,
+pub struct ExtraZip64Field {
+    pub uncompressed_size: Option<u64>,
+    pub compressed_size: Option<u64>,
+    pub header_offset: Option<u64>,
 }
 
 impl ExtraZip64Field {
@@ -258,8 +259,9 @@ impl ExtraZip64Field {
 
 /// Extended timestamp extra field
 #[derive(Debug)]
-struct ExtraTimestampField {
-    seconds_since_epoch: u32,
+pub struct ExtraTimestampField {
+    /// number of seconds since epoch
+    mtime: u32,
 }
 
 impl ExtraTimestampField {
@@ -271,10 +273,93 @@ impl ExtraTimestampField {
             // lsb set - but that's what Go's archive/zip checks for
             // before using this as an extra timstamp field
             verify(le_u8, |x| x & 1 != 0),
-            map(le_u32, |seconds_since_epoch| Self {
-                seconds_since_epoch,
-            }),
+            map(le_u32, |mtime| Self { mtime }),
         )(i)
+    }
+}
+
+/// 4.5.7 -UNIX Extra Field (0x000d):
+#[derive(Debug)]
+pub struct ExtraUnixField {
+    /// file last access time
+    pub atime: u32,
+    /// file last modification time
+    pub mtime: u32,
+    /// file user id
+    pub uid: u16,
+    /// file group id
+    pub gid: u16,
+    /// variable length data field
+    pub data: ZipBytes,
+}
+
+impl ExtraUnixField {
+    const TAG: u16 = 0x000d;
+    const TAG_INFOZIP: u16 = 0x5855;
+
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        let (i, t_size) = le_u16(i)?;
+        let t_size = t_size - 12;
+        fields!(Self {
+            atime: le_u32,
+            mtime: le_u32,
+            uid: le_u16,
+            gid: le_u16,
+            data: zip_bytes(t_size),
+        })(i)
+    }
+}
+
+/// Info-ZIP New Unix Extra Field:
+/// ====================================
+//
+/// Currently stores Unix UIDs/GIDs up to 32 bits.
+/// (Last Revision 20080509)
+//
+/// Value         Size        Description
+/// -----         ----        -----------
+/// 0x7875        Short       tag for this extra block type ("ux")
+/// TSize         Short       total data size for this block
+/// Version       1 byte      version of this extra field, currently 1
+/// UIDSize       1 byte      Size of UID field
+/// UID           Variable    UID for this entry
+/// GIDSize       1 byte      Size of GID field
+/// GID           Variable    GID for this entry
+#[derive(Debug)]
+pub struct ExtraNewUnixField {
+    pub uid: u64,
+    pub gid: u64,
+}
+
+impl ExtraNewUnixField {
+    const TAG: u16 = 0x7875;
+
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        preceded(
+            tag("\x01"),
+            map(
+                tuple((
+                    Self::parse_variable_length_integer,
+                    Self::parse_variable_length_integer,
+                )),
+                |(uid, gid)| Self { uid, gid },
+            ),
+        )(i)
+    }
+
+    fn parse_variable_length_integer<'a>(i: &'a [u8]) -> ZipParseResult<'a, u64> {
+        let (i, slice) = length_data(le_u8)(i)?;
+        if let Some(u) = match slice.len() {
+            1 => Some(le_u8(slice)?.1 as u64),
+            2 => Some(le_u16(slice)?.1 as u64),
+            4 => Some(le_u32(slice)?.1 as u64),
+            8 => Some(le_u64(slice)?.1),
+            _ => None,
+        } {
+            Ok((i, u))
+        } else {
+            Err(nom::Err::Failure((i, nom::error::ErrorKind::OneOf)))
+        }
     }
 }
 
@@ -329,10 +414,16 @@ impl DirectoryHeader {
             comment = Some(encoding.decode(&comment_field.0)?);
         }
 
+        let name = encoding.decode(&self.name.0)?;
+
         let mut compressed_size = self.compressed_size as u64;
         let mut uncompressed_size = self.uncompressed_size as u64;
         let mut header_offset = self.header_offset as u64;
         let mut modified: Option<DateTime<Utc>> = None;
+        let mut uid: Option<u32> = None;
+        let mut gid: Option<u32> = None;
+
+        let mut extra_fields: Vec<ExtraField> = Vec::new();
 
         let settings = ExtraFieldSettings {
             needs_compressed_size: self.uncompressed_size == !0u32,
@@ -342,11 +433,9 @@ impl DirectoryHeader {
 
         let mut slice = &self.extra.0[..];
         while slice.len() > 0 {
-            debug!("slice = {}", HexFmt(slice));
             match ExtraField::parse(&slice[..], &settings) {
                 Ok((remaining, ef)) => {
-                    debug!("extra field = {:#?}", ef);
-                    match ef {
+                    match &ef {
                         ExtraField::Zip64(z64) => {
                             if let Some(n) = z64.uncompressed_size {
                                 uncompressed_size = n;
@@ -359,10 +448,24 @@ impl DirectoryHeader {
                             }
                         }
                         ExtraField::Timestamp(ts) => {
-                            modified = Some(Utc.timestamp(ts.seconds_since_epoch as i64, 0));
+                            modified = Some(Utc.timestamp(ts.mtime as i64, 0));
+                        }
+                        ExtraField::Unix(uf) => {
+                            modified = Some(Utc.timestamp(uf.mtime as i64, 0));
+                            if uid.is_none() {
+                                uid = Some(uf.uid as u32);
+                            }
+                            if gid.is_none() {
+                                gid = Some(uf.gid as u32);
+                            }
+                        }
+                        ExtraField::NewUnix(uf) => {
+                            uid = Some(uf.uid as u32);
+                            gid = Some(uf.uid as u32);
                         }
                         _ => {}
                     };
+                    extra_fields.push(ef);
                     slice = remaining;
                 }
                 Err(e) => {
@@ -372,6 +475,10 @@ impl DirectoryHeader {
             }
         }
 
+        if !extra_fields.is_empty() {
+            debug!("{} extra fields: {:#?}", name, extra_fields);
+        }
+
         let modified = match modified {
             Some(m) => Some(m),
             None => convert_dos_date_and_time(self.modified_date, self.modified_time),
@@ -379,7 +486,7 @@ impl DirectoryHeader {
 
         Ok(StoredEntry {
             entry: Entry {
-                name: encoding.decode(&self.name.0)?,
+                name,
                 method: self.method.into(),
                 comment,
                 modified: modified.unwrap_or_else(|| zero_datetime()),
@@ -393,6 +500,11 @@ impl DirectoryHeader {
             compressed_size,
             uncompressed_size,
             header_offset,
+
+            uid,
+            gid,
+
+            extra_fields,
 
             external_attrs: self.external_attrs,
         })

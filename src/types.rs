@@ -49,6 +49,15 @@ pub struct StoredEntry {
 
     /// General purpose bit flag
     pub flags: u16,
+
+    /// Unix user ID
+    pub uid: Option<u32>,
+
+    /// Unix group ID
+    pub gid: Option<u32>,
+
+    /// Any extra fields found while reading
+    pub extra_fields: Vec<super::reader::ExtraField>,
 }
 
 impl StoredEntry {

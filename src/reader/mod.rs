@@ -1110,6 +1110,27 @@ pub struct Archive {
 }
 
 impl Archive {
+    pub fn read(rd: &ReadAt, size: u64) -> Result<Self, Error> {
+        let mut ar = ArchiveReader::new(size);
+        loop {
+            if let Some(offset) = ar.wants_read() {
+                match ar.read(&mut Cursor::new_pos(&rd, offset)) {
+                    Ok(read_bytes) => {
+                        if read_bytes == 0 {
+                            return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
+                        }
+                    }
+                    Err(err) => return Err(Error::IO(err)),
+                }
+            }
+
+            match ar.process()? {
+                ArchiveReaderResult::Done(archive) => return Ok(archive),
+                ArchiveReaderResult::Continue => {}
+            }
+        }
+    }
+
     /// Return a list of all files in this zip, read from the
     /// central directory.
     pub fn entries(&self) -> &[FileHeader] {

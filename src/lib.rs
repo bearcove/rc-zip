@@ -8,11 +8,11 @@ mod types;
 
 pub use error::Error;
 pub use positioned_io;
-pub use reader::ZipReader;
+pub use reader::{ArchiveReader, Archive};
 
 #[cfg(test)]
 mod tests {
-    use super::{encoding::Encoding, Error, ZipReader};
+    use super::{encoding::Encoding, Error, ArchiveReader, Archive};
     use chrono::{
         offset::{FixedOffset, Utc},
         DateTime, TimeZone,
@@ -95,9 +95,9 @@ mod tests {
             }
         }
 
-        fn zip_reader(&self) -> Result<ZipReader, Error> {
+        fn zip_reader(&self) -> Result<Archive, Error> {
             let contents = self.bytes();
-            ZipReader::new(&contents, contents.len() as u64)
+            Archive::read(&contents, contents.len() as u64)
         }
     }
 

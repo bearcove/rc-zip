@@ -131,7 +131,7 @@ mod tests {
                         content: FileContent::Bytes(
                             "This small file is in ZIP64 format.\n".as_bytes().into(),
                         ),
-                        modified: Some(date(2019, 8, 10, 14, 33, 32, 0, time_zone(0))),
+                        modified: Some(date(2012, 8, 10, 14, 33, 32, 0, time_zone(0))),
                         mode: Some(0644),
                         ..Default::default()
                     }
@@ -148,14 +148,14 @@ mod tests {
                         content: FileContent::Bytes(
                             "This is a test text file.\n".as_bytes().into(),
                         ),
-                        modified: Some(date(2019, 9, 5, 12, 12, 1, 0, time_zone(10))),
+                        modified: Some(date(2010, 9, 5, 12, 12, 1, 0, time_zone(10))),
                         mode: Some(0644),
                         ..Default::default()
                     },
                     ZipTestFile {
                         name: "gophercolor16x16.png",
                         content: FileContent::File("gophercolor16x16.png"),
-                        modified: Some(date(2019, 9, 5, 12, 52, 58, 0, time_zone(10))),
+                        modified: Some(date(2010, 9, 5, 12, 52, 58, 0, time_zone(10))),
                         mode: Some(0644),
                         ..Default::default()
                     },
@@ -207,6 +207,7 @@ mod tests {
         color_backtrace::install();
 
         for case in test_cases() {
+            let case_name = case.name();
             let reader = case.zip_reader();
             if let Some(expected) = case.error {
                 let actual = reader.expect_err("should have errored");
@@ -233,13 +234,12 @@ mod tests {
                     .by_name(f.name)
                     .expect("should have specific test file");
 
-                #[cfg(dates_implemented)]
                 {
                     if let Some(expected) = f.modified {
                         assert_eq!(
-                            expected, entry.modified,
-                            "entry {} should have modified = {:?}",
-                            entry.name, expected
+                            expected, entry.modified(),
+                            "entry {} (in {}) should have modified = {:?}",
+                            entry.name(), case_name, expected
                         )
                     }
                 }

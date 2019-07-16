@@ -20,6 +20,8 @@ pub enum FormatError {
     DirectoryOffsetPointsOutsideFile,
     InvalidCentralRecord,
     InvalidExtraField,
+    InvalidDosDate,
+    InvalidDosTime,
     ImpossibleNumberOfFiles {
         claimed_records_count: u64,
         zip_size: u64,

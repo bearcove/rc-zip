@@ -1,6 +1,8 @@
 use hex_fmt::HexFmt;
 use std::fmt;
 
+use chrono::{offset::Utc, DateTime};
+
 // Describes a file within a zip file.
 #[derive(Debug)]
 pub struct Entry {
@@ -60,6 +62,10 @@ impl StoredEntry {
 
     pub fn method(&self) -> Method {
         self.entry.method
+    }
+
+    pub fn modified(&self) -> DateTime<Utc> {
+        self.entry.modified
     }
 }
 

@@ -3,6 +3,10 @@ use super::{
     error::*,
     types::*,
 };
+use chrono::{
+    offset::{LocalResult, TimeZone, Utc},
+    DateTime,
+};
 use log::*;
 #[macro_use]
 mod nom_macros;
@@ -236,6 +240,30 @@ impl ExtraZip64Field {
     }
 }
 
+fn convert_dos_date_and_time(dos_date: u16, dos_time: u16) -> Option<DateTime<Utc>> {
+    // see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
+    let date = match {
+        // bits 0-4: day of the month (1-31)
+        let d = (dos_date & 0b1111_1) as u32;
+        // bits 5-8: month (1 = january, 2 = february and so on)
+        let m = ((dos_date >> 5) & 0b1111) as u32;
+        // bits 9-15: year offset from 1980
+        let y = ((dos_date >> 9) + 1980) as i32;
+        Utc.ymd_opt(y, m, d)
+    } {
+        LocalResult::Single(date) => date,
+        _ => return None,
+    };
+
+    // bits 0-4: second divided by 2
+    let s = (dos_time & 0b1111_1) as u32 * 2;
+    // bits 5-10: minute (0-59)
+    let m = (dos_time >> 5 & 0b1111_11) as u32;
+    // bits 11-15: hour (0-23 on a 24-hour clock)
+    let h = (dos_time >> 11) as u32;
+    date.and_hms_opt(h, m, s)
+}
+
 impl DirectoryHeader {
     fn is_non_utf8(&self) -> bool {
         let (valid1, require1) = encoding::detect_utf8(&self.name.0[..]);
@@ -266,6 +294,7 @@ impl DirectoryHeader {
         let mut compressed_size = self.compressed_size as u64;
         let mut uncompressed_size = self.uncompressed_size as u64;
         let mut header_offset = self.header_offset as u64;
+        let modified: Option<DateTime<Utc>> = None;
 
         let settings = ExtraFieldSettings {
             needs_compressed_size: self.uncompressed_size == !0u32,
@@ -302,12 +331,17 @@ impl DirectoryHeader {
             }
         }
 
+        let modified = match modified {
+            Some(m) => Some(m),
+            None => convert_dos_date_and_time(self.modified_date, self.modified_time),
+        };
+
         Ok(StoredEntry {
             entry: Entry {
                 name: encoding.decode(&self.name.0)?,
                 method: self.method.into(),
                 comment,
-                modified: zero_datetime(),
+                modified: modified.unwrap_or_else(|| zero_datetime()),
             },
 
             creator_version: self.creator_version,

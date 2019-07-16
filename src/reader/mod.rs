@@ -7,12 +7,15 @@ use log::*;
 #[macro_use]
 mod nom_macros;
 
+use hex_fmt::HexFmt;
+
 use positioned_io::{Cursor, ReadAt};
+use std::fmt;
 use std::io::Read;
 
 use nom::{
     bytes::complete::{tag, take},
-    combinator::map,
+    combinator::{cond, map},
     error::ParseError,
     multi::length_data,
     number::complete::{le_u16, le_u32, le_u64},
@@ -157,6 +160,82 @@ impl DirectoryHeader {
     }
 }
 
+struct ExtraFieldRecord<'a> {
+    tag: u16,
+    payload: &'a [u8],
+}
+
+impl<'a> fmt::Debug for ExtraFieldRecord<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "tag 0x{:x}: {}", self.tag, HexFmt(self.payload))
+    }
+}
+
+impl<'a> ExtraFieldRecord<'a> {
+    fn parse(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        fields!(Self {
+            tag: le_u16,
+            payload: length_data(le_u16),
+        })(i)
+    }
+}
+
+// Useful because zip64 extended information extra field has fixed order *but*
+// optional fields. From the appnote:
+//
+// If one of the size or offset fields in the Local or Central directory record
+// is too small to hold the required data, a Zip64 extended information record
+// is created. The order of the fields in the zip64 extended information record
+// is fixed, but the fields MUST only appear if the corresponding Local or
+// Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
+struct ExtraFieldSettings {
+    needs_uncompressed_size: bool,
+    needs_compressed_size: bool,
+    needs_header_offset: bool,
+}
+
+#[derive(Debug)]
+enum ExtraField {
+    Zip64(ExtraZip64Field),
+    Unknown { tag: u16 },
+}
+
+impl ExtraField {
+    fn parse<'a>(i: &'a [u8], settings: &ExtraFieldSettings) -> ZipParseResult<'a, Self> {
+        use ExtraField as EF;
+
+        let (remaining, rec) = ExtraFieldRecord::parse(i)?;
+        debug!("Got extra field record: {:#?}", rec);
+
+        let variant = match rec.tag {
+            ExtraZip64Field::TAG => EF::Zip64(ExtraZip64Field::parse(rec.payload, settings)?.1),
+            _ => EF::Unknown { tag: rec.tag },
+        };
+        Ok((remaining, variant))
+    }
+}
+
+/// 4.5.3 -Zip64 Extended Information Extra Field (0x0001)
+#[derive(Debug)]
+struct ExtraZip64Field {
+    uncompressed_size: Option<u64>,
+    compressed_size: Option<u64>,
+    header_offset: Option<u64>,
+}
+
+impl ExtraZip64Field {
+    const TAG: u16 = 0x0001;
+
+    fn parse<'a>(i: &'a [u8], settings: &ExtraFieldSettings) -> ZipParseResult<'a, Self> {
+        // N.B: we ignore "disk start number"
+        fields!(Self {
+            uncompressed_size: cond(settings.needs_uncompressed_size, le_u64),
+            compressed_size: cond(settings.needs_compressed_size, le_u64),
+            header_offset: cond(settings.needs_header_offset, le_u64),
+        })(i)
+    }
+}
+
 impl DirectoryHeader {
     fn is_non_utf8(&self) -> bool {
         let (valid1, require1) = encoding::detect_utf8(&self.name.0[..]);
@@ -178,27 +257,68 @@ impl DirectoryHeader {
         self.flags & 0x800 == 0
     }
 
-    fn as_entry(&self, encoding: Encoding) -> Result<Entry, encoding::DecodingError> {
+    fn as_stored_entry(&self, encoding: Encoding) -> Result<StoredEntry, Error> {
         let mut comment: Option<String> = None;
         if let Some(comment_field) = self.comment.clone().as_option() {
             comment = Some(encoding.decode(&comment_field.0)?);
         }
 
-        Ok(Entry {
-            name: encoding.decode(&self.name.0)?,
-            comment,
+        let mut compressed_size = self.compressed_size as u64;
+        let mut uncompressed_size = self.uncompressed_size as u64;
+        let mut header_offset = self.header_offset as u64;
+
+        let settings = ExtraFieldSettings {
+            needs_compressed_size: self.uncompressed_size == !0u32,
+            needs_uncompressed_size: self.compressed_size == !0u32,
+            needs_header_offset: self.header_offset == !0u32,
+        };
+
+        let mut slice = &self.extra.0[..];
+        while slice.len() > 0 {
+            debug!("slice = {}", HexFmt(slice));
+            match ExtraField::parse(&slice[..], &settings) {
+                Ok((remaining, ef)) => {
+                    debug!("extra field = {:#?}", ef);
+                    match ef {
+                        ExtraField::Zip64(z64) => {
+                            if let Some(n) = z64.uncompressed_size {
+                                uncompressed_size = n;
+                            }
+                            if let Some(n) = z64.compressed_size {
+                                compressed_size = n;
+                            }
+                            if let Some(n) = z64.header_offset {
+                                header_offset = n;
+                            }
+                        }
+                        _ => {}
+                    };
+                    slice = remaining;
+                }
+                Err(e) => {
+                    debug!("extra field error: {:#?}", e);
+                    return Err(FormatError::InvalidExtraField.into());
+                }
+            }
+        }
+
+        Ok(StoredEntry {
+            entry: Entry {
+                name: encoding.decode(&self.name.0)?,
+                method: self.method.into(),
+                comment,
+                modified: zero_datetime(),
+            },
+
             creator_version: self.creator_version,
             reader_version: self.reader_version,
             flags: self.flags,
-            modified: zero_datetime(),
-
-            method: self.method,
 
             crc32: self.crc32,
-            compressed_size: self.compressed_size as u64,
-            uncompressed_size: self.uncompressed_size as u64,
+            compressed_size,
+            uncompressed_size,
+            header_offset,
 
-            extra: self.extra.clone().as_option().map(|x| x.0),
             external_attrs: self.external_attrs,
         })
     }
@@ -331,48 +451,6 @@ struct EndOfCentralDirectory64Record {
 impl EndOfCentralDirectory64Record {
     const LENGTH: usize = 56;
     const SIGNATURE: &'static str = "PK\x06\x06";
-
-    fn read<R: ReadAt>(
-        reader: R,
-        directory_end_offset: u64,
-    ) -> Result<Option<Located<Self>>, Error> {
-        if directory_end_offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
-            // no need to look for a header outside the file
-            return Ok(None);
-        }
-        let loc_offset = directory_end_offset - EndOfCentralDirectory64Locator::LENGTH as u64;
-
-        let mut locbuf = vec![0u8; EndOfCentralDirectory64Locator::LENGTH];
-        reader.read_exact_at(loc_offset, &mut locbuf)?;
-        let locres = EndOfCentralDirectory64Locator::parse::<ZipParseError>(&locbuf[..]);
-
-        if let Ok((_, locator)) = locres {
-            if locator.dir_disk_number != 0 {
-                // the file is not a valid zip64 file
-                return Ok(None);
-            }
-
-            if locator.total_disks != 1 {
-                // the file is not a valid zip64 file
-                return Ok(None);
-            }
-
-            let offset = locator.directory_offset;
-            let mut recbuf = vec![0u8; EndOfCentralDirectory64Record::LENGTH];
-            reader.read_exact_at(offset, &mut recbuf)?;
-            let recres = Self::parse::<ZipParseError>(&recbuf[..]);
-
-            if let Ok((_, record)) = recres {
-                return Ok(Some(Located {
-                    offset,
-                    inner: record,
-                }));
-            } else {
-                return Err(FormatError::Directory64EndRecordInvalid.into());
-            }
-        }
-        Ok(None)
-    }
 
     fn parse<'a, E: ParseError<&'a [u8]>>(
         i: &'a [u8],
@@ -791,7 +869,7 @@ impl ArchiveReader {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
                         // at this point, we really expected to have a zip64 end
                         // of central directory record, so, we want to propagate
                         // that error.
@@ -823,7 +901,7 @@ impl ArchiveReader {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
                         // this is the normal end condition when reading
                         // the central directory (due to 65536-entries non-zip64 files)
                         // let's just check a few numbers first.
@@ -871,11 +949,10 @@ impl ArchiveReader {
                                 }
                             };
 
-                            let entries: Result<Vec<Entry>, encoding::DecodingError> =
-                                directory_headers
-                                    .into_iter()
-                                    .map(|x| x.as_entry(encoding))
-                                    .collect();
+                            let entries: Result<Vec<StoredEntry>, Error> = directory_headers
+                                .into_iter()
+                                .map(|x| x.as_stored_entry(encoding))
+                                .collect();
                             let entries = entries?;
 
                             let mut comment: Option<String> = None;
@@ -896,11 +973,11 @@ impl ArchiveReader {
                             Err(FormatError::InvalidCentralRecord.into())
                         }
                     }
-                    Ok((remaining, fhr)) => {
+                    Ok((remaining, dh)) => {
                         let consumed = self.buffer.data().offset(remaining);
                         drop(remaining);
                         self.buffer.consume(consumed);
-                        file_header_records.push(fhr);
+                        directory_headers.push(dh);
                         Ok(R::Continue)
                     }
                 }
@@ -915,7 +992,7 @@ impl ArchiveReader {
 pub struct Archive {
     size: u64,
     encoding: Encoding,
-    entries: Vec<Entry>,
+    entries: Vec<StoredEntry>,
     comment: Option<String>,
 }
 
@@ -943,7 +1020,7 @@ impl Archive {
 
     /// Return a list of all files in this zip, read from the
     /// central directory.
-    pub fn entries(&self) -> &[Entry] {
+    pub fn entries(&self) -> &[StoredEntry] {
         &self.entries[..]
     }
 
@@ -957,7 +1034,7 @@ impl Archive {
         self.comment.as_ref()
     }
 
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&Entry> {
-        self.entries.iter().find(|&x| x.name == name.as_ref())
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&StoredEntry> {
+        self.entries.iter().find(|&x| x.name() == name.as_ref())
     }
 }

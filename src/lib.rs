@@ -250,6 +250,7 @@ mod tests {
     #[test]
     fn test_fsm() {
         use super::reader::{ArchiveReader, ArchiveReaderResult};
+        env_logger::init();
 
         let cases = test_cases();
         let case = cases.iter().find(|x| x.name() == "zip64.zip").unwrap();

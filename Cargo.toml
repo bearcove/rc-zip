@@ -35,3 +35,4 @@ log = "0.4.7"
 
 [dev-dependencies]
 color-backtrace = "0.2.2"
+env_logger = "0.6.2"

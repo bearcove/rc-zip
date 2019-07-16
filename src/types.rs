@@ -9,34 +9,94 @@ pub struct Entry {
     // and must use forward slashes instead of back slashes
     pub name: String,
 
-    // Comment is any arbitrary user-defined string shorter than 64KiB
+    /// Compression method
+    pub method: Method,
+
+    /// Comment is any arbitrary user-defined string shorter than 64KiB
     pub comment: Option<String>,
 
-    /// Compression method
-    pub method: u16,
-
-    pub creator_version: u16,
-    pub reader_version: u16,
-    pub flags: u16,
-
+    /// Modified timestamp
     pub modified: chrono::DateTime<chrono::offset::Utc>,
+}
 
+#[derive(Debug)]
+pub struct StoredEntry {
+    /// Entry information
+    pub entry: Entry,
+
+    /// CRC-32 hash
     pub crc32: u32,
+
+    // offset of the header in the zip file
+    pub header_offset: u64,
+
+    /// Size, after compression
     pub compressed_size: u64,
+
+    /// Size, before compression
     pub uncompressed_size: u64,
 
-    pub extra: Option<Vec<u8>>,
+    /// External attributes (zip)
     pub external_attrs: u32,
+
+    /// Version made by
+    pub creator_version: u16,
+
+    /// Version needed to extract
+    pub reader_version: u16,
+
+    /// General purpose bit flag
+    pub flags: u16,
+}
+
+impl StoredEntry {
+    pub fn name(&self) -> &str {
+        self.entry.name.as_ref()
+    }
+
+    pub fn comment(&self) -> Option<&str> {
+        self.entry.comment.as_ref().map(|x| x.as_ref())
+    }
+
+    pub fn method(&self) -> Method {
+        self.entry.method
+    }
 }
 
 // Compression method
-#[repr(u16)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
-    Store = 0,
-    Deflate = 8,
-    BZIP2 = 12,
-    LZMA = 14,
+    Store,
+    Deflate,
+    Bzip2,
+    Lzma,
+    Unsupported(u16),
+}
+
+impl From<u16> for Method {
+    fn from(m: u16) -> Self {
+        use Method::*;
+        match m {
+            0 => Store,
+            8 => Deflate,
+            12 => Bzip2,
+            14 => Lzma,
+            _ => Unsupported(m),
+        }
+    }
+}
+
+impl Into<u16> for Method {
+    fn into(self) -> u16 {
+        use Method::*;
+        match self {
+            Store => 0,
+            Deflate => 8,
+            Bzip2 => 12,
+            Lzma => 14,
+            Unsupported(m) => m,
+        }
+    }
 }
 
 pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
@@ -47,28 +107,15 @@ pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
 }
 
 impl Entry {
-    pub fn new<S>(name: S, uncompressed_size: u64, method: Method) -> Self
+    pub fn new<S>(name: S, method: Method) -> Self
     where
         S: Into<String>,
     {
         Self {
             name: name.into(),
             comment: None,
-
-            creator_version: ZipVersion::Version45 as u16,
-            reader_version: ZipVersion::Version45 as u16,
-            flags: 0,
-
             modified: zero_datetime(),
-
-            method: method as u16,
-
-            crc32: 0,
-            compressed_size: 0,
-            uncompressed_size,
-
-            extra: None,
-            external_attrs: 0,
+            method,
         }
     }
 }
@@ -121,16 +168,6 @@ impl fmt::Debug for ZipString {
 }
 #[derive(Clone)]
 pub struct ZipBytes(pub Vec<u8>);
-
-impl ZipBytes {
-    pub(crate) fn as_option(self) -> Option<ZipBytes> {
-        if self.0.len() > 0 {
-            Some(self)
-        } else {
-            None
-        }
-    }
-}
 
 impl fmt::Debug for ZipBytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

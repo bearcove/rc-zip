@@ -2,6 +2,7 @@ use super::encoding;
 use std::{error, fmt};
 
 pub type ZipParseError<'a> = (&'a [u8], nom::error::ErrorKind);
+pub type ZipParseResult<'a, T> = nom::IResult<&'a [u8], T, ZipParseError<'a>>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,6 +19,7 @@ pub enum FormatError {
     Directory64EndRecordInvalid,
     DirectoryOffsetPointsOutsideFile,
     InvalidCentralRecord,
+    InvalidExtraField,
     ImpossibleNumberOfFiles {
         claimed_records_count: u64,
         zip_size: u64,

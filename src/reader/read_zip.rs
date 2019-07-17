@@ -3,9 +3,12 @@ use crate::{
     reader::{ArchiveReader, ArchiveReaderResult},
     types::Archive,
 };
-use positioned_io::{Cursor, ReadAt};
+use positioned_io::{Cursor, ReadAt, Size};
+use std::fs::File;
 
 /// A trait for reading something as a zip archive (blocking I/O model)
+///
+/// See also [ReadZip].
 pub trait ReadZipWithSize {
     /// Reads self as a zip archive.
     ///
@@ -16,6 +19,8 @@ pub trait ReadZipWithSize {
 
 /// A trait for reading something as a zip archive (blocking I/O model),
 /// when we can tell size from self.
+///
+/// See also [ReadZipWithSize].
 pub trait ReadZip {
     /// Reads self as a zip archive.
     ///
@@ -49,7 +54,14 @@ impl ReadZipWithSize for ReadAt {
 
 impl ReadZip for Vec<u8> {
     fn read_zip(&self) -> Result<Archive, Error> {
-        (self as &ReadAt).read_zip_with_size(self.len() as u64)
+        ReadAt::read_zip_with_size(self, self.len() as u64)
+    }
+}
+
+impl ReadZip for File {
+    fn read_zip(&self) -> Result<Archive, Error> {
+        let size = self.size()?.ok_or(Error::UnknownSize)?;
+        ReadAt::read_zip_with_size(self, size)
     }
 }
 

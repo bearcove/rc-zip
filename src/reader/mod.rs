@@ -182,13 +182,24 @@ struct ExtraFieldSettings {
     needs_header_offset: bool,
 }
 
+/// Information stored in the central directory header `extra` field
+///
+/// This typically contains timestamps, file sizes and offsets, file mode, uid/gid, etc.
+///
+/// See `extrafld.txt` in this crate's source distribution.
 #[derive(Debug)]
 pub enum ExtraField {
+    /// Zip64 extended information extra field
     Zip64(ExtraZip64Field),
+    /// Extended timestamp
     Timestamp(ExtraTimestampField),
+    /// UNIX & Info-Zip UNIX
     Unix(ExtraUnixField),
-    Ntfs(ExtraNtfsField),
+    /// New UNIX extra field
     NewUnix(ExtraNewUnixField),
+    /// NTFS (Win9x/WinNT FileTimes)
+    Ntfs(ExtraNtfsField),
+    /// Unknown extra field, with tag
     Unknown { tag: u16 },
 }
 
@@ -316,10 +327,11 @@ impl ExtraUnixField {
 
 /// Info-ZIP New Unix Extra Field:
 /// ====================================
-//
+///
 /// Currently stores Unix UIDs/GIDs up to 32 bits.
 /// (Last Revision 20080509)
-//
+///
+/// ```text
 /// Value         Size        Description
 /// -----         ----        -----------
 /// 0x7875        Short       tag for this extra block type ("ux")
@@ -329,6 +341,7 @@ impl ExtraUnixField {
 /// UID           Variable    UID for this entry
 /// GIDSize       1 byte      Size of GID field
 /// GID           Variable    GID for this entry
+/// ```
 #[derive(Debug)]
 pub struct ExtraNewUnixField {
     pub uid: u64,
@@ -384,6 +397,7 @@ impl ExtraNtfsField {
     }
 }
 
+/// NTFS attribute for zip entries (mostly timestamps)
 #[derive(Debug)]
 pub enum NtfsAttr {
     Attr1(NtfsAttr1),
@@ -839,7 +853,7 @@ impl EndOfCentralDirectory {
     }
 }
 
-pub fn zip_string<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipString, E>
+pub(crate) fn zip_string<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipString, E>
 where
     C: nom::ToUsize,
     E: ParseError<&'a [u8]>,
@@ -851,7 +865,7 @@ where
     }
 }
 
-pub fn zip_bytes<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipBytes, E>
+pub(crate) fn zip_bytes<'a, C, E>(count: C) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ZipBytes, E>
 where
     C: nom::ToUsize,
     E: ParseError<&'a [u8]>,

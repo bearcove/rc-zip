@@ -18,7 +18,7 @@
 //!
 #![allow(clippy::all)]
 
-mod prelude;
+pub mod prelude;
 mod encoding;
 mod error;
 mod reader;

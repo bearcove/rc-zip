@@ -81,11 +81,6 @@ operation is the `Archive` type, which one obtains through `ArchiveReader`.
 An `Archive` contains archive-level metadata (comment, detected encoding,
 creator and reader version), along with a list of `Entry` records.
 
-### Inspirations
-
-
-...except when it comes to API design, because Go and Rust are different beasts entirely.
-  
 ### License
 
 rc-zip is released under the MIT License. See the [LICENSE](LICENSE) file for details.

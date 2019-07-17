@@ -1,0 +1,13 @@
+[package]
+name = "rc-zip-sample"
+version = "0.1.0"
+authors = ["Amos Wenger <amoswenger@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rc-zip = { path = "../.." }
+clap = "2.33.0"
+humansize = "1.1.0"
+color-backtrace = "0.2.2"
+env_logger = "0.6.2"
+tabwriter = "1.1.0"

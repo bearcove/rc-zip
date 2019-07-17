@@ -8,7 +8,7 @@ use std::fmt;
 /// which features are required when reading a file.
 ///
 /// For more information, see the [.ZIP Application Note](https://support.pkware.com/display/PKZIP/APPNOTE), section 4.4.2.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Version(pub u16);
 
 impl fmt::Debug for Version {
@@ -31,8 +31,7 @@ impl Version {
 
     /// Identifies the host system on which the zip attributes are compatible.
     pub fn host_system(&self) -> HostSystem {
-        let system = (self.0 >> 1) as u8;
-        match system {
+        match self.host() {
             0 => HostSystem::MsDos,
             1 => HostSystem::Amiga,
             2 => HostSystem::OpenVms,
@@ -57,23 +56,28 @@ impl Version {
         }
     }
 
+    /// Integer host system
+    pub fn host(&self) -> u8 {
+        (self.0 >> 8) as u8
+    }
+
     /// Integer version, e.g. 45 for Zip version 4.5
-    pub fn version(&self) -> u32 {
-        (self.0 & 0xf) as u32
+    pub fn version(&self) -> u8 {
+        (self.0 & 0xff) as u8
     }
 
     /// ZIP specification major version
     ///
     /// See APPNOTE, section 4.4.2.1
     pub fn major(&self) -> u32 {
-        self.version() / 10
+        self.version() as u32 / 10
     }
 
     /// ZIP specification minor version
     ///
     /// See APPNOTE, section 4.4.2.1
     pub fn minor(&self) -> u32 {
-        self.version() % 10
+        self.version() as u32 % 10
     }
 }
 

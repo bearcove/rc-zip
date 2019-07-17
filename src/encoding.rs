@@ -28,10 +28,20 @@ pub(crate) fn detect_utf8(input: &[u8]) -> (bool, bool) {
     }
 }
 
+/// Encodings supported by this crate
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Encoding {
+    /// UTF-8
     Utf8,
+    /// [Codepage 437](https://en.wikipedia.org/wiki/Code_page_437), also known as
+    /// OEM-US, PC-8, or DOS Latin US.
+    ///
+    /// This is the fallback if UTF-8 is not specified and no other encoding
+    /// is auto-detected. It was the original encoding of the zip format.
     Cp437,
+    /// [Shift JIS](https://en.wikipedia.org/wiki/Shift_JIS), also known as SJIS.
+    ///
+    /// Still in use by some Japanese users as of 2019.
     ShiftJis,
 }
 
@@ -46,9 +56,15 @@ impl fmt::Display for Encoding {
     }
 }
 
+/// Errors encountered while converting text to UTF-8.
 #[derive(Debug)]
 pub enum DecodingError {
+    /// Text claimed to be UTF-8, but wasn't (as far as we can tell).
     Utf8Error(std::str::Utf8Error),
+    /// Text is too large to be converted.
+    ///
+    /// In practice, this happens if the text's length is larger than
+    /// [usize::MAX], which seems unlikely.
     StringTooLarge,
     EncodingError(&'static str),
 }

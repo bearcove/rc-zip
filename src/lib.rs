@@ -1,18 +1,37 @@
+//! # rc-zip
+//!
+//! rc-zip is a zip archive library with a focus on compatibility and correctness.
+//!
+//! ### Reading
+//! 
+//! [ArchiveReader](ArchiveReader) is your first stop. It
+//! ensures we are dealing with a valid zip archive, and reads the central
+//! directory. It does not perform I/O itself, but rather, it is a state machine
+//! that asks for reads at specific offsets.
+//!
+//! An [Archive](Archive) contains a full list of [entries](types::StoredEntry),
+//! which you can then extract.
+//!
+//! ### Writing
+//!
+//! Writing archives is not implemented yet.
+//!
 #![allow(clippy::all)]
 
+mod prelude;
 mod encoding;
 mod error;
 mod reader;
 mod types;
 
-pub use error::Error;
 pub use positioned_io;
-pub use reader::{ArchiveReader, Archive};
+pub use error::*;
+pub use reader::*;
 pub use types::*;
 
 #[cfg(test)]
 mod tests {
-    use super::{encoding::Encoding, Error, Archive};
+    use super::{encoding::Encoding, Error, Archive, prelude::*};
     use chrono::{
         offset::{FixedOffset, Utc},
         DateTime, TimeZone,
@@ -95,9 +114,8 @@ mod tests {
             }
         }
 
-        fn zip_reader(&self) -> Result<Archive, Error> {
-            let contents = self.bytes();
-            Archive::read(&contents, contents.len() as u64)
+        fn archive(&self) -> Result<Archive, Error> {
+            self.bytes().read_zip()
         }
     }
 
@@ -196,8 +214,8 @@ mod tests {
         for case in test_cases() {
             if let Some(encoding) = case.expected_encoding {
                 println!("{}: should be {}", case.name(), encoding);
-                let reader = case.zip_reader().unwrap();
-                assert_eq!(reader.encoding(), encoding);
+                let archive = case.archive().unwrap();
+                assert_eq!(archive.encoding(), encoding);
             }
         }
     }
@@ -208,29 +226,29 @@ mod tests {
 
         for case in test_cases() {
             let case_name = case.name();
-            let reader = case.zip_reader();
+            let archive = case.archive();
             if let Some(expected) = case.error {
-                let actual = reader.expect_err("should have errored");
+                let actual = archive.expect_err("should have errored");
                 let expected = format!("{:#?}", expected);
                 let actual = format!("{:#?}", actual);
                 assert_eq!(expected, actual);
                 continue;
             }
-            let reader = reader.unwrap();
+            let archive = archive.unwrap();
             if let Some(expected) = case.comment {
-                assert_eq!(expected, reader.comment().expect("should have comment"))
+                assert_eq!(expected, archive.comment().expect("should have comment"))
             }
 
             assert_eq!(
                 case.files.len(),
-                reader.entries().len(),
+                archive.entries().len(),
                 "{} should have {} entries files",
                 case.name(),
                 case.files.len()
             );
 
             for f in case.files {
-                let entry = reader
+                let entry = archive
                     .by_name(f.name)
                     .expect("should have specific test file");
 

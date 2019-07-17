@@ -8,14 +8,14 @@ use chrono::{
     DateTime,
 };
 use log::*;
+
 #[macro_use]
 mod nom_macros;
-pub mod dates;
-use dates::*;
+mod dates;
+mod read_zip;
+pub use self::{dates::*, read_zip::*};
 
 use hex_fmt::HexFmt;
-
-use positioned_io::{Cursor, ReadAt};
 use std::fmt;
 use std::io::Read;
 
@@ -67,9 +67,9 @@ impl LocalFileHeaderRecord {
 #[derive(Debug)]
 struct DirectoryHeader {
     // version made by
-    creator_version: u16,
+    creator_version: Version,
     // version needed to extract
-    reader_version: u16,
+    reader_version: Version,
     // general purpose bit flag
     flags: u16,
     // compression method
@@ -106,8 +106,8 @@ impl DirectoryHeader {
         preceded(
             tag(Self::SIGNATURE),
             fields!({
-                creator_version: le_u16,
-                reader_version: le_u16,
+                creator_version: Version::parse,
+                reader_version: Version::parse,
                 flags: le_u16,
                 method: le_u16,
                 modified: MsdosTimestamp::parse,
@@ -863,6 +863,9 @@ where
     }
 }
 
+/// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
+/// an end of central directory record, parses the entire central directory, detects text encoding,
+/// and normalizes metadata.
 pub struct ArchiveReader {
     // Size of the entire zip file
     size: u64,
@@ -873,30 +876,39 @@ pub struct ArchiveReader {
 
 #[derive(Debug)]
 pub enum ArchiveReaderResult {
-    /// should continue
+    /// Indicates that [ArchiveReader][] has work left, and the loop should continue.
     Continue,
-    /// done reading
+    /// Indicates that [ArchiveReader][] is done reading the central directory,
+    /// contains an [Archive][]. Calling any method after [process()](ArchiveReader::process()) has returned
+    /// `Done` will panic.
     Done(Archive),
 }
 
 enum ArchiveReaderState {
-    /// Dummy state, used while transitioning because
-    /// ownership rules are tough.
+    /// Used while transitioning because ownership rules are tough.
     Transitioning,
-    ReadEocd {
-        haystack_size: u64,
-    },
+
+    /// Finding and reading the end of central directory record
+    ReadEocd { haystack_size: u64 },
+
+    /// Reading the zip64 end of central directory record.
     ReadEocd64Locator {
         eocdr: Located<EndOfCentralDirectoryRecord>,
     },
+
+    /// Reading the zip64 end of central directory record.
     ReadEocd64 {
         eocdr64_offset: u64,
         eocdr: Located<EndOfCentralDirectoryRecord>,
     },
+
+    /// Reading all headers from the central directory
     ReadCentralDirectory {
         eocd: EndOfCentralDirectory,
         directory_headers: Vec<DirectoryHeader>,
     },
+
+    /// Done!
     Done,
 }
 
@@ -915,12 +927,15 @@ struct ReadOp {
     length: u64,
 }
 
+/// A wrapper around [circular::Buffer] that keeps track of how many bytes we've read since
+/// initialization or the last reset.
 struct Buffer {
     buffer: circular::Buffer,
     read_bytes: u64,
 }
 
 impl Buffer {
+    /// creates a new buffer with the specified capacity
     pub fn with_capacity(size: usize) -> Self {
         Self {
             buffer: circular::Buffer::with_capacity(size),
@@ -969,6 +984,11 @@ impl Buffer {
 }
 
 impl ArchiveReader {
+    /// Create a new archive reader with a specified file size.
+    ///
+    /// Actual reading of the file is performed by calling
+    /// [wants_read()](ArchiveReader::wants_read()), [read()](ArchiveReader::read()) and
+    /// [process()](ArchiveReader::process()) in a loop.
     pub fn new(size: u64) -> Self {
         let haystack_size: u64 = 65 * 1024;
         let haystack_size = if size < haystack_size {
@@ -984,6 +1004,14 @@ impl ArchiveReader {
         }
     }
 
+    /// Returns whether or not this reader needs more data to continue.
+    ///
+    /// Returns `Some(offset)` if this reader needs to read some data from `offset`.
+    /// In this case, [read()](ArchiveReader::read()) should be called with a [Read]
+    /// at the correct offset.
+    ///
+    /// Returns `None` if the reader does not need data and [process()](ArchiveReader::process())
+    /// can be called directly.
     pub fn wants_read(&self) -> Option<u64> {
         match self.read_op() {
             Some(op) => self.read_op_state(op),
@@ -1030,10 +1058,26 @@ impl ArchiveReader {
         }
     }
 
+    /// Reads some data from `rd` into the reader's internal buffer.
+    ///
+    /// Any I/O errors will be returned.
+    ///
+    /// If successful, this returns the number of bytes read. On success,
+    /// [process()](ArchiveReader::process()) should be called next.
     pub fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
         self.buffer.read(rd)
     }
 
+    /// Process buffered data
+    ///
+    /// Errors returned from process() are caused by invalid zip archives,
+    /// unsupported format quirks, or implementation bugs - never I/O errors.
+    ///
+    /// A result of [ArchiveReaderResult::Continue] indicates one should loop again,
+    /// starting with [wants_read()](ArchiveReader::wants_read()).
+    ///
+    /// A result of [ArchiveReaderResult::Done] contains the [Archive], and indicates that no
+    /// method should ever be called again on this reader.
     pub fn process(&mut self) -> Result<ArchiveReaderResult, Error> {
         use ArchiveReaderResult as R;
         use ArchiveReaderState as S;
@@ -1221,53 +1265,3 @@ impl ArchiveReader {
     }
 }
 
-#[derive(Debug)]
-pub struct Archive {
-    size: u64,
-    encoding: Encoding,
-    entries: Vec<StoredEntry>,
-    comment: Option<String>,
-}
-
-impl Archive {
-    pub fn read(rd: &ReadAt, size: u64) -> Result<Self, Error> {
-        let mut ar = ArchiveReader::new(size);
-        loop {
-            if let Some(offset) = ar.wants_read() {
-                match ar.read(&mut Cursor::new_pos(&rd, offset)) {
-                    Ok(read_bytes) => {
-                        if read_bytes == 0 {
-                            return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
-                        }
-                    }
-                    Err(err) => return Err(Error::IO(err)),
-                }
-            }
-
-            match ar.process()? {
-                ArchiveReaderResult::Done(archive) => return Ok(archive),
-                ArchiveReaderResult::Continue => {}
-            }
-        }
-    }
-
-    /// Return a list of all files in this zip, read from the
-    /// central directory.
-    pub fn entries(&self) -> &[StoredEntry] {
-        &self.entries[..]
-    }
-
-    /// Returns the detected character encoding for text fields
-    /// (paths, comments) inside this ZIP file
-    pub fn encoding(&self) -> Encoding {
-        self.encoding
-    }
-
-    pub fn comment(&self) -> Option<&String> {
-        self.comment.as_ref()
-    }
-
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&StoredEntry> {
-        self.entries.iter().find(|&x| x.name() == name.as_ref())
-    }
-}

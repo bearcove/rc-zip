@@ -8,6 +8,9 @@ use nom::{
     number::complete::{le_u16, le_u64},
 };
 
+/// A timestamp in MS-DOS format
+///
+/// Represents dates from year 1980 to 2180, with 2 second precision.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct MsdosTimestamp {
     pub time: u16,
@@ -15,6 +18,7 @@ pub struct MsdosTimestamp {
 }
 
 impl MsdosTimestamp {
+    /// Parse an MS-DOS timestamp from a byte slice
     pub fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         fields!(Self {
             time: le_u16,
@@ -22,6 +26,7 @@ impl MsdosTimestamp {
         })(i)
     }
 
+    /// Attempts to convert to a chrono UTC date time
     pub fn to_datetime(&self) -> Option<DateTime<Utc>> {
         // see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
         let date = match {
@@ -47,16 +52,19 @@ impl MsdosTimestamp {
     }
 }
 
+/// A timestamp in NTFS format.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct NtfsTimestamp {
     pub timestamp: u64,
 }
 
 impl NtfsTimestamp {
+    /// Parse an MS-DOS timestamp from a byte slice
     pub fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
         map(le_u64, |timestamp| Self { timestamp })(i)
     }
 
+    /// Attempts to convert to a chrono UTC date time
     pub fn to_datetime(&self) -> Option<DateTime<Utc>> {
         // windows timestamp resolution
         let ticks_per_second = 10_000_000;

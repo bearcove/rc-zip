@@ -3,48 +3,86 @@
 [![Build Status](https://travis-ci.org/rust-compress/rc-zip.svg?branch=master)](https://travis-ci.org/rust-compress/rc-zip)
 ![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)
 
-### Intent
+### Motivation
 
-The goals are as follows:
+Have a pure rust, highly compatible, I/O-model independent, zip reading and
+writing library.
 
-  * Pure rust only
-    * No C bindings allowed
-    * Target platforms are Windows (MVSC), Linux, macOS, and wasm32-unknown-unknown
-  * Be as compatible as possible, including:
-    * ZIP64 extensions
-    * Non-UTF8 file names, like CP-437 and Shift-JIS
-    * Various date & time formats
-    * Arbitrary files with a trailing zip
-  * Have a flexible API
-    * Bring your own I/O layer (sync, nonblocking, async)
-    * Always allow enumerating files, even if the compression method is unsupported
-    * Provide adapters for simple (and correct) usage, including permissions & symlink handling
-  * No manual parsing
-    * Use [nom](https://crates.io/crates/nom) instead
+### Design decisions
 
-### Status
+This crate does not perform I/O directly. Instead, it uses a state machine, and asks
+for reads at specific offsets. This allows it to work under different I/O models:
+blocking, non-blocking, and async. It has no expectations of the zip archive being
+present on disk (ie. it doesn't assume `std::fs`), just that random access is possible.
 
-As of 2019-07-11, rc-zip does:
+This crate relies fully on the central directory, not on local headers:
 
-  * Find and read the end of central directory record
-  * Detect and read the end of central directory record for zip64
-  * Read file headers from the central directory
-  * Detect character encoding for file names and comments (among UTF-8,
-  CP-437, and Shift-JIS) and convert those to UTF-8 for consumption
-  * Accept zip files that have leading data (like Mojosetup installers)
+```
+[local file header 1] // <---------------- ignored
+[file data 1]
+[local file header 2]
+[file data 2]
+[central directory header 1] // <--------- used
+[central directory header 2]
+[end of central directory record]
+```
 
-Up next:
+The reason for that is that the central directory is the canonical list of
+entries in a zip. Archives that have been repacked may contain duplicate local
+file headers (and data), along with headers for entries that have been removed.
+Only the central directory is authoritative when it comes to the contents of a
+zip archive.
 
-  * Support zip64 compressed size, uncompressed size, and header offset
-  * Decode the _many_ date & time variants (see test zips)
-  * Decode file mode (unix, macOS, NTFS/VFAT/FAT)
-    * Add getters for is_dir(), etc.
+This crate accepts what is known as "trailing zips" - for example, files that
+are valid ELF or PE executables, and merely have a valid zip archive appended.
+This covers some forms of self-extracting archives and installers.
+
+This crate recognizes and uses zip64 metadata. This allows for a large number
+of entries (above 65536) and large entries (above 4GiB). This crate attempts to
+forgives some non-standard behavior from common tools. Such behavior has been
+observed in the wild and is, whenever possible, tested.
+
+This crate attempts to recognize as much metadata as possible, and normalize
+it. For example, MSDOS timestamps, NTFS timestamps, Extended timestamps and
+Unix timestamps are supported, and they're all converted to a [chrono
+DateTime<Utc>](https://crates.io/crates/chrono).
+
+Although the normalized version of metadata (names, timestamps, UID, GID, etc.)
+is put front and center, this crate attempts to expose a "raw" version of
+that same metadata whenever the authors felt it was necessary.
+
+Whenever the zip archive doesn't explicitly specify UTF-8 encoding, this crate
+relies on encoding detection to decide between CP-437 and Shift-JIS. It uses
+[encoding_rs](https://crates.io/crates/encoding_rs) to deal with Shift-JIS.
+
+Due to the history of the zip format, some compatibility issues are to be
+expected: for example, for archives with only MSDOS timestamps, the results
+might be in the wrong timezone. For archive with very few files and non-UTF8
+names, the encoding might not be detected properly, and thus decoding may fail.
+
+As much as possible, [nom](https://crates.io/crates/nom) is used to parse the
+various data structures used in the zip archive format. This allows a
+semi-declarative style that is easier to write, read, and amend if needed.
+Some (hygienic) macros are used to avoid repetition.
+
+### API design
+
+`ArchiveReader` ensures we are dealing with a valid zip archive, and reads
+the central directory. It does not perform I/O directly - rather, it tells the
+user when, where, and how much to read.
+
+Due to the nature of the zip format, `ArchiveReader` needs its own
+
+First, the central directory must be found (in the last 65K of the file) and read.
+
+This gives a full listing of the entries with relatively little I/O. The result of this
+operation is the `Archive` type, which one obtains through `ArchiveReader`.
+
+An `Archive` contains archive-level metadata (comment, detected encoding,
+creator and reader version), along with a list of `Entry` records.
 
 ### Inspirations
 
-Go's `archive/zip` package, which is extremely compatible, is used as a reference:
-
-  * <https://golang.org/pkg/archive/zip/>
 
 ...except when it comes to API design, because Go and Rust are different beasts entirely.
   

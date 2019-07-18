@@ -150,6 +150,9 @@ pub struct StoredEntry {
     /// Most of these should be normalized and accessible as other fields,
     /// but they are also made available here raw.
     pub extra_fields: Vec<super::reader::ExtraField>,
+
+    /// True if this entry was read from a zip64 archive
+    pub is_zip64: bool,
 }
 
 impl StoredEntry {
@@ -197,6 +200,14 @@ impl StoredEntry {
     /// See [StoredEntry::modified()] for caveats.
     pub fn accessed(&self) -> Option<&DateTime<Utc>> {
         self.entry.accessed.as_ref()
+    }
+
+    pub fn reader<'a, F, R>(&'a self, get_reader: F) -> crate::reader::EntryReader<'a, R>
+    where
+        R: std::io::Read,
+        F: Fn(u64) -> R,
+    {
+        crate::reader::EntryReader::new(self, get_reader)
     }
 }
 

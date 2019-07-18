@@ -38,7 +38,10 @@ pub enum FormatError {
     /// This can happen when the end of central directory record advertises
     /// a certain number of files, but we weren't able to read the same number of central directory
     /// headers.
-    InvalidCentralRecord { expected: u16, actual: u16 },
+    InvalidCentralRecord {
+        expected: u16,
+        actual: u16,
+    },
     /// An extra field (that we support) was not decoded correctly.
     ///
     /// This can indicate an invalid zip archive, or an implementation error in this crate.
@@ -51,6 +54,7 @@ pub enum FormatError {
         claimed_records_count: u64,
         zip_size: u64,
     },
+    InvalidLocalHeader,
 }
 
 impl error::Error for Error {}
@@ -84,10 +88,10 @@ impl From<encoding::DecodingError> for Error {
     }
 }
 
-/// Parsing error, see [ZipParseResult].
-pub type ZipParseError<'a> = (&'a [u8], nom::error::ErrorKind);
-
 /// Result of a parse operation
 ///
 /// Used internally when parsing, for example, the end of central directory record.
 pub type ZipParseResult<'a, T> = nom::IResult<&'a [u8], T, ZipParseError<'a>>;
+
+/// Parsing error, see [ZipParseResult].
+pub type ZipParseError<'a> = (&'a [u8], nom::error::ErrorKind);

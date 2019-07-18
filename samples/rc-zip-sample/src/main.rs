@@ -110,15 +110,15 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let mut tw = TabWriter::new(&mut stdout);
             writeln!(&mut tw, "Name\tSize\tModified\tUID\tGID")?;
 
-            for e in reader.entries() {
+            for entry in reader.entries() {
                 writeln!(
                     &mut tw,
                     "{name}\t{size}\t{modified}\t{uid}\t{gid}",
-                    name = e.name(),
-                    size = e.uncompressed_size.file_size(BINARY).unwrap(),
-                    modified = e.modified(),
-                    uid = Optional(e.uid),
-                    gid = Optional(e.gid),
+                    name = entry.name(),
+                    size = entry.uncompressed_size.file_size(BINARY).unwrap(),
+                    modified = entry.modified(),
+                    uid = Optional(entry.uid),
+                    gid = Optional(entry.gid),
                 )
                 .unwrap();
             }
@@ -130,13 +130,12 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let reader = file.read_zip()?;
             info(&reader);
 
-            for e in reader.entries() {
-                println!("Extracting {}", e.name());
+            for entry in reader.entries() {
+                println!("Extracting {}", entry.name());
                 let mut contents = Vec::<u8>::new();
-                let mut er = rc_zip::EntryReader::new(e, |offset| {
-                    positioned_io::Cursor::new_pos(&file, dbg!(offset))
-                });
-                er.read_to_end(&mut contents)?;
+                entry
+                    .reader(|offset| positioned_io::Cursor::new_pos(&file, dbg!(offset)))
+                    .read_to_end(&mut contents)?;
 
                 if let Ok(s) = std::str::from_utf8(&contents[..]) {
                     println!("contents = {:?}", s);

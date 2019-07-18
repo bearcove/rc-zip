@@ -22,7 +22,7 @@ use std::io::{Read, Write};
 
 use nom::{
     bytes::complete::{tag, take},
-    combinator::{cond, map, verify},
+    combinator::{cond, map, opt, verify},
     error::ParseError,
     multi::{length_data, many0},
     number::complete::{le_u16, le_u32, le_u64, le_u8},
@@ -90,7 +90,48 @@ impl LocalFileHeaderRecord {
     }
 }
 
-// 4.3.12 Central directory structure: File header
+/// 4.3.9  Data descriptor:
+#[derive(Debug)]
+struct DataDescriptorRecord {
+    /// CRC32 checksum
+    crc32: u32,
+    /// Compressed size
+    compressed_size: u64,
+    /// Uncompressed size
+    uncompressed_size: u64,
+}
+
+impl DataDescriptorRecord {
+    const SIGNATURE: &'static str = "PK\x07\x08";
+
+    fn parse<'a>(i: &'a [u8], is_zip64: bool) -> ZipParseResult<'a, Self> {
+        if is_zip64 {
+            preceded(
+                opt(tag(Self::SIGNATURE)),
+                fields!(Self {
+                    crc32: le_u32,
+                    compressed_size: le_u64,
+                    uncompressed_size: le_u64,
+                }),
+            )(i)
+        } else {
+            preceded(
+                opt(tag(Self::SIGNATURE)),
+                fields!({
+                    crc32: le_u32,
+                    compressed_size: le_u32,
+                    uncompressed_size: le_u32,
+                } map Self {
+                    crc32,
+                    compressed_size: compressed_size as u64,
+                    uncompressed_size: uncompressed_size as u64,
+                }),
+            )(i)
+        }
+    }
+}
+
+/// 4.3.12 Central directory structure: File header
 #[derive(Debug)]
 struct DirectoryHeader {
     // version made by
@@ -480,7 +521,7 @@ impl DirectoryHeader {
         self.flags & 0x800 == 0
     }
 
-    fn as_stored_entry(&self, encoding: Encoding) -> Result<StoredEntry, Error> {
+    fn as_stored_entry(&self, is_zip64: bool, encoding: Encoding) -> Result<StoredEntry, Error> {
         let mut comment: Option<String> = None;
         if let Some(comment_field) = self.comment.clone().as_option() {
             comment = Some(encoding.decode(&comment_field.0)?);
@@ -597,6 +638,7 @@ impl DirectoryHeader {
             extra_fields,
 
             external_attrs: self.external_attrs,
+            is_zip64,
         })
     }
 }
@@ -1301,9 +1343,10 @@ impl ArchiveReader {
                                     }
                                 };
 
+                                let is_zip64 = eocd.dir64.is_some();
                                 let entries: Result<Vec<StoredEntry>, Error> = directory_headers
                                     .into_iter()
-                                    .map(|x| x.as_stored_entry(encoding))
+                                    .map(|x| x.as_stored_entry(is_zip64, encoding))
                                     .collect();
                                 let entries = entries?;
 
@@ -1352,10 +1395,19 @@ enum EntryReaderState {
         buffer: circular::Buffer,
     },
     ReadData {
+        header: LocalFileHeaderRecord,
         decoder: deflate::Decoder<circular::Buffer>,
         read_bytes: u64,
     },
-    ReadDataDescriptor,
+    ReadDataDescriptor {
+        header: LocalFileHeaderRecord,
+        buffer: circular::Buffer,
+    },
+    ValidateCRC32 {
+        header: LocalFileHeaderRecord,
+        descriptor: Option<DataDescriptorRecord>,
+    },
+    Done,
     Transitioning,
 }
 
@@ -1382,34 +1434,39 @@ where
         match self.state {
             S::ReadLocalHeader { ref mut buffer } => {
                 if buffer.available_data() < 4 {
-                    let read_bytes = dbg!(self.rd.read(buffer.space()))?;
+                    let read_bytes = self.rd.read(buffer.space())?;
                     buffer.fill(read_bytes);
                 }
 
                 match LocalFileHeaderRecord::parse(buffer.data()) {
-                    Ok((remaining, fh)) => {
+                    Ok((remaining, header)) => {
                         let consumed = buffer.data().offset(remaining);
                         drop(remaining);
                         buffer.consume(consumed);
                         drop(buffer);
 
-                        println!("got local file header: {:#?}", fh);
+                        debug!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
                             let read_bytes = std::cmp::min(buffer.available_data() as u64, self.entry.compressed_size);
 
                             S::ReadData {
                                 decoder: deflate::Decoder::new(buffer),
+                                header,
                                 read_bytes,
                             }
                         });
                         self.read(buf)
                     }
-                    Err(e) => panic!("{:#?}", e),
+                    Err(_e) => Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        Error::Format(FormatError::InvalidLocalHeader),
+                    )),
                 }
             }
             S::ReadData {
                 ref mut decoder,
                 ref mut read_bytes,
+                ..
             } => {
                 let remaining = self.entry.compressed_size - *read_bytes;
                 if remaining > 0 {
@@ -1422,12 +1479,70 @@ where
                             buffer.space()
                         };
 
-                        let n = dbg!(self.rd.read(space))?;
+                        let n = self.rd.read(space)?;
                         buffer.fill(n);
                     }
                 }
-                dbg!(decoder.read(buf))
+                match decoder.read(buf) {
+                    Ok(0) => {
+                        transition!(self.state => (S::ReadData {decoder, header, ..}) {
+                            let buffer = decoder.into_inner();
+                            // bit 3 set (0-based)
+                            if header.flags & 0b1000 > 0 {
+                                debug!("will read data descriptor (flags = {:x})", header.flags);
+                                S::ReadDataDescriptor { buffer, header }
+                            } else {
+                                debug!("no data descriptor to read");
+                                S::ValidateCRC32 { header, descriptor: None }
+                            }
+                        });
+                        self.read(buf)
+                    }
+                    r => r,
+                }
             }
+            S::ReadDataDescriptor { ref mut buffer, .. } => {
+                if buffer.available_data() < 4 {
+                    let read_bytes = self.rd.read(buffer.space())?;
+                    buffer.fill(read_bytes);
+                }
+
+                match DataDescriptorRecord::parse(buffer.data(), self.entry.is_zip64) {
+                    Ok((_remaining, descriptor)) => {
+                        debug!("data descriptor = {:#?}", descriptor);
+                        transition!(self.state => (S::ReadDataDescriptor {buffer, header}) {
+                            S::ValidateCRC32 { header, descriptor: Some(descriptor) }
+                        });
+                        self.read(buf)
+                    }
+                    Err(_e) => Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        Error::Format(FormatError::InvalidLocalHeader),
+                    )),
+                }
+            }
+            S::ValidateCRC32 {
+                ref header,
+                ref descriptor,
+            } => {
+                let mut crc32 = self.entry.crc32;
+                if crc32 == 0 {
+                    if let Some(descriptor) = descriptor.as_ref() {
+                        crc32 = descriptor.crc32;
+                    }
+                    if crc32 == 0 {
+                        crc32 = header.crc32
+                    }
+                }
+
+                if crc32 != 0 {
+                    debug!("Should check crc32: {:x}", crc32);
+                    unimplemented!()
+                }
+                self.state = S::Done;
+                self.read(buf)
+            }
+            S::Done => Ok(0),
             _ => unimplemented!(),
         }
     }
@@ -1441,6 +1556,7 @@ where
     where
         F: Fn(u64) -> R,
     {
+        debug!("entry: {:#?}", entry);
         Self {
             entry,
             rd: get_reader(entry.header_offset),

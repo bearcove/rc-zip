@@ -1,6 +1,5 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
 use humansize::{file_size_opts::BINARY, FileSize};
-use log::*;
 use rc_zip::prelude::*;
 use std::fmt;
 use std::fs::File;
@@ -126,35 +125,23 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             tw.flush().unwrap();
         }
         ("extract", Some(matches)) => {
+            use std::io::Read;
             let file = File::open(matches.value_of("file").unwrap())?;
             let reader = file.read_zip()?;
             info(&reader);
 
             for e in reader.entries() {
                 println!("Extracting {}", e.name());
-                let mut buf = Vec::<u8>::new();
-                let mut er = rc_zip::EntryReader::new(e);
-                'read_entry: loop {
-                    if er.wants_write() {
-                        debug!("wants write!");
-                        er.write(&mut buf).unwrap();
-                    }
-                    if let Some(offset) = er.wants_read() {
-                        debug!("wants read at offset {}", offset);
-                        let mut cursor = positioned_io::Cursor::new_pos(&file, offset);
-                        let read_bytes = er.read(&mut cursor)?;
-                        if read_bytes == 0 {
-                            let err: std::io::Error = std::io::ErrorKind::UnexpectedEof.into();
-                            Err(err)?;
-                        }
-                    }
-                    match er.process() {
-                        rc_zip::EntryReaderResult::Continue => {
-                            debug!("process: continue");
-                        }
-                        rc_zip::EntryReaderResult::Done => break 'read_entry,
-                    }
-                    unimplemented!();
+                let mut contents = Vec::<u8>::new();
+                let mut er = rc_zip::EntryReader::new(e, |offset| {
+                    positioned_io::Cursor::new_pos(&file, dbg!(offset))
+                });
+                er.read_to_end(&mut contents)?;
+
+                if let Ok(s) = std::str::from_utf8(&contents[..]) {
+                    println!("contents = {:?}", s);
+                } else {
+                    println!("contents = {:?}", contents);
                 }
             }
         }

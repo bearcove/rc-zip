@@ -7,6 +7,7 @@ use chrono::{
     offset::{TimeZone, Utc},
     DateTime,
 };
+use libflate::non_blocking::deflate;
 use log::*;
 
 #[macro_use]
@@ -975,6 +976,22 @@ struct Buffer {
     read_bytes: u64,
 }
 
+impl Read for Buffer {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.buffer.read(buf)
+    }
+}
+
+impl Write for Buffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buffer.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.buffer.flush()
+    }
+}
+
 impl Buffer {
     /// creates a new buffer with the specified capacity
     pub fn with_capacity(size: usize) -> Self {
@@ -1005,6 +1022,11 @@ impl Buffer {
     /// returns how much data can be read from the buffer
     fn available_data(&self) -> usize {
         self.buffer.available_data()
+    }
+
+    /// returns how much data can be written from the buffer
+    fn available_space(&self) -> usize {
+        self.buffer.available_space()
     }
 
     /// advances the position tracker
@@ -1326,9 +1348,13 @@ impl ArchiveReader {
 }
 
 enum EntryReaderState {
-    ReadLocalHeader,
-    ReadEncryptionHeader,
-    ReadData,
+    ReadLocalHeader {
+        buffer: circular::Buffer,
+    },
+    ReadData {
+        decoder: deflate::Decoder<circular::Buffer>,
+        read_bytes: u64,
+    },
     ReadDataDescriptor,
     Transitioning,
 }
@@ -1338,69 +1364,91 @@ pub enum EntryReaderResult {
     Done,
 }
 
-pub struct EntryReader<'a> {
+pub struct EntryReader<'a, R>
+where
+    R: Read,
+{
     entry: &'a StoredEntry,
-    input: Buffer,
-    output: Buffer,
+    rd: R,
     state: EntryReaderState,
 }
 
-impl<'a> EntryReader<'a> {
-    pub fn new(entry: &'a StoredEntry) -> Self {
-        Self {
-            entry,
-            input: Buffer::with_capacity(128 * 1024),
-            output: Buffer::with_capacity(128 * 1024),
-            state: EntryReaderState::ReadLocalHeader,
-        }
-    }
-
-    pub fn wants_read(&self) -> Option<u64> {
-        self.read_op().map(|op| self.input.read_offset(op))
-    }
-
-    fn read_op(&self) -> Option<ReadOp> {
+impl<'a, R> Read for EntryReader<'a, R>
+where
+    R: Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         use EntryReaderState as S;
         match self.state {
-            S::ReadLocalHeader => Some(ReadOp {
-                offset: self.entry.header_offset,
-            }),
-            S::ReadEncryptionHeader => unimplemented!(),
-            S::ReadData => unimplemented!(),
-            S::ReadDataDescriptor => unimplemented!(),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
-        self.input.read(rd)
-    }
-
-    pub fn wants_write(&self) -> bool {
-        self.output.available_data() > 0
-    }
-
-    pub fn write(&mut self, wr: &mut Write) -> Result<usize, std::io::Error> {
-        match wr.write(self.output.data()) {
-            Ok(n) => {
-                self.output.buffer.consume(n);
-                Ok(n)
-            }
-            e => e,
-        }
-    }
-
-    pub fn process(&mut self) -> EntryReaderResult {
-        use EntryReaderState as S;
-        match self.state {
-            S::ReadLocalHeader => match LocalFileHeaderRecord::parse(self.input.data()) {
-                Ok((_remaining, fh)) => {
-                    println!("got local file header: {:#?}", fh);
-                    unimplemented!()
+            S::ReadLocalHeader { ref mut buffer } => {
+                if buffer.available_data() < 4 {
+                    let read_bytes = dbg!(self.rd.read(buffer.space()))?;
+                    buffer.fill(read_bytes);
                 }
-                Err(e) => panic!("{:#?}", e),
-            },
+
+                match LocalFileHeaderRecord::parse(buffer.data()) {
+                    Ok((remaining, fh)) => {
+                        let consumed = buffer.data().offset(remaining);
+                        drop(remaining);
+                        buffer.consume(consumed);
+                        drop(buffer);
+
+                        println!("got local file header: {:#?}", fh);
+                        transition!(self.state => (S::ReadLocalHeader { buffer }) {
+                            let read_bytes = std::cmp::min(buffer.available_data() as u64, self.entry.compressed_size);
+
+                            S::ReadData {
+                                decoder: deflate::Decoder::new(buffer),
+                                read_bytes,
+                            }
+                        });
+                        self.read(buf)
+                    }
+                    Err(e) => panic!("{:#?}", e),
+                }
+            }
+            S::ReadData {
+                ref mut decoder,
+                ref mut read_bytes,
+            } => {
+                let remaining = self.entry.compressed_size - *read_bytes;
+                if remaining > 0 {
+                    let buffer = decoder.as_inner_mut();
+                    let avail_space = buffer.available_space() as u64;
+                    if avail_space > 0 {
+                        let space = if remaining < avail_space {
+                            &mut buffer.space()[..remaining as usize]
+                        } else {
+                            buffer.space()
+                        };
+
+                        let n = dbg!(self.rd.read(space))?;
+                        buffer.fill(n);
+                    }
+                }
+                dbg!(decoder.read(buf))
+            }
             _ => unimplemented!(),
         }
     }
 }
+
+impl<'a, R> EntryReader<'a, R>
+where
+    R: Read,
+{
+    pub fn new<F>(entry: &'a StoredEntry, get_reader: F) -> Self
+    where
+        F: Fn(u64) -> R,
+    {
+        Self {
+            entry,
+            rd: get_reader(entry.header_offset),
+            state: EntryReaderState::ReadLocalHeader {
+                buffer: circular::Buffer::with_capacity(128 * 1024),
+            },
+        }
+    }
+}
+
+pub struct EntryRead {}

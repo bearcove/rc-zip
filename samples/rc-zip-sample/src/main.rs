@@ -32,7 +32,9 @@ where
 }
 
 fn main() {
+    #[cfg(feature = "color-backtrace")]
     color_backtrace::install();
+    #[cfg(feature = "env_logger")]
     env_logger::init();
 
     let matches = App::new("rc-zip sample")

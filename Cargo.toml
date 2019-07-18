@@ -16,7 +16,9 @@ travis-ci = { repository = "rust-compress/rc-zip" }
 maintenance = { status = "experimental" }
 
 [profile.release]
-debug = true
+opt-level = 'z'
+lto = true
+codegen-units = 1
 
 [dependencies]
 nom = "5.0.0"

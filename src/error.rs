@@ -38,7 +38,7 @@ pub enum FormatError {
     /// This can happen when the end of central directory record advertises
     /// a certain number of files, but we weren't able to read the same number of central directory
     /// headers.
-    InvalidCentralRecord,
+    InvalidCentralRecord { expected: u16, actual: u16 },
     /// An extra field (that we support) was not decoded correctly.
     ///
     /// This can indicate an invalid zip archive, or an implementation error in this crate.

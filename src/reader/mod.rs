@@ -100,6 +100,9 @@ struct DirectoryHeader {
 }
 
 impl DirectoryHeader {
+    /// does not include name, extra, and comment
+    const LENGTH: usize = 42;
+    const SIGNATURE_LENGTH: usize = 4;
     const SIGNATURE: &'static str = "PK\x01\x02";
 
     fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
@@ -936,6 +939,7 @@ macro_rules! transition {
     };
 }
 
+#[derive(Debug)]
 struct ReadOp {
     offset: u64,
     length: u64,
@@ -975,6 +979,11 @@ impl Buffer {
         self.buffer.data()
     }
 
+    /// returns how much data can be read from the buffer
+    fn available_data(&self) -> usize {
+        self.buffer.available_data()
+    }
+
     /// advances the position tracker
     ///
     /// if the position gets past the buffer's half,
@@ -986,6 +995,10 @@ impl Buffer {
 
     /// fill that buffer from the given Read
     fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
+        if self.buffer.available_space() == 0 {
+            debug!("uh oh, buffer has no available space!")
+        }
+
         match rd.read(self.buffer.space()) {
             Ok(written) => {
                 self.read_bytes += written as u64;
@@ -1185,97 +1198,121 @@ impl ArchiveReader {
                 ref eocd,
                 ref mut directory_headers,
             } => {
-                match DirectoryHeader::parse(self.buffer.data()) {
-                    Err(nom::Err::Incomplete(_needed)) => {
-                        // TODO: couldn't this happen when we have 0 bytes available?
+                debug!(
+                    "ReadCentralDirectory | process(), available: {}",
+                    self.buffer.available_data()
+                );
+                'read_headers: while self.buffer.available_data()
+                    >= DirectoryHeader::SIGNATURE_LENGTH
+                {
+                    match DirectoryHeader::parse(self.buffer.data()) {
+                        Err(nom::Err::Incomplete(_needed)) => {
+                            // need more data
+                            break 'read_headers;
+                        }
+                        Err(nom::Err::Error(_err)) | Err(nom::Err::Failure(_err)) => {
+                            let (_, kind) = _err;
+                            debug!("nom error kind: {:#?}", kind);
+                            match kind {
+                                nom::error::ErrorKind::Eof => {
+                                    // need more data
+                                    break 'read_headers;
+                                }
+                                _ => {}
+                            }
 
-                        // need more data
-                        Ok(R::Continue)
-                    }
-                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
-                        // this is the normal end condition when reading
-                        // the central directory (due to 65536-entries non-zip64 files)
-                        // let's just check a few numbers first.
+                            // this is the normal end condition when reading
+                            // the central directory (due to 65536-entries non-zip64 files)
+                            // let's just check a few numbers first.
 
-                        // only compare 16 bits here
-                        if (directory_headers.len() as u16) == (eocd.directory_records() as u16) {
-                            let mut detector = chardet::UniversalDetector::new();
-                            let mut all_utf8 = true;
+                            // only compare 16 bits here
+                            let expected_records = directory_headers.len() as u16;
+                            let actual_records = eocd.directory_records() as u16;
 
-                            {
-                                let max_feed: usize = 4096;
-                                let mut total_fed: usize = 0;
-                                let mut feed = |slice: &[u8]| {
-                                    detector.feed(slice);
-                                    total_fed += slice.len();
-                                    total_fed < max_feed
+                            if expected_records == actual_records {
+                                let mut detector = chardet::UniversalDetector::new();
+                                let mut all_utf8 = true;
+
+                                {
+                                    let max_feed: usize = 4096;
+                                    let mut total_fed: usize = 0;
+                                    let mut feed = |slice: &[u8]| {
+                                        detector.feed(slice);
+                                        total_fed += slice.len();
+                                        total_fed < max_feed
+                                    };
+
+                                    'recognize_encoding: for fh in
+                                        directory_headers.iter().filter(|fh| fh.is_non_utf8())
+                                    {
+                                        all_utf8 = false;
+                                        if !feed(&fh.name.0) || !feed(&fh.comment.0) {
+                                            break 'recognize_encoding;
+                                        }
+                                    }
+                                }
+
+                                let encoding = {
+                                    if all_utf8 {
+                                        Encoding::Utf8
+                                    } else {
+                                        let (charset, confidence, _language) = detector.close();
+                                        let label = chardet::charset2encoding(&charset);
+                                        debug!(
+                                            "Detected charset {} with confidence {}",
+                                            label, confidence
+                                        );
+
+                                        match label {
+                                            "SHIFT_JIS" => Encoding::ShiftJis,
+                                            "utf-8" => Encoding::Utf8,
+                                            _ => Encoding::Cp437,
+                                        }
+                                    }
                                 };
 
-                                'recognize_encoding: for fh in
-                                    directory_headers.iter().filter(|fh| fh.is_non_utf8())
-                                {
-                                    all_utf8 = false;
-                                    if !feed(&fh.name.0) || !feed(&fh.comment.0) {
-                                        break 'recognize_encoding;
-                                    }
+                                let entries: Result<Vec<StoredEntry>, Error> = directory_headers
+                                    .into_iter()
+                                    .map(|x| x.as_stored_entry(encoding))
+                                    .collect();
+                                let entries = entries?;
+
+                                let mut comment: Option<String> = None;
+                                if !eocd.comment().0.is_empty() {
+                                    comment = Some(encoding.decode(&eocd.comment().0)?);
                                 }
-                            }
 
-                            let encoding = {
-                                if all_utf8 {
-                                    Encoding::Utf8
-                                } else {
-                                    let (charset, confidence, _language) = detector.close();
-                                    let label = chardet::charset2encoding(&charset);
-                                    debug!(
-                                        "Detected charset {} with confidence {}",
-                                        label, confidence
-                                    );
-
-                                    match label {
-                                        "SHIFT_JIS" => Encoding::ShiftJis,
-                                        "utf-8" => Encoding::Utf8,
-                                        _ => Encoding::Cp437,
-                                    }
+                                self.state = S::Done;
+                                return Ok(R::Done(Archive {
+                                    size: self.size,
+                                    comment,
+                                    entries,
+                                    encoding,
+                                }));
+                            } else {
+                                // if we read the wrong number of directory entries,
+                                // error out.
+                                return Err(FormatError::InvalidCentralRecord {
+                                    expected: expected_records,
+                                    actual: actual_records,
                                 }
-                            };
-
-                            let entries: Result<Vec<StoredEntry>, Error> = directory_headers
-                                .into_iter()
-                                .map(|x| x.as_stored_entry(encoding))
-                                .collect();
-                            let entries = entries?;
-
-                            let mut comment: Option<String> = None;
-                            if !eocd.comment().0.is_empty() {
-                                comment = Some(encoding.decode(&eocd.comment().0)?);
+                                .into());
                             }
-
-                            self.state = S::Done;
-                            Ok(R::Done(Archive {
-                                size: self.size,
-                                comment,
-                                entries,
-                                encoding,
-                            }))
-                        } else {
-                            // if we read the wrong number of directory entries,
-                            // error out.
-                            Err(FormatError::InvalidCentralRecord.into())
+                        }
+                        Ok((remaining, dh)) => {
+                            let consumed = self.buffer.data().offset(remaining);
+                            drop(remaining);
+                            self.buffer.consume(consumed);
+                            directory_headers.push(dh);
                         }
                     }
-                    Ok((remaining, dh)) => {
-                        let consumed = self.buffer.data().offset(remaining);
-                        drop(remaining);
-                        self.buffer.consume(consumed);
-                        directory_headers.push(dh);
-                        Ok(R::Continue)
-                    }
                 }
+
+                // need more data
+                return Ok(R::Continue);
             }
             S::Done { .. } => panic!("Called process() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
         }
     }
 }
-

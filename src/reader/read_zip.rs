@@ -64,4 +64,3 @@ impl ReadZip for File {
         ReadAt::read_zip_with_size(self, size)
     }
 }
-

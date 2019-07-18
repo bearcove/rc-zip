@@ -17,7 +17,7 @@ pub use self::{dates::*, read_zip::*};
 
 use hex_fmt::HexFmt;
 use std::fmt;
-use std::io::Read;
+use std::io::{Read, Write};
 
 use nom::{
     bytes::complete::{tag, take},
@@ -36,15 +36,13 @@ use nom::{
 /// 4.3.7 Local file header
 struct LocalFileHeaderRecord {
     /// version needed to extract
-    reader_version: u16,
+    reader_version: Version,
     /// general purpose bit flag
     flags: u16,
     /// compression method
     method: u16,
-    /// last mod file time
-    modified_time: u16,
-    /// last mod file date
-    modified_date: u16,
+    /// last mod file datetime
+    modified: MsdosTimestamp,
     /// crc-32
     crc32: u32,
     /// compressed size
@@ -58,9 +56,37 @@ struct LocalFileHeaderRecord {
 }
 
 impl LocalFileHeaderRecord {
-    /// Does not include filename size & data, extra size & data
-    const LENGTH: usize = 30;
     const SIGNATURE: &'static str = "PK\x03\x04";
+
+    fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+        preceded(
+            tag(Self::SIGNATURE),
+            fields!({
+                reader_version: Version::parse,
+                flags: le_u16,
+                method: le_u16,
+                modified: MsdosTimestamp::parse,
+                crc32: le_u32,
+                compressed_size: le_u32,
+                uncompressed_size: le_u32,
+                name_len: le_u16,
+                extra_len: le_u16,
+            } chain fields!({
+                name: zip_string(name_len),
+                extra: zip_bytes(extra_len),
+            } map Self {
+                reader_version,
+                flags,
+                method,
+                modified,
+                crc32,
+                compressed_size,
+                uncompressed_size,
+                name,
+                extra,
+            })),
+        )(i)
+    }
 }
 
 // 4.3.12 Central directory structure: File header
@@ -100,8 +126,6 @@ struct DirectoryHeader {
 }
 
 impl DirectoryHeader {
-    /// does not include name, extra, and comment
-    const LENGTH: usize = 42;
     const SIGNATURE_LENGTH: usize = 4;
     const SIGNATURE: &'static str = "PK\x01\x02";
 
@@ -596,12 +620,12 @@ struct EndOfCentralDirectoryRecord {
 }
 
 impl EndOfCentralDirectoryRecord {
-    /// does not include comment size & comment data
-    const LENGTH: usize = 20;
+    /// Does not include comment size & comment data
+    const MIN_LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
     fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
-        for i in (0..(b.len() - Self::LENGTH + 1)).rev() {
+        for i in (0..(b.len() - Self::MIN_LENGTH + 1)).rev() {
             let slice = &b[i..];
 
             if let Ok((_, directory)) = Self::parse(slice) {
@@ -942,7 +966,6 @@ macro_rules! transition {
 #[derive(Debug)]
 struct ReadOp {
     offset: u64,
-    length: u64,
 }
 
 /// A wrapper around [circular::Buffer] that keeps track of how many bytes we've read since
@@ -1008,6 +1031,10 @@ impl Buffer {
             Err(e) => Err(e),
         }
     }
+
+    fn read_offset(&self, op: ReadOp) -> u64 {
+        self.read_bytes + op.offset
+    }
 }
 
 impl ArchiveReader {
@@ -1040,10 +1067,7 @@ impl ArchiveReader {
     /// Returns `None` if the reader does not need data and [process()](ArchiveReader::process())
     /// can be called directly.
     pub fn wants_read(&self) -> Option<u64> {
-        match self.read_op() {
-            Some(op) => self.read_op_state(op),
-            None => None,
-        }
+        self.read_op().map(|op| self.buffer.read_offset(op))
     }
 
     fn read_op(&self) -> Option<ReadOp> {
@@ -1051,37 +1075,21 @@ impl ArchiveReader {
         match self.state {
             S::ReadEocd { haystack_size } => Some(ReadOp {
                 offset: self.size - haystack_size,
-                length: haystack_size,
             }),
             S::ReadEocd64Locator { ref eocdr } => {
                 let length = EndOfCentralDirectory64Locator::LENGTH as u64;
                 Some(ReadOp {
                     offset: eocdr.offset - length,
-                    length,
                 })
             }
-            S::ReadEocd64 { eocdr64_offset, .. } => {
-                let length = EndOfCentralDirectory64Record::LENGTH as u64;
-                Some(ReadOp {
-                    offset: eocdr64_offset,
-                    length,
-                })
-            }
+            S::ReadEocd64 { eocdr64_offset, .. } => Some(ReadOp {
+                offset: eocdr64_offset,
+            }),
             S::ReadCentralDirectory { ref eocd, .. } => Some(ReadOp {
                 offset: eocd.directory_offset(),
-                length: eocd.directory_size(),
             }),
             S::Done { .. } => panic!("Called wants_read() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
-        }
-    }
-
-    fn read_op_state(&self, op: ReadOp) -> Option<u64> {
-        let read_bytes = self.buffer.read_bytes();
-        if read_bytes < op.length {
-            Some(op.offset + read_bytes)
-        } else {
-            None
         }
     }
 
@@ -1313,6 +1321,86 @@ impl ArchiveReader {
             }
             S::Done { .. } => panic!("Called process() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
+        }
+    }
+}
+
+enum EntryReaderState {
+    ReadLocalHeader,
+    ReadEncryptionHeader,
+    ReadData,
+    ReadDataDescriptor,
+    Transitioning,
+}
+
+pub enum EntryReaderResult {
+    Continue,
+    Done,
+}
+
+pub struct EntryReader<'a> {
+    entry: &'a StoredEntry,
+    input: Buffer,
+    output: Buffer,
+    state: EntryReaderState,
+}
+
+impl<'a> EntryReader<'a> {
+    pub fn new(entry: &'a StoredEntry) -> Self {
+        Self {
+            entry,
+            input: Buffer::with_capacity(128 * 1024),
+            output: Buffer::with_capacity(128 * 1024),
+            state: EntryReaderState::ReadLocalHeader,
+        }
+    }
+
+    pub fn wants_read(&self) -> Option<u64> {
+        self.read_op().map(|op| self.input.read_offset(op))
+    }
+
+    fn read_op(&self) -> Option<ReadOp> {
+        use EntryReaderState as S;
+        match self.state {
+            S::ReadLocalHeader => Some(ReadOp {
+                offset: self.entry.header_offset,
+            }),
+            S::ReadEncryptionHeader => unimplemented!(),
+            S::ReadData => unimplemented!(),
+            S::ReadDataDescriptor => unimplemented!(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
+        self.input.read(rd)
+    }
+
+    pub fn wants_write(&self) -> bool {
+        self.output.available_data() > 0
+    }
+
+    pub fn write(&mut self, wr: &mut Write) -> Result<usize, std::io::Error> {
+        match wr.write(self.output.data()) {
+            Ok(n) => {
+                self.output.buffer.consume(n);
+                Ok(n)
+            }
+            e => e,
+        }
+    }
+
+    pub fn process(&mut self) -> EntryReaderResult {
+        use EntryReaderState as S;
+        match self.state {
+            S::ReadLocalHeader => match LocalFileHeaderRecord::parse(self.input.data()) {
+                Ok((_remaining, fh)) => {
+                    println!("got local file header: {:#?}", fh);
+                    unimplemented!()
+                }
+                Err(e) => panic!("{:#?}", e),
+            },
+            _ => unimplemented!(),
         }
     }
 }

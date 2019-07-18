@@ -7,14 +7,24 @@ use nom::{
     combinator::map,
     number::complete::{le_u16, le_u64},
 };
+use std::fmt;
 
 /// A timestamp in MS-DOS format
 ///
 /// Represents dates from year 1980 to 2180, with 2 second precision.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct MsdosTimestamp {
     pub time: u16,
     pub date: u16,
+}
+
+impl fmt::Debug for MsdosTimestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.to_datetime() {
+            Some(dt) => write!(f, "MsdosTimestamp({})", dt),
+            None => write!(f, "MsdosTimestamp(?)"),
+        }
+    }
 }
 
 impl MsdosTimestamp {
@@ -53,9 +63,18 @@ impl MsdosTimestamp {
 }
 
 /// A timestamp in NTFS format.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct NtfsTimestamp {
     pub timestamp: u64,
+}
+
+impl fmt::Debug for NtfsTimestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.to_datetime() {
+            Some(dt) => write!(f, "NtfsTimestamp({})", dt),
+            None => write!(f, "NtfsTimestamp(?)"),
+        }
+    }
 }
 
 impl NtfsTimestamp {

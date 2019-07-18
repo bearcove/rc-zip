@@ -1,7 +1,9 @@
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg, ArgMatches, SubCommand};
 use humansize::{file_size_opts::BINARY, FileSize};
+use log::*;
 use rc_zip::prelude::*;
 use std::fmt;
+use std::fs::File;
 
 struct Optional<T>(Option<T>);
 
@@ -58,14 +60,22 @@ fn main() {
                         .index(1),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("extract")
+                .about("Extract files contained in a ZIP file")
+                .arg(
+                    Arg::with_name("file")
+                        .help("ZIP file to extract")
+                        .required(true)
+                        .index(1),
+                ),
+        )
         .get_matches();
 
-    fn read(file: &str) -> Result<rc_zip::Archive, Box<dyn std::error::Error>> {
-        println!("Opening ({})", file);
-        let file = std::fs::File::open(file)?;
-        Ok(file.read_zip()?)
-    }
+    do_main(matches).unwrap();
+}
 
+fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
     fn info(archive: &rc_zip::Archive) {
         if let Some(comment) = archive.comment() {
             println!("Comment:\n{}", comment);
@@ -86,13 +96,12 @@ fn main() {
 
     match matches.subcommand() {
         ("info", Some(matches)) => {
-            let reader = read(matches.value_of("file").expect("file missing")).unwrap();
+            let reader = File::open(matches.value_of("file").unwrap())?.read_zip()?;
             info(&reader);
         }
         ("list", Some(matches)) => {
-            let reader = read(matches.value_of("file").expect("file missing")).unwrap();
+            let reader = File::open(matches.value_of("file").unwrap())?.read_zip()?;
             info(&reader);
-
             println!("");
 
             use std::io::Write;
@@ -100,7 +109,7 @@ fn main() {
 
             let mut stdout = std::io::stdout();
             let mut tw = TabWriter::new(&mut stdout);
-            writeln!(&mut tw, "Name\tSize\tModified\tUID\tGID").unwrap();
+            writeln!(&mut tw, "Name\tSize\tModified\tUID\tGID")?;
 
             for e in reader.entries() {
                 writeln!(
@@ -116,8 +125,43 @@ fn main() {
             }
             tw.flush().unwrap();
         }
+        ("extract", Some(matches)) => {
+            let file = File::open(matches.value_of("file").unwrap())?;
+            let reader = file.read_zip()?;
+            info(&reader);
+
+            for e in reader.entries() {
+                println!("Extracting {}", e.name());
+                let mut buf = Vec::<u8>::new();
+                let mut er = rc_zip::EntryReader::new(e);
+                'read_entry: loop {
+                    if er.wants_write() {
+                        debug!("wants write!");
+                        er.write(&mut buf).unwrap();
+                    }
+                    if let Some(offset) = er.wants_read() {
+                        debug!("wants read at offset {}", offset);
+                        let mut cursor = positioned_io::Cursor::new_pos(&file, offset);
+                        let read_bytes = er.read(&mut cursor)?;
+                        if read_bytes == 0 {
+                            let err: std::io::Error = std::io::ErrorKind::UnexpectedEof.into();
+                            Err(err)?;
+                        }
+                    }
+                    match er.process() {
+                        rc_zip::EntryReaderResult::Continue => {
+                            debug!("process: continue");
+                        }
+                        rc_zip::EntryReaderResult::Done => break 'read_entry,
+                    }
+                    unimplemented!();
+                }
+            }
+        }
         _ => {
             panic!("Invalid subcommand");
         }
     }
+
+    Ok(())
 }

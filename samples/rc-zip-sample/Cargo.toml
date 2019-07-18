@@ -14,3 +14,5 @@ humansize = "1.1.0"
 color-backtrace = { version = "0.2.2", optional = true }
 env_logger = { version = "0.6.2", optional = true }
 tabwriter = "1.1.0"
+log = "0.4.7"
+positioned-io = "0.2.2"

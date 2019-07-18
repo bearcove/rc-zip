@@ -134,7 +134,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                 println!("Extracting {}", entry.name());
                 let mut contents = Vec::<u8>::new();
                 entry
-                    .reader(|offset| positioned_io::Cursor::new_pos(&file, dbg!(offset)))
+                    .reader(|offset| positioned_io::Cursor::new_pos(&file, offset))
                     .read_to_end(&mut contents)?;
 
                 if let Ok(s) = std::str::from_utf8(&contents[..]) {

@@ -88,6 +88,12 @@ impl LocalFileHeaderRecord {
             })),
         )(i)
     }
+
+    fn has_data_descriptor(&self) -> bool {
+        // 4.3.9.1 This descriptor MUST exist if bit 3 of the general
+        // purpose bit flag is set (see below).
+        self.flags & 0b1000 != 0
+    }
 }
 
 /// 4.3.9  Data descriptor:
@@ -768,7 +774,6 @@ struct EndOfCentralDirectory64Record {
 }
 
 impl EndOfCentralDirectory64Record {
-    const LENGTH: usize = 56;
     const SIGNATURE: &'static str = "PK\x06\x06";
 
     fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
@@ -1064,11 +1069,6 @@ impl Buffer {
     /// returns how much data can be read from the buffer
     fn available_data(&self) -> usize {
         self.buffer.available_data()
-    }
-
-    /// returns how much data can be written from the buffer
-    fn available_space(&self) -> usize {
-        self.buffer.available_space()
     }
 
     /// advances the position tracker
@@ -1390,20 +1390,29 @@ impl ArchiveReader {
     }
 }
 
+struct EntryReadMetrics {
+    uncompressed_size: u64,
+    crc32: u32,
+}
+
 enum EntryReaderState {
     ReadLocalHeader {
         buffer: circular::Buffer,
     },
     ReadData {
+        hasher: crc32fast::Hasher,
+        uncompressed_size: u64,
         header: LocalFileHeaderRecord,
         decoder: deflate::Decoder<circular::Buffer>,
         read_bytes: u64,
     },
     ReadDataDescriptor {
+        metrics: EntryReadMetrics,
         header: LocalFileHeaderRecord,
         buffer: circular::Buffer,
     },
-    ValidateCRC32 {
+    Validate {
+        metrics: EntryReadMetrics,
         header: LocalFileHeaderRecord,
         descriptor: Option<DataDescriptorRecord>,
     },
@@ -1450,6 +1459,8 @@ where
                             let read_bytes = std::cmp::min(buffer.available_data() as u64, self.entry.compressed_size);
 
                             S::ReadData {
+                                hasher: crc32fast::Hasher::new(),
+                                uncompressed_size: 0,
                                 decoder: deflate::Decoder::new(buffer),
                                 header,
                                 read_bytes,
@@ -1464,8 +1475,10 @@ where
                 }
             }
             S::ReadData {
+                ref mut uncompressed_size,
                 ref mut decoder,
                 ref mut read_bytes,
+                ref mut hasher,
                 ..
             } => {
                 let remaining = self.entry.compressed_size - *read_bytes;
@@ -1485,23 +1498,33 @@ where
                 }
                 match decoder.read(buf) {
                     Ok(0) => {
-                        transition!(self.state => (S::ReadData {decoder, header, ..}) {
+                        transition!(self.state => (S::ReadData { decoder, header, hasher, uncompressed_size, .. }) {
                             let buffer = decoder.into_inner();
-                            // bit 3 set (0-based)
-                            if header.flags & 0b1000 > 0 {
+                            let metrics = EntryReadMetrics {
+                                crc32: hasher.finalize(),
+                                uncompressed_size,
+                            };
+                            if header.has_data_descriptor() {
                                 debug!("will read data descriptor (flags = {:x})", header.flags);
-                                S::ReadDataDescriptor { buffer, header }
+                                S::ReadDataDescriptor { metrics, buffer, header }
                             } else {
                                 debug!("no data descriptor to read");
-                                S::ValidateCRC32 { header, descriptor: None }
+                                S::Validate { metrics, header, descriptor: None }
                             }
                         });
                         self.read(buf)
+                    }
+                    Ok(n) => {
+                        *uncompressed_size += n as u64;
+                        hasher.update(&buf[..n]);
+                        Ok(n)
                     }
                     r => r,
                 }
             }
             S::ReadDataDescriptor { ref mut buffer, .. } => {
+                // FIXME: should this be a loop? should it error out
+                // on read_bytes == 0 ?
                 if buffer.available_data() < 4 {
                     let read_bytes = self.rd.read(buffer.space())?;
                     buffer.fill(read_bytes);
@@ -1510,8 +1533,8 @@ where
                 match DataDescriptorRecord::parse(buffer.data(), self.entry.is_zip64) {
                     Ok((_remaining, descriptor)) => {
                         debug!("data descriptor = {:#?}", descriptor);
-                        transition!(self.state => (S::ReadDataDescriptor {buffer, header}) {
-                            S::ValidateCRC32 { header, descriptor: Some(descriptor) }
+                        transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
+                            S::Validate { metrics, header, descriptor: Some(descriptor) }
                         });
                         self.read(buf)
                     }
@@ -1521,24 +1544,55 @@ where
                     )),
                 }
             }
-            S::ValidateCRC32 {
+            S::Validate {
+                ref metrics,
                 ref header,
                 ref descriptor,
             } => {
-                let mut crc32 = self.entry.crc32;
-                if crc32 == 0 {
+                let expected_crc32 = if self.entry.crc32 != 0 {
+                    self.entry.crc32
+                } else {
                     if let Some(descriptor) = descriptor.as_ref() {
-                        crc32 = descriptor.crc32;
+                        descriptor.crc32
+                    } else {
+                        header.crc32
                     }
-                    if crc32 == 0 {
-                        crc32 = header.crc32
+                };
+
+                let expected_size = if self.entry.uncompressed_size != 0 {
+                    self.entry.uncompressed_size
+                } else {
+                    if let Some(descriptor) = descriptor.as_ref() {
+                        descriptor.uncompressed_size
+                    } else {
+                        header.uncompressed_size as u64
+                    }
+                };
+
+                if expected_crc32 != 0 {
+                    debug!("expected CRC-32: {:x}", expected_crc32);
+                    debug!("computed CRC-32: {:x}", metrics.crc32);
+                    if expected_crc32 != metrics.crc32 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            Error::Format(FormatError::WrongChecksum {
+                                expected: expected_crc32,
+                                actual: metrics.crc32,
+                            }),
+                        ));
                     }
                 }
 
-                if crc32 != 0 {
-                    debug!("Should check crc32: {:x}", crc32);
-                    unimplemented!()
+                if expected_size != metrics.uncompressed_size {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        Error::Format(FormatError::WrongSize {
+                            expected: expected_size,
+                            actual: metrics.uncompressed_size,
+                        }),
+                    ));
                 }
+
                 self.state = S::Done;
                 self.read(buf)
             }

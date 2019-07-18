@@ -38,10 +38,7 @@ pub enum FormatError {
     /// This can happen when the end of central directory record advertises
     /// a certain number of files, but we weren't able to read the same number of central directory
     /// headers.
-    InvalidCentralRecord {
-        expected: u16,
-        actual: u16,
-    },
+    InvalidCentralRecord { expected: u16, actual: u16 },
     /// An extra field (that we support) was not decoded correctly.
     ///
     /// This can indicate an invalid zip archive, or an implementation error in this crate.
@@ -54,7 +51,12 @@ pub enum FormatError {
         claimed_records_count: u64,
         zip_size: u64,
     },
+    /// The local file header (before the file data) could not be parsed correctly.
     InvalidLocalHeader,
+    /// The uncompressed size didn't match
+    WrongSize { expected: u64, actual: u64 },
+    /// The CRC-32 checksum didn't match.
+    WrongChecksum { expected: u32, actual: u32 },
 }
 
 impl error::Error for Error {}

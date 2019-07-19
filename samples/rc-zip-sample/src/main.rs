@@ -108,12 +108,13 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
             let mut stdout = std::io::stdout();
             let mut tw = TabWriter::new(&mut stdout);
-            writeln!(&mut tw, "Name\tSize\tModified\tUID\tGID")?;
+            writeln!(&mut tw, "Mode\tName\tSize\tModified\tUID\tGID")?;
 
             for entry in reader.entries() {
                 writeln!(
                     &mut tw,
-                    "{name}\t{size}\t{modified}\t{uid}\t{gid}",
+                    "{mode}\t{name}\t{size}\t{modified}\t{uid}\t{gid}",
+                    mode = entry.mode,
                     name = entry.name(),
                     size = entry.uncompressed_size.file_size(BINARY).unwrap(),
                     modified = entry.modified(),

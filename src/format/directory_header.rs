@@ -209,6 +209,18 @@ impl DirectoryHeader {
             None => self.modified.to_datetime(),
         };
 
+        let mut mode: Mode = match self.creator_version.host_system() {
+            HostSystem::Unix | HostSystem::Osx => UnixMode(self.external_attrs >> 16).into(),
+            HostSystem::WindowsNtfs | HostSystem::Vfat | HostSystem::MsDos => {
+                MsdosMode(self.external_attrs).into()
+            }
+            _ => Mode(0),
+        };
+        if name.ends_with('/') {
+            // believe it or not, this is straight from the APPNOTE
+            mode |= Mode::DIR
+        };
+
         Ok(StoredEntry {
             entry: Entry {
                 name,
@@ -230,6 +242,7 @@ impl DirectoryHeader {
 
             uid,
             gid,
+            mode,
 
             extra_fields,
 

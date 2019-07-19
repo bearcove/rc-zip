@@ -155,6 +155,9 @@ pub struct StoredEntry {
     /// Only present if a Unix extra field or New Unix extra field was found.
     pub gid: Option<u32>,
 
+    /// File mode
+    pub mode: Mode,
+
     /// Any extra fields recognized while parsing the file.
     ///
     /// Most of these should be normalized and accessible as other fields,
@@ -219,6 +222,35 @@ impl StoredEntry {
     {
         crate::reader::EntryReader::new(self, get_reader)
     }
+}
+
+/// The contents of an entry: a directory, a file, or a symbolic link.
+#[derive(Debug)]
+pub enum EntryContents<'a> {
+    Directory(Directory<'a>),
+    File(File<'a>),
+    Symlink(Symlink<'a>),
+}
+
+impl StoredEntry {
+    pub fn contents<'a>(&'a self) -> EntryContents<'a> {
+        EntryContents::File(File { entry: &self })
+    }
+}
+
+#[derive(Debug)]
+pub struct Directory<'a> {
+    entry: &'a StoredEntry,
+}
+
+#[derive(Debug)]
+pub struct File<'a> {
+    entry: &'a StoredEntry,
+}
+
+#[derive(Debug)]
+pub struct Symlink<'a> {
+    entry: &'a StoredEntry,
 }
 
 /// Compression method used for a file entry.

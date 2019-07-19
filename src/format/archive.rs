@@ -1,10 +1,4 @@
-pub use crate::encoding::Encoding;
-
-mod raw;
-mod version;
-pub use self::{raw::*, version::*};
-
-use chrono::{offset::Utc, DateTime};
+use crate::format::*;
 
 /// An Archive contains general information about a zip files,
 /// along with a list of [entries][StoredEntry].
@@ -73,6 +67,22 @@ pub struct Entry {
 
     /// Accessed timestamp
     pub accessed: Option<chrono::DateTime<chrono::offset::Utc>>,
+}
+
+impl Entry {
+    pub fn new<S>(name: S, method: Method) -> Self
+    where
+        S: Into<String>,
+    {
+        Self {
+            name: name.into(),
+            comment: None,
+            modified: zero_datetime(),
+            created: None,
+            accessed: None,
+            method,
+        }
+    }
 }
 
 /// An entry as stored into an Archive. Contains additional metadata and offset information.
@@ -149,7 +159,7 @@ pub struct StoredEntry {
     ///
     /// Most of these should be normalized and accessible as other fields,
     /// but they are also made available here raw.
-    pub extra_fields: Vec<super::reader::ExtraField>,
+    pub extra_fields: Vec<ExtraField>,
 
     /// True if this entry was read from a zip64 archive
     pub is_zip64: bool,
@@ -256,29 +266,6 @@ impl Into<u16> for Method {
             Bzip2 => 12,
             Lzma => 14,
             Unsupported(m) => m,
-        }
-    }
-}
-
-pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
-    chrono::DateTime::from_utc(
-        chrono::naive::NaiveDateTime::from_timestamp(0, 0),
-        chrono::offset::Utc,
-    )
-}
-
-impl Entry {
-    pub fn new<S>(name: S, method: Method) -> Self
-    where
-        S: Into<String>,
-    {
-        Self {
-            name: name.into(),
-            comment: None,
-            modified: zero_datetime(),
-            created: None,
-            accessed: None,
-            method,
         }
     }
 }

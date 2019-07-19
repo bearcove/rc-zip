@@ -1,4 +1,5 @@
-use crate::error::ZipParseResult;
+use crate::format::parse;
+
 use chrono::{
     offset::{LocalResult, TimeZone, Utc},
     DateTime,
@@ -29,7 +30,7 @@ impl fmt::Debug for MsdosTimestamp {
 
 impl MsdosTimestamp {
     /// Parse an MS-DOS timestamp from a byte slice
-    pub fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
         fields!(Self {
             time: le_u16,
             date: le_u16,
@@ -79,7 +80,7 @@ impl fmt::Debug for NtfsTimestamp {
 
 impl NtfsTimestamp {
     /// Parse an MS-DOS timestamp from a byte slice
-    pub fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
         map(le_u64, |timestamp| Self { timestamp })(i)
     }
 
@@ -96,4 +97,11 @@ impl NtfsTimestamp {
             _ => None,
         }
     }
+}
+
+pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
+    chrono::DateTime::from_utc(
+        chrono::naive::NaiveDateTime::from_timestamp(0, 0),
+        chrono::offset::Utc,
+    )
 }

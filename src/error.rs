@@ -89,11 +89,3 @@ impl From<encoding::DecodingError> for Error {
         Error::Encoding(e)
     }
 }
-
-/// Result of a parse operation
-///
-/// Used internally when parsing, for example, the end of central directory record.
-pub type ZipParseResult<'a, T> = nom::IResult<&'a [u8], T, ZipParseError<'a>>;
-
-/// Parsing error, see [ZipParseResult].
-pub type ZipParseError<'a> = (&'a [u8], nom::error::ErrorKind);

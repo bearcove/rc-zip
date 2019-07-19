@@ -1,4 +1,4 @@
-use crate::error::ZipParseResult;
+use crate::format::*;
 use nom::{combinator::map, number::complete::le_u16};
 use std::fmt;
 
@@ -25,7 +25,7 @@ impl fmt::Debug for Version {
 
 impl Version {
     /// Parse a version from a byte slice
-    pub fn parse<'a>(i: &'a [u8]) -> ZipParseResult<'a, Self> {
+    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
         map(le_u16, |v| Self(v))(i)
     }
 

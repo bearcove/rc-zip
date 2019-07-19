@@ -1,4 +1,6 @@
+use crate::format::*;
 use hex_fmt::HexFmt;
+use nom::{bytes::complete::take, combinator::map};
 use std::fmt;
 
 /// A raw zip string, with no specific encoding.
@@ -14,21 +16,30 @@ impl<'a> From<&'a [u8]> for ZipString {
     }
 }
 
-impl ZipString {
-    pub(crate) fn as_option(self) -> Option<ZipString> {
-        if self.0.len() > 0 {
-            Some(self)
-        } else {
-            None
-        }
-    }
-}
-
 impl fmt::Debug for ZipString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match std::str::from_utf8(&self.0) {
             Ok(s) => write!(f, "{:?}", s),
             Err(_) => write!(f, "[non-utf8 string: {:x}]", HexFmt(&self.0)),
+        }
+    }
+}
+
+impl ZipString {
+    pub(crate) fn parser<'a, C>(count: C) -> impl Fn(&'a [u8]) -> parse::Result<'a, Self>
+    where
+        C: nom::ToUsize,
+    {
+        map(take(count.to_usize()), |slice: &'a [u8]| {
+            ZipString(slice.into())
+        })
+    }
+
+    pub(crate) fn as_option(self) -> Option<ZipString> {
+        if self.0.len() > 0 {
+            Some(self)
+        } else {
+            None
         }
     }
 }
@@ -54,5 +65,16 @@ impl fmt::Debug for ZipBytes {
             write!(f, " (+ {} bytes)", extra)?;
         }
         Ok(())
+    }
+}
+
+impl ZipBytes {
+    pub(crate) fn parser<'a, C>(count: C) -> impl Fn(&'a [u8]) -> parse::Result<'a, Self>
+    where
+        C: nom::ToUsize,
+    {
+        map(take(count.to_usize()), |slice: &'a [u8]| {
+            ZipBytes(slice.into())
+        })
     }
 }

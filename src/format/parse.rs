@@ -1,3 +1,5 @@
+use nom::{error::ErrorKind, IResult};
+
 #[macro_export]
 macro_rules! fields {
     (from $input:ident { $($name:ident : $combinator:expr),+ $(,)* } do $body:expr) => {
@@ -23,3 +25,11 @@ macro_rules! fields {
         )
     };
 }
+
+/// Result of a parse operation
+///
+/// Used internally when parsing, for example, the end of central directory record.
+pub type Result<'a, T> = IResult<&'a [u8], T, Error<'a>>;
+
+/// Parsing error, see [Error].
+pub type Error<'a> = (&'a [u8], ErrorKind);

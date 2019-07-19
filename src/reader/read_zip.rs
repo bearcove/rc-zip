@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
+    format::Archive,
     reader::{ArchiveReader, ArchiveReaderResult},
-    types::Archive,
 };
 use positioned_io::{Cursor, ReadAt, Size};
 use std::fs::File;

@@ -67,19 +67,20 @@ Some (hygienic) macros are used to avoid repetition.
 
 ### API design
 
-`ArchiveReader` ensures we are dealing with a valid zip archive, and reads
-the central directory. It does not perform I/O directly - rather, it tells the
-user when, where, and how much to read.
+The design of the API is constrained by several parameters:
 
-Due to the nature of the zip format, `ArchiveReader` needs its own
+  * A compliant zip reader *must* first read the central directory, located
+  near the end of the zip archive. This means simply taking an `Read` won't do.
+  * Multiple I/O models must be supported. Whereas other crates focus on
+  taking a `Read`, a `Read + Seek`, or simply a byte slice, this crate aims
+  to support synchronous *and* asynchronous I/O.
 
-First, the central directory must be found (in the last 65K of the file) and read.
+As a result, the structs in this crate are state machines, that advertise
+their need to read (and from where), to process data, or to write. As a
+result, I/O errors are cleanly separated from the rest, and calls to this
+crate never block.
 
-This gives a full listing of the entries with relatively little I/O. The result of this
-operation is the `Archive` type, which one obtains through `ArchiveReader`.
-
-An `Archive` contains archive-level metadata (comment, detected encoding,
-creator and reader version), along with a list of `Entry` records.
+See the inline rustdoc comments for more details on API design.
 
 ### License
 

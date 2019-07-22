@@ -22,12 +22,14 @@ pub mod prelude;
 mod encoding;
 mod error;
 mod reader;
+mod writer;
 mod format;
 
-pub use positioned_io;
-pub use error::*;
-pub use reader::*;
-pub use format::*;
+pub use self::{
+error::*,
+reader::*,
+format::*,
+};
 
 #[cfg(test)]
 mod tests {

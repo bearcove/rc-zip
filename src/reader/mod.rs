@@ -8,5 +8,7 @@ mod macros;
 
 mod archive_reader;
 mod entry_reader;
-pub use archive_reader::{ArchiveReader, ArchiveReaderResult};
-pub use entry_reader::{EntryReader, EntryReaderResult};
+pub use self::{
+    archive_reader::{ArchiveReader, ArchiveReaderResult},
+    entry_reader::{EntryReader, EntryReaderResult},
+};

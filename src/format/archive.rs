@@ -234,23 +234,29 @@ pub enum EntryContents<'a> {
 
 impl StoredEntry {
     pub fn contents<'a>(&'a self) -> EntryContents<'a> {
-        EntryContents::File(File { entry: &self })
+        if self.mode.has(Mode::SYMLINK) {
+            EntryContents::Symlink(Symlink { entry: &self })
+        } else if self.mode.has(Mode::DIR) {
+            EntryContents::Directory(Directory { entry: &self })
+        } else {
+            EntryContents::File(File { entry: &self })
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct Directory<'a> {
-    entry: &'a StoredEntry,
+    pub entry: &'a StoredEntry,
 }
 
 #[derive(Debug)]
 pub struct File<'a> {
-    entry: &'a StoredEntry,
+    pub entry: &'a StoredEntry,
 }
 
 #[derive(Debug)]
 pub struct Symlink<'a> {
-    entry: &'a StoredEntry,
+    pub entry: &'a StoredEntry,
 }
 
 /// Compression method used for a file entry.
@@ -260,7 +266,7 @@ pub struct Symlink<'a> {
 ///
 /// However, in the wild, it is not too uncommon to encounter [Bzip2][Method::Bzip2],
 /// [Lzma][Method::Lzma] or others.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Method {
     /// No compression is applied
     Store,

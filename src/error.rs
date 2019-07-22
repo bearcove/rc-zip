@@ -6,6 +6,8 @@ use std::{error, fmt};
 pub enum Error {
     /// Not a valid zip file, or a variant that is unsupported.
     Format(FormatError),
+    /// Something is not supported by this crate
+    Unsupported(UnsupportedError),
     /// Invalid UTF-8, Shift-JIS, or any problem encountered while decoding text in general.
     Encoding(encoding::DecodingError),
     /// I/O-related error
@@ -15,6 +17,11 @@ pub enum Error {
     IO(std::io::Error),
     /// Could not read as a zip because size could not be determined
     UnknownSize,
+}
+
+#[derive(Debug)]
+pub enum UnsupportedError {
+    UnsupportedCompressionMethod(crate::format::Method),
 }
 
 /// Specific zip format errors, mostly due to invalid zip archives but that could also stem from
@@ -67,6 +74,7 @@ impl fmt::Display for Error {
             Error::IO(e) => write!(f, "rc-zip: {}", e),
             Error::Encoding(e) => write!(f, "rc-zip: {:#?}", e),
             Error::Format(e) => write!(f, "rc-zip: {:#?}", e),
+            Error::Unsupported(e) => write!(f, "rc-zip: {:#?}", e),
             Error::UnknownSize => write!(f, "rc-zip: file size must be known to open zip archive",),
         }
     }
@@ -84,8 +92,20 @@ impl From<FormatError> for Error {
     }
 }
 
+impl From<UnsupportedError> for Error {
+    fn from(e: UnsupportedError) -> Self {
+        Error::Unsupported(e)
+    }
+}
+
 impl From<encoding::DecodingError> for Error {
     fn from(e: encoding::DecodingError) -> Self {
         Error::Encoding(e)
+    }
+}
+
+impl Into<std::io::Error> for Error {
+    fn into(self) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, self)
     }
 }

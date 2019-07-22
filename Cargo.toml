@@ -15,6 +15,10 @@ categories = ["compression"]
 travis-ci = { repository = "rust-compress/rc-zip" }
 maintenance = { status = "experimental" }
 
+[profile.dev]
+opt-level = 0
+debug = true
+
 [profile.release]
 opt-level = 'z'
 lto = true

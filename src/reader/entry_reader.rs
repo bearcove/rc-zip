@@ -20,7 +20,7 @@ enum EntryReaderState {
         hasher: crc32fast::Hasher,
         uncompressed_size: u64,
         header: LocalFileHeaderRecord,
-        decoder: deflate::Decoder<circular::Buffer>,
+        decoder: Box<Decoder<circular::Buffer>>,
         read_bytes: u64,
     },
     ReadDataDescriptor {
@@ -74,21 +74,23 @@ where
                         debug!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
                             let read_bytes = std::cmp::min(buffer.available_data() as u64, self.entry.compressed_size);
+                            let decoder: Box<Decoder<circular::Buffer>> = match self.entry.method() {
+                                Method::Store => Box::new(buffer),
+                                Method::Deflate => Box::new(deflate::Decoder::new(buffer)),
+                                method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
+                            };
 
                             S::ReadData {
                                 hasher: crc32fast::Hasher::new(),
                                 uncompressed_size: 0,
-                                decoder: deflate::Decoder::new(buffer),
+                                decoder,
                                 header,
                                 read_bytes,
                             }
                         });
                         self.read(buf)
                     }
-                    Err(_e) => Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        Error::Format(FormatError::InvalidLocalHeader),
-                    )),
+                    Err(_e) => return Err(Error::Format(FormatError::InvalidLocalHeader).into()),
                 }
             }
             S::ReadData {
@@ -140,10 +142,16 @@ where
                 }
             }
             S::ReadDataDescriptor { ref mut buffer, .. } => {
+                debug!(
+                    "read data descriptor, avail data = {}, avail space = {}",
+                    buffer.available_data(),
+                    buffer.available_space()
+                );
+
                 // FIXME: should this be a loop? should it error out
                 // on read_bytes == 0 ?
                 if buffer.available_data() < 4 {
-                    let read_bytes = self.rd.read(buffer.space())?;
+                    let read_bytes = dbg!(self.rd.read(buffer.space()))?;
                     buffer.fill(read_bytes);
                 }
 
@@ -155,10 +163,7 @@ where
                         });
                         self.read(buf)
                     }
-                    Err(_e) => Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        Error::Format(FormatError::InvalidLocalHeader),
-                    )),
+                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
                 }
             }
             S::Validate {
@@ -190,24 +195,20 @@ where
                     debug!("expected CRC-32: {:x}", expected_crc32);
                     debug!("computed CRC-32: {:x}", metrics.crc32);
                     if expected_crc32 != metrics.crc32 {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            Error::Format(FormatError::WrongChecksum {
-                                expected: expected_crc32,
-                                actual: metrics.crc32,
-                            }),
-                        ));
+                        return Err(Error::Format(FormatError::WrongChecksum {
+                            expected: expected_crc32,
+                            actual: metrics.crc32,
+                        })
+                        .into());
                     }
                 }
 
                 if expected_size != metrics.uncompressed_size {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        Error::Format(FormatError::WrongSize {
-                            expected: expected_size,
-                            actual: metrics.uncompressed_size,
-                        }),
-                    ));
+                    return Err(Error::Format(FormatError::WrongSize {
+                        expected: expected_size,
+                        actual: metrics.uncompressed_size,
+                    })
+                    .into());
                 }
 
                 self.state = S::Done;
@@ -235,5 +236,36 @@ where
                 buffer: circular::Buffer::with_capacity(128 * 1024),
             },
         }
+    }
+}
+
+trait Decoder<R>: Read
+where
+    R: Read,
+{
+    fn into_inner(self: Box<Self>) -> R;
+    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R;
+}
+
+impl<R> Decoder<R> for deflate::Decoder<R>
+where
+    R: Read,
+{
+    fn into_inner(self: Box<Self>) -> R {
+        deflate::Decoder::into_inner(*self)
+    }
+
+    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R {
+        deflate::Decoder::as_inner_mut(self)
+    }
+}
+
+impl Decoder<circular::Buffer> for circular::Buffer {
+    fn into_inner(self: Box<Self>) -> circular::Buffer {
+        *self
+    }
+
+    fn as_inner_mut<'a>(&'a mut self) -> &'a mut circular::Buffer {
+        self
     }
 }

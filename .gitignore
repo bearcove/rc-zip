@@ -1,3 +1,4 @@
 /target
+.vscode/launch.json
 **/*.rs.bk
 Cargo.lock

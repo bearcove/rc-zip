@@ -1,6 +1,6 @@
 use crate::format::*;
 use hex_fmt::HexFmt;
-use nom::{bytes::complete::take, combinator::map};
+use nom::{bytes::streaming::take, combinator::map};
 use std::fmt;
 
 /// A raw zip string, with no specific encoding.

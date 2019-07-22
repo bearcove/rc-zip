@@ -6,7 +6,7 @@ use chrono::{
 };
 use nom::{
     combinator::map,
-    number::complete::{le_u16, le_u64},
+    number::streaming::{le_u16, le_u64},
 };
 use std::fmt;
 

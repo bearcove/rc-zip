@@ -2,8 +2,8 @@ use crate::{encoding, error::*, format::*};
 use chrono::offset::TimeZone;
 use log::*;
 use nom::{
-    bytes::complete::tag,
-    number::complete::{le_u16, le_u32},
+    bytes::streaming::tag,
+    number::streaming::{le_u16, le_u32},
     sequence::preceded,
 };
 

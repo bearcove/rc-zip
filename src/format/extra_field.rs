@@ -1,10 +1,10 @@
 use crate::format::*;
 use hex_fmt::HexFmt;
 use nom::{
-    bytes::complete::{tag, take},
+    bytes::streaming::{tag, take},
     combinator::{cond, map, verify},
     multi::{length_data, many0},
-    number::complete::{le_u16, le_u32, le_u64, le_u8},
+    number::streaming::{le_u16, le_u32, le_u64, le_u8},
     sequence::{preceded, tuple},
 };
 use std::fmt;

@@ -226,26 +226,13 @@ impl ArchiveReader {
                     "ReadCentralDirectory | process(), available: {}",
                     self.buffer.available_data()
                 );
-                // FIXME: see https://github.com/rust-compress/rc-zip/issues/3
-                'read_headers: while self.buffer.available_data()
-                    >= DirectoryHeader::SIGNATURE_LENGTH
-                {
+                'read_headers: while self.buffer.available_data() > 0 {
                     match DirectoryHeader::parse(self.buffer.data()) {
                         Err(nom::Err::Incomplete(_needed)) => {
                             // need more data
                             break 'read_headers;
                         }
                         Err(nom::Err::Error(_err)) | Err(nom::Err::Failure(_err)) => {
-                            let (_, kind) = _err;
-                            debug!("nom error kind: {:#?}", kind);
-                            match kind {
-                                nom::error::ErrorKind::Eof => {
-                                    // need more data
-                                    break 'read_headers;
-                                }
-                                _ => {}
-                            }
-
                             // this is the normal end condition when reading
                             // the central directory (due to 65536-entries non-zip64 files)
                             // let's just check a few numbers first.

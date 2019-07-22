@@ -1,5 +1,5 @@
 use crate::format::*;
-use nom::{combinator::map, number::complete::le_u16};
+use nom::{combinator::map, number::streaming::le_u16};
 use std::fmt;
 
 /// A zip version (either created by, or required when reading an archive).

@@ -1,8 +1,8 @@
 use crate::format::*;
 use nom::{
-    bytes::complete::tag,
+    bytes::streaming::tag,
     combinator::opt,
-    number::complete::{le_u16, le_u32, le_u64},
+    number::streaming::{le_u16, le_u32, le_u64},
     sequence::preceded,
 };
 

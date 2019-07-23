@@ -60,6 +60,8 @@ pub enum FormatError {
     },
     /// The local file header (before the file data) could not be parsed correctly.
     InvalidLocalHeader,
+    /// The data descriptor (after the file data) could not be parsed correctly.
+    InvalidDataDescriptor,
     /// The uncompressed size didn't match
     WrongSize { expected: u64, actual: u64 },
     /// The CRC-32 checksum didn't match.

@@ -1,4 +1,4 @@
-use libflate::deflate;
+use libflate::non_blocking::deflate;
 use log::*;
 use std::{cmp, io};
 
@@ -64,43 +64,36 @@ where
     }
 }
 
-/// Only allows reading a fixed number of bytes from an [io::Read],
+/// Only allows reading a fixed number of bytes from a [circular::Buffer],
 /// allowing to move the inner reader out afterwards.
-pub struct LimitedReader<R>
-where
-    R: io::Read,
-{
+pub struct LimitedReader {
     remaining: u64,
-    inner: R,
+    inner: circular::Buffer,
 }
 
-impl<R> LimitedReader<R>
-where
-    R: io::Read,
-{
-    pub fn new(inner: R, remaining: u64) -> Self {
-        debug!("built LimitedReader with {} remaining", remaining);
+impl LimitedReader {
+    pub fn new(inner: circular::Buffer, remaining: u64) -> Self {
         Self { inner, remaining }
     }
 
-    pub fn into_inner(self: Self) -> R {
+    pub fn into_inner(self: Self) -> circular::Buffer {
         self.inner
     }
 
-    pub fn as_inner_mut<'a>(&'a mut self) -> &'a mut R {
+    pub fn as_inner_mut<'a>(&'a mut self) -> &'a mut circular::Buffer {
         &mut self.inner
     }
 }
 
-impl<R> io::Read for LimitedReader<R>
-where
-    R: io::Read,
-{
+impl io::Read for LimitedReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let len = cmp::min(buf.len() as u64, self.remaining) as usize;
         let res = self.inner.read(&mut buf[..len]);
-        if let Ok(read) = res {
-            self.remaining -= read as u64;
+        if let Ok(n) = res {
+            if self.inner.available_space() < self.inner.capacity() / 2 {
+                self.inner.shift();
+            }
+            self.remaining -= n as u64;
         }
         res
     }

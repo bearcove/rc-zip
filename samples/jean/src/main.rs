@@ -225,32 +225,49 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             for entry in reader.entries() {
                 bar.set_message(entry.name());
                 match entry.contents() {
-                    EntryContents::Symlink(l) => {
+                    EntryContents::Symlink(c) => {
                         num_symlinks += 1;
-                        println!("skipping symlink {}", l.entry.name());
+                        #[cfg(windows)]
+                        {
+                            let path = dir.join(c.entry.name());
+                            std::fs::create_dir_all(
+                                path.parent()
+                                    .expect("all full entry paths should have parent paths"),
+                            )?;
+                            let mut entry_writer = File::create(path)?;
+                            let mut entry_reader = c
+                                .entry
+                                .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
+                            std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                        }
+
+                        #[cfg(not(windows))]
+                        {
+                            println!("skipping symlink {}", l.entry.name());
+                        }
                     }
-                    EntryContents::Directory(d) => {
+                    EntryContents::Directory(c) => {
                         num_dirs += 1;
-                        let path = dir.join(d.entry.name());
+                        let path = dir.join(c.entry.name());
                         std::fs::create_dir_all(
                             path.parent()
                                 .expect("all full entry paths should have parent paths"),
                         )?;
                     }
-                    EntryContents::File(f) => {
+                    EntryContents::File(c) => {
                         num_files += 1;
-                        let path = dir.join(f.entry.name());
+                        let path = dir.join(c.entry.name());
                         std::fs::create_dir_all(
                             path.parent()
                                 .expect("all full entry paths should have parent paths"),
                         )?;
                         let mut entry_writer = File::create(path)?;
-                        let entry_reader = f
+                        let entry_reader = c
                             .entry
                             .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
                         let before_entry_bytes = done_bytes;
                         let mut progress_reader =
-                            ProgressRead::new(entry_reader, f.entry.uncompressed_size, |prog| {
+                            ProgressRead::new(entry_reader, c.entry.uncompressed_size, |prog| {
                                 bar.set_position(before_entry_bytes + prog.done);
                             });
 

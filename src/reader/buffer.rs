@@ -1,12 +1,6 @@
 use log::*;
 use std::io::Read;
 
-/// Describes a read operation at a specific offset
-#[derive(Debug)]
-pub(crate) struct ReadOp {
-    pub(crate) offset: u64,
-}
-
 /// A wrapper around [circular::Buffer] that keeps track of how many bytes we've read since
 /// initialization or the last reset.
 pub(crate) struct Buffer {
@@ -71,7 +65,7 @@ impl Buffer {
         }
     }
 
-    pub(crate) fn read_offset(&self, op: ReadOp) -> u64 {
-        self.read_bytes + op.offset
+    pub(crate) fn read_offset(&self, offset: u64) -> u64 {
+        self.read_bytes + offset
     }
 }

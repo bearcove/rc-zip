@@ -21,7 +21,6 @@ debug = true
 
 [profile.release]
 debug = true
-lto = true
 
 [dependencies]
 nom = "5.0.0"

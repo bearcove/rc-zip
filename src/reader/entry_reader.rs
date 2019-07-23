@@ -6,7 +6,7 @@ use crate::{
     reader::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
 };
 
-use libflate::deflate;
+use libflate::non_blocking::deflate;
 use log::*;
 use nom::Offset;
 use std::io;
@@ -24,7 +24,7 @@ enum EntryReaderState {
         hasher: crc32fast::Hasher,
         uncompressed_size: u64,
         header: LocalFileHeaderRecord,
-        decoder: Box<Decoder<LimitedReader<circular::Buffer>>>,
+        decoder: Box<Decoder<LimitedReader>>,
     },
     ReadDataDescriptor {
         metrics: EntryReadMetrics,
@@ -63,7 +63,7 @@ where
         use EntryReaderState as S;
         match self.state {
             S::ReadLocalHeader { ref mut buffer } => {
-                // FIXME: that's wrong, use Needed() instead
+                // FIXME: if this returns less than the size of LocalFileHeader, we'll error out
                 let read_bytes = self.rd.read(buffer.space())?;
                 buffer.fill(read_bytes);
 
@@ -77,7 +77,7 @@ where
                         debug!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
                             let limited_reader = LimitedReader::new(buffer, self.entry.compressed_size);
-                            let decoder: Box<Decoder<LimitedReader<circular::Buffer>>> = match self.entry.method() {
+                            let decoder: Box<Decoder<LimitedReader>> = match self.entry.method() {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
                                 Method::Deflate => Box::new(deflate::Decoder::new(limited_reader)),
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
@@ -101,18 +101,15 @@ where
                 ref mut hasher,
                 ..
             } => {
-                if !self.eof {
+                {
                     let buffer = decoder.as_inner_mut().as_inner_mut();
-                    if buffer.available_space() < buffer.available_data() {
-                        buffer.shift();
-                        if buffer.available_space() > 0 {
-                            match self.rd.read(buffer.space())? {
-                                0 => {
-                                    self.eof = true;
-                                }
-                                n => {
-                                    buffer.fill(n);
-                                }
+                    if !self.eof && buffer.available_space() > 0 {
+                        match self.rd.read(buffer.space())? {
+                            0 => {
+                                self.eof = true;
+                            }
+                            n => {
+                                buffer.fill(n);
                             }
                         }
                     }
@@ -141,7 +138,17 @@ where
                         hasher.update(&buf[..n]);
                         Ok(n)
                     }
-                    r => r,
+                    Err(e) => match e.kind() {
+                        io::ErrorKind::UnexpectedEof => {
+                            let buffer = decoder.as_inner_mut().as_inner_mut();
+                            if self.eof || buffer.available_space() == 0 {
+                                Err(e)
+                            } else {
+                                self.read(buf)
+                            }
+                        }
+                        _ => Err(e),
+                    },
                 }
             }
             S::ReadDataDescriptor { ref mut buffer, .. } => {
@@ -151,19 +158,33 @@ where
                     buffer.available_space()
                 );
 
-                // FIXME: should this be a loop? should it error out
-                // on read_bytes == 0 ?
-                if buffer.available_data() < 4 {
-                    let read_bytes = self.rd.read(buffer.space())?;
-                    buffer.fill(read_bytes);
-                }
-
                 match DataDescriptorRecord::parse(buffer.data(), self.entry.is_zip64) {
                     Ok((_remaining, descriptor)) => {
                         debug!("data descriptor = {:#?}", descriptor);
                         transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
                             S::Validate { metrics, header, descriptor: Some(descriptor) }
                         });
+                        self.read(buf)
+                    }
+                    Err(nom::Err::Incomplete(_)) => {
+                        debug!(
+                            "incomplete! before shift, data {} / space {}",
+                            buffer.available_data(),
+                            buffer.available_space()
+                        );
+                        buffer.shift();
+                        debug!(
+                            "             after shift, data {} / space {}",
+                            buffer.available_data(),
+                            buffer.available_space()
+                        );
+                        let n = self.rd.read(buffer.space())?;
+                        if n == 0 {
+                            return Err(io::ErrorKind::UnexpectedEof.into());
+                        }
+                        buffer.fill(n);
+                        debug!("filled {}", n);
+
                         self.read(buf)
                     }
                     Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
@@ -194,6 +215,14 @@ where
                     }
                 };
 
+                if expected_size != metrics.uncompressed_size {
+                    return Err(Error::Format(FormatError::WrongSize {
+                        expected: expected_size,
+                        actual: metrics.uncompressed_size,
+                    })
+                    .into());
+                }
+
                 if expected_crc32 != 0 {
                     debug!("expected CRC-32: {:x}", expected_crc32);
                     debug!("computed CRC-32: {:x}", metrics.crc32);
@@ -204,14 +233,6 @@ where
                         })
                         .into());
                     }
-                }
-
-                if expected_size != metrics.uncompressed_size {
-                    return Err(Error::Format(FormatError::WrongSize {
-                        expected: expected_size,
-                        actual: metrics.uncompressed_size,
-                    })
-                    .into());
                 }
 
                 self.state = S::Done;
@@ -227,6 +248,8 @@ impl<'a, R> EntryReader<'a, R>
 where
     R: io::Read,
 {
+    const DEFAULT_BUFFER_SIZE: usize = 8 * 1024;
+
     pub fn new<F>(entry: &'a StoredEntry, get_reader: F) -> Self
     where
         F: Fn(u64) -> R,
@@ -237,7 +260,7 @@ where
             rd: EOFNormalizer::new(get_reader(entry.header_offset)),
             eof: false,
             state: EntryReaderState::ReadLocalHeader {
-                buffer: circular::Buffer::with_capacity(128 * 1024),
+                buffer: circular::Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
             },
         }
     }

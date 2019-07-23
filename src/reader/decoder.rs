@@ -1,4 +1,4 @@
-use libflate::non_blocking::deflate;
+use libflate::deflate;
 use log::*;
 use std::{cmp, io};
 

@@ -15,3 +15,4 @@ color-backtrace = { version = "0.2.2", optional = true }
 env_logger = { version = "0.6.2", optional = true }
 log = "0.4.7"
 positioned-io = "0.2.2"
+indicatif = "0.11.0"

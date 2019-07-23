@@ -20,9 +20,8 @@ opt-level = 0
 debug = true
 
 [profile.release]
-opt-level = 'z'
+debug = true
 lto = true
-codegen-units = 1
 
 [dependencies]
 nom = "5.0.0"

@@ -26,9 +26,10 @@ mod writer;
 mod format;
 
 pub use self::{
-error::*,
-reader::*,
-format::*,
+    error::*,
+    reader::*,
+    writer::*,
+    format::*,
 };
 
 #[cfg(test)]

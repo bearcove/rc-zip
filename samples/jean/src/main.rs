@@ -1,9 +1,11 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
 use humansize::{file_size_opts::BINARY, FileSize};
-use rc_zip::prelude::*;
+use rc_zip::{prelude::*, EntryContents};
 use std::fmt;
-use std::fs::File;
-use std::io::Read;
+use std::{
+    fs::File,
+    io::{self, Read},
+};
 
 struct Optional<T>(Option<T>);
 
@@ -203,10 +205,25 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let mut num_files = 0;
             let mut num_symlinks = 0;
             let mut uncompressed_size: u64 = 0;
+            for entry in reader.entries() {
+                if let EntryContents::File(f) = entry.contents() {
+                    uncompressed_size += f.entry.uncompressed_size;
+                }
+            }
+
+            let mut done_bytes: u64 = 0;
+            use indicatif::{ProgressBar, ProgressStyle};
+            let bar = ProgressBar::new(uncompressed_size);
+            bar.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed_precise}] {bar:20.cyan/blue} {percent}% {msg:>30!}")
+                    .progress_chars("##-"),
+            );
+            bar.enable_steady_tick(25);
+
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
-                println!("{} {}", entry.mode, entry.name());
-                use rc_zip::EntryContents;
+                bar.set_message(entry.name());
                 match entry.contents() {
                     EntryContents::Symlink(l) => {
                         num_symlinks += 1;
@@ -228,13 +245,21 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                                 .expect("all full entry paths should have parent paths"),
                         )?;
                         let mut entry_writer = File::create(path)?;
-                        let mut entry_reader = f
+                        let entry_reader = f
                             .entry
                             .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
-                        uncompressed_size += std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                        let before_entry_bytes = done_bytes;
+                        let mut progress_reader =
+                            ProgressRead::new(entry_reader, f.entry.uncompressed_size, |prog| {
+                                bar.set_position(before_entry_bytes + prog.done);
+                            });
+
+                        let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
+                        done_bytes = before_entry_bytes + copied_bytes;
                     }
                 }
             }
+            bar.finish();
             let duration = start_time.elapsed()?;
             println!(
                 "Extracted {} (in {} files, {} dirs, {} symlinks)",
@@ -292,5 +317,50 @@ impl Truncate for &str {
                 None => name_tokens.push(token),
             }
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Progress {
+    done: u64,
+    total: u64,
+}
+
+struct ProgressRead<F, R>
+where
+    R: io::Read,
+    F: Fn(Progress),
+{
+    inner: R,
+    callback: F,
+    progress: Progress,
+}
+
+impl<F, R> ProgressRead<F, R>
+where
+    R: io::Read,
+    F: Fn(Progress),
+{
+    fn new(inner: R, total: u64, callback: F) -> Self {
+        Self {
+            inner,
+            callback,
+            progress: Progress { total, done: 0 },
+        }
+    }
+}
+
+impl<F, R> io::Read for ProgressRead<F, R>
+where
+    R: io::Read,
+    F: Fn(Progress),
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let res = self.inner.read(buf);
+        if let Ok(n) = res {
+            self.progress.done += n as u64;
+            (self.callback)(self.progress);
+        }
+        res
     }
 }

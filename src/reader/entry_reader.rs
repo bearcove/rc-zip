@@ -6,7 +6,7 @@ use crate::{
     reader::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
 };
 
-use libflate::non_blocking::deflate;
+use libflate::deflate;
 use log::*;
 use nom::Offset;
 use std::io;

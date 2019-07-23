@@ -41,20 +41,20 @@ fn main() {
 
     let matches = App::new("rc-zip sample")
         .subcommand(
-            SubCommand::with_name("info")
+            SubCommand::with_name("file")
                 .about("Show information about a ZIP file")
                 .arg(
-                    Arg::with_name("file")
+                    Arg::with_name("zipfile")
                         .help("ZIP file to analyze")
                         .required(true)
                         .index(1),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("list")
+            SubCommand::with_name("ls")
                 .about("List files contained in a ZIP file")
                 .arg(
-                    Arg::with_name("file")
+                    Arg::with_name("zipfile")
                         .help("ZIP file to list")
                         .required(true)
                         .index(1),
@@ -67,31 +67,36 @@ fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("extract")
-                .about("Extract files contained in a ZIP archive")
+            SubCommand::with_name("unzip")
+                .about("Extract files contained in a ZIP archive (unzip)")
                 .arg(
-                    Arg::with_name("file")
+                    Arg::with_name("zipfile")
                         .help("ZIP file to extract")
                         .required(true)
                         .index(1),
+                )
+                .arg(
+                    Arg::with_name("dir")
+                        .help("Directory to extract to")
+                        .default_value(".")
+                        .short("-d"),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("compress")
-                .about("Add files to a ZIP archive")
+            SubCommand::with_name("zip")
+                .about("Add files to a ZIP archive (zip -r)")
+                .arg(
+                    Arg::with_name("zipfile")
+                        .help("Path of the zip file to crate")
+                        .required(true)
+                        .index(1),
+                )
                 .arg(
                     Arg::with_name("files")
                         .help("Files to add to the archive")
                         .required(true)
                         .multiple(true)
-                        .index(1),
-                )
-                .arg(
-                    Arg::with_name("output")
-                        .help("Path of the zip file to crate")
-                        .required(true)
-                        .long("--output")
-                        .short("-o"),
+                        .index(2),
                 ),
         )
         .get_matches();
@@ -149,83 +154,84 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match matches.subcommand() {
-        ("info", Some(matches)) => {
-            let reader = File::open(matches.value_of("file").unwrap())?.read_zip()?;
+        ("file", Some(matches)) => {
+            let reader = File::open(matches.value_of("zipfile").unwrap())?.read_zip()?;
             info(&reader);
         }
-        ("list", Some(matches)) => {
-            let file = File::open(matches.value_of("file").unwrap())?;
-            let reader = file.read_zip()?;
+        ("ls", Some(matches)) => {
+            let zipfile = File::open(matches.value_of("zipfile").unwrap())?;
+            let reader = zipfile.read_zip()?;
             let verbose = matches.is_present("verbose");
 
-            use std::io::Write;
-            use tabwriter::TabWriter;
-
-            let mut stdout = std::io::stdout();
-            let mut tw = TabWriter::new(&mut stdout);
-            write!(&mut tw, "Mode\tName\tSize")?;
-            if verbose {
-                write!(&mut tw, "\tModified\tUID\tGID")?;
-            }
-            writeln!(&mut tw)?;
-
             for entry in reader.entries() {
-                write!(
-                    &mut tw,
-                    "{mode}\t{name}\t{size}",
+                print!(
+                    "{mode:>9} {size:>12} {name}",
                     mode = entry.mode,
                     name = entry.name().truncate_path(55),
                     size = entry.uncompressed_size.file_size(BINARY).unwrap(),
-                )?;
+                );
                 if verbose {
-                    write!(
-                        &mut tw,
-                        "\t{modified}\t{uid}\t{gid}",
+                    print!(
+                        " {modified} {uid} {gid}",
                         modified = entry.modified(),
                         uid = Optional(entry.uid),
                         gid = Optional(entry.gid),
-                    )?;
+                    );
 
                     match entry.contents() {
                         rc_zip::EntryContents::Symlink(sl) => {
                             let mut target = String::new();
                             rc_zip::EntryReader::new(sl.entry, |offset| {
-                                positioned_io::Cursor::new_pos(&file, dbg!(offset))
+                                positioned_io::Cursor::new_pos(&zipfile, dbg!(offset))
                             })
                             .read_to_string(&mut target)
                             .unwrap();
-                            write!(&mut tw, "\t{target}", target = target)?;
+                            print!("\t{target}", target = target);
                         }
                         _ => {}
                     }
                 }
-                writeln!(&mut tw)?;
+                println!();
             }
-            tw.flush()?;
         }
-        ("extract", Some(matches)) => {
-            let file = File::open(matches.value_of("file").unwrap())?;
-            let reader = file.read_zip()?;
-            info(&reader);
+        ("unzip", Some(matches)) => {
+            let zipfile = File::open(matches.value_of("zipfile").unwrap())?;
+            let dir = std::path::Path::new(matches.value_of("dir").unwrap());
+            let reader = zipfile.read_zip()?;
 
             for entry in reader.entries() {
-                println!("Extracting {}", entry.name());
-                let mut contents = Vec::<u8>::new();
-                entry
-                    .reader(|offset| positioned_io::Cursor::new_pos(&file, offset))
-                    .read_to_end(&mut contents)?;
-
-                if let Ok(s) = std::str::from_utf8(&contents[..]) {
-                    println!("contents = {:?}", s);
-                } else {
-                    println!("contents = {:?}", contents);
+                println!("{} {}", entry.mode, entry.name());
+                use rc_zip::EntryContents;
+                match entry.contents() {
+                    EntryContents::Symlink(l) => {
+                        println!("skipping symlink {}", l.entry.name());
+                    }
+                    EntryContents::Directory(d) => {
+                        let path = dir.join(d.entry.name());
+                        std::fs::create_dir_all(
+                            path.parent()
+                                .expect("all full entry paths should have parent paths"),
+                        )?;
+                    }
+                    EntryContents::File(f) => {
+                        let path = dir.join(f.entry.name());
+                        std::fs::create_dir_all(
+                            path.parent()
+                                .expect("all full entry paths should have parent paths"),
+                        )?;
+                        let mut entry_writer = File::create(path)?;
+                        let mut entry_reader = f
+                            .entry
+                            .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
+                        std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                    }
                 }
             }
         }
-        ("compress", Some(matches)) => {
+        ("zip", Some(matches)) => {
+            let zipfile = matches.value_of("zipfile").unwrap();
             let files = matches.values_of("files").unwrap();
-            let output = matches.value_of("output").unwrap();
-            println!("Should add {:?} to archive {:?}", files, output);
+            println!("Should add {:?} to archive {:?}", files, zipfile);
             unimplemented!();
         }
         _ => {

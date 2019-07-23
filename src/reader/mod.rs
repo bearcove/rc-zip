@@ -12,3 +12,5 @@ pub use self::{
     archive_reader::{ArchiveReader, ArchiveReaderResult},
     entry_reader::{EntryReader, EntryReaderResult},
 };
+
+mod decoder;

@@ -1,11 +1,15 @@
-//! This part of the API is still under designs - no guarantees are made
+//! This part of the API is still being designed - no guarantees are made
 //! whatsoever.
-use crate::{error::*, format::*};
+use crate::{
+    error::*,
+    format::*,
+    reader::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
+};
 
 use libflate::non_blocking::deflate;
 use log::*;
 use nom::Offset;
-use std::io::Read;
+use std::io;
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -20,8 +24,7 @@ enum EntryReaderState {
         hasher: crc32fast::Hasher,
         uncompressed_size: u64,
         header: LocalFileHeaderRecord,
-        decoder: Box<Decoder<circular::Buffer>>,
-        read_bytes: u64,
+        decoder: Box<Decoder<LimitedReader<circular::Buffer>>>,
     },
     ReadDataDescriptor {
         metrics: EntryReadMetrics,
@@ -44,25 +47,25 @@ pub enum EntryReaderResult {
 
 pub struct EntryReader<'a, R>
 where
-    R: Read,
+    R: io::Read,
 {
     entry: &'a StoredEntry,
-    rd: R,
+    rd: EOFNormalizer<R>,
+    eof: bool,
     state: EntryReaderState,
 }
 
-impl<'a, R> Read for EntryReader<'a, R>
+impl<'a, R> io::Read for EntryReader<'a, R>
 where
-    R: Read,
+    R: io::Read,
 {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         use EntryReaderState as S;
         match self.state {
             S::ReadLocalHeader { ref mut buffer } => {
-                if buffer.available_data() < 4 {
-                    let read_bytes = self.rd.read(buffer.space())?;
-                    buffer.fill(read_bytes);
-                }
+                // FIXME: that's wrong, use Needed() instead
+                let read_bytes = self.rd.read(buffer.space())?;
+                buffer.fill(read_bytes);
 
                 match LocalFileHeaderRecord::parse(buffer.data()) {
                     Ok((remaining, header)) => {
@@ -73,10 +76,10 @@ where
 
                         debug!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
-                            let read_bytes = std::cmp::min(buffer.available_data() as u64, self.entry.compressed_size);
-                            let decoder: Box<Decoder<circular::Buffer>> = match self.entry.method() {
-                                Method::Store => Box::new(buffer),
-                                Method::Deflate => Box::new(deflate::Decoder::new(buffer)),
+                            let limited_reader = LimitedReader::new(buffer, self.entry.compressed_size);
+                            let decoder: Box<Decoder<LimitedReader<circular::Buffer>>> = match self.entry.method() {
+                                Method::Store => Box::new(StoreDecoder::new(limited_reader)),
+                                Method::Deflate => Box::new(deflate::Decoder::new(limited_reader)),
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
                             };
 
@@ -85,7 +88,6 @@ where
                                 uncompressed_size: 0,
                                 decoder,
                                 header,
-                                read_bytes,
                             }
                         });
                         self.read(buf)
@@ -96,29 +98,30 @@ where
             S::ReadData {
                 ref mut uncompressed_size,
                 ref mut decoder,
-                ref mut read_bytes,
                 ref mut hasher,
                 ..
             } => {
-                let remaining = self.entry.compressed_size - *read_bytes;
-                if remaining > 0 {
-                    let buffer = decoder.as_inner_mut();
-                    let avail_space = buffer.available_space() as u64;
-                    if avail_space > 0 {
-                        let space = if remaining < avail_space {
-                            &mut buffer.space()[..remaining as usize]
-                        } else {
-                            buffer.space()
-                        };
-
-                        let n = self.rd.read(space)?;
-                        buffer.fill(n);
+                if !self.eof {
+                    let buffer = decoder.as_inner_mut().as_inner_mut();
+                    if buffer.available_space() < buffer.available_data() {
+                        buffer.shift();
+                        if buffer.available_space() > 0 {
+                            match self.rd.read(buffer.space())? {
+                                0 => {
+                                    self.eof = true;
+                                }
+                                n => {
+                                    buffer.fill(n);
+                                }
+                            }
+                        }
                     }
                 }
                 match decoder.read(buf) {
                     Ok(0) => {
                         transition!(self.state => (S::ReadData { decoder, header, hasher, uncompressed_size, .. }) {
-                            let buffer = decoder.into_inner();
+                            let limited_reader = decoder.into_inner();
+                            let buffer = limited_reader.into_inner();
                             let metrics = EntryReadMetrics {
                                 crc32: hasher.finalize(),
                                 uncompressed_size,
@@ -151,7 +154,7 @@ where
                 // FIXME: should this be a loop? should it error out
                 // on read_bytes == 0 ?
                 if buffer.available_data() < 4 {
-                    let read_bytes = dbg!(self.rd.read(buffer.space()))?;
+                    let read_bytes = self.rd.read(buffer.space())?;
                     buffer.fill(read_bytes);
                 }
 
@@ -222,7 +225,7 @@ where
 
 impl<'a, R> EntryReader<'a, R>
 where
-    R: Read,
+    R: io::Read,
 {
     pub fn new<F>(entry: &'a StoredEntry, get_reader: F) -> Self
     where
@@ -231,41 +234,11 @@ where
         debug!("entry: {:#?}", entry);
         Self {
             entry,
-            rd: get_reader(entry.header_offset),
+            rd: EOFNormalizer::new(get_reader(entry.header_offset)),
+            eof: false,
             state: EntryReaderState::ReadLocalHeader {
                 buffer: circular::Buffer::with_capacity(128 * 1024),
             },
         }
-    }
-}
-
-trait Decoder<R>: Read
-where
-    R: Read,
-{
-    fn into_inner(self: Box<Self>) -> R;
-    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R;
-}
-
-impl<R> Decoder<R> for deflate::Decoder<R>
-where
-    R: Read,
-{
-    fn into_inner(self: Box<Self>) -> R {
-        deflate::Decoder::into_inner(*self)
-    }
-
-    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R {
-        deflate::Decoder::as_inner_mut(self)
-    }
-}
-
-impl Decoder<circular::Buffer> for circular::Buffer {
-    fn into_inner(self: Box<Self>) -> circular::Buffer {
-        *self
-    }
-
-    fn as_inner_mut<'a>(&'a mut self) -> &'a mut circular::Buffer {
-        self
     }
 }

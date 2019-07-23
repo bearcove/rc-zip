@@ -43,7 +43,6 @@ pub(crate) struct DirectoryHeader {
 }
 
 impl DirectoryHeader {
-    pub(crate) const SIGNATURE_LENGTH: usize = 4;
     const SIGNATURE: &'static str = "PK\x01\x02";
 
     pub(crate) fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {

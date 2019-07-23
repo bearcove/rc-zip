@@ -43,6 +43,6 @@ color-backtrace = "0.2.2"
 env_logger = "0.6.2"
 
 [workspace]
-members = [ ".", "samples/rc-zip-sample" ]
-default-members = [ ".", "samples/rc-zip-sample" ]
+members = [ ".", "samples/jean" ]
+default-members = [ ".", "samples/jean" ]
 

@@ -199,14 +199,21 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let dir = std::path::Path::new(matches.value_of("dir").unwrap());
             let reader = zipfile.read_zip()?;
 
+            let mut num_dirs = 0;
+            let mut num_files = 0;
+            let mut num_symlinks = 0;
+            let mut uncompressed_size: u64 = 0;
+            let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
                 println!("{} {}", entry.mode, entry.name());
                 use rc_zip::EntryContents;
                 match entry.contents() {
                     EntryContents::Symlink(l) => {
+                        num_symlinks += 1;
                         println!("skipping symlink {}", l.entry.name());
                     }
                     EntryContents::Directory(d) => {
+                        num_dirs += 1;
                         let path = dir.join(d.entry.name());
                         std::fs::create_dir_all(
                             path.parent()
@@ -214,6 +221,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                         )?;
                     }
                     EntryContents::File(f) => {
+                        num_files += 1;
                         let path = dir.join(f.entry.name());
                         std::fs::create_dir_all(
                             path.parent()
@@ -223,10 +231,24 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                         let mut entry_reader = f
                             .entry
                             .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
-                        std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                        uncompressed_size += std::io::copy(&mut entry_reader, &mut entry_writer)?;
                     }
                 }
             }
+            let duration = start_time.elapsed()?;
+            println!(
+                "Extracted {} (in {} files, {} dirs, {} symlinks)",
+                uncompressed_size.file_size(BINARY).unwrap(),
+                num_files,
+                num_dirs,
+                num_symlinks
+            );
+            let seconds = (duration.as_millis() as f64) / 1000.0;
+            let bps = (uncompressed_size as f64 / seconds) as u64;
+            println!(
+                "Overall extraction speed: {} / s",
+                bps.file_size(BINARY).unwrap()
+            );
         }
         ("zip", Some(matches)) => {
             let zipfile = matches.value_of("zipfile").unwrap();

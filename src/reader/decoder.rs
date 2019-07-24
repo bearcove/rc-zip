@@ -87,12 +87,13 @@ impl LimitedReader {
 
 impl io::Read for LimitedReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.inner.available_space() == 0 {
+            self.inner.shift();
+        }
+
         let len = cmp::min(buf.len() as u64, self.remaining) as usize;
         let res = self.inner.read(&mut buf[..len]);
         if let Ok(n) = res {
-            if self.inner.available_space() < self.inner.capacity() / 2 {
-                self.inner.shift();
-            }
             self.remaining -= n as u64;
         }
         res

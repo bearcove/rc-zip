@@ -184,7 +184,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                         rc_zip::EntryContents::Symlink(sl) => {
                             let mut target = String::new();
                             rc_zip::EntryReader::new(sl.entry, |offset| {
-                                positioned_io::Cursor::new_pos(&zipfile, dbg!(offset))
+                                positioned_io::Cursor::new_pos(&zipfile, offset)
                             })
                             .read_to_string(&mut target)
                             .unwrap();
@@ -216,10 +216,11 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let bar = ProgressBar::new(uncompressed_size);
             bar.set_style(
                 ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] {bar:20.cyan/blue} {percent}% {msg:>30!}")
-                    .progress_chars("##-"),
+                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
+                    .progress_chars("=>-"),
             );
-            bar.enable_steady_tick(25);
+
+            bar.enable_steady_tick(125);
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
@@ -243,7 +244,20 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
                         #[cfg(not(windows))]
                         {
-                            println!("skipping symlink {}", c.entry.name());
+                            let path = dir.join(c.entry.name());
+                            std::fs::create_dir_all(
+                                path.parent()
+                                    .expect("all full entry paths should have parent paths"),
+                            )?;
+                            if let Ok(_metadata) = std::fs::symlink_metadata(&path) {
+                                std::fs::remove_file(&path)?;
+                            }
+
+                            let mut src = String::new();
+                            c.entry
+                                .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset))
+                                .read_to_string(&mut src)?;
+                            std::os::unix::fs::symlink(src, &path)?;
                         }
                     }
                     EntryContents::Directory(c) => {

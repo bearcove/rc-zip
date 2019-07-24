@@ -243,7 +243,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
                         #[cfg(not(windows))]
                         {
-                            println!("skipping symlink {}", l.entry.name());
+                            println!("skipping symlink {}", c.entry.name());
                         }
                     }
                     EntryContents::Directory(c) => {

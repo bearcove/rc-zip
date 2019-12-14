@@ -324,9 +324,10 @@ impl ArchiveReader {
                                 };
 
                                 let is_zip64 = eocd.dir64.is_some();
+                                let global_offset = eocd.global_offset as u64;
                                 let entries: Result<Vec<StoredEntry>, Error> = directory_headers
                                     .into_iter()
-                                    .map(|x| x.as_stored_entry(is_zip64, encoding))
+                                    .map(|x| x.as_stored_entry(is_zip64, encoding, global_offset))
                                     .collect();
                                 let entries = entries?;
 

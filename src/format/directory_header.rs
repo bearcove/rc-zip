@@ -116,6 +116,7 @@ impl DirectoryHeader {
         &self,
         is_zip64: bool,
         encoding: Encoding,
+        global_offset: u64
     ) -> Result<StoredEntry, Error> {
         let mut comment: Option<String> = None;
         if let Some(comment_field) = self.comment.clone().as_option() {
@@ -126,7 +127,7 @@ impl DirectoryHeader {
 
         let mut compressed_size = self.compressed_size as u64;
         let mut uncompressed_size = self.uncompressed_size as u64;
-        let mut header_offset = self.header_offset as u64;
+        let mut header_offset = self.header_offset as u64 + global_offset;
 
         let mut modified: Option<DateTime<Utc>> = None;
         let mut created: Option<DateTime<Utc>> = None;

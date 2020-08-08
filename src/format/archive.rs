@@ -231,7 +231,7 @@ impl StoredEntry {
     #[cfg(feature = "async-ara")]
     pub fn async_reader<'a, R>(&'a self, source: R) -> reader::async_ara::AsyncEntryReader<R>
     where
-        R: ara::ReadAt,
+        R: ara::ReadAt + Unpin + 'static,
     {
         reader::async_ara::AsyncEntryReader::new(self.clone(), source)
     }

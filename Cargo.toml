@@ -38,6 +38,7 @@ libflate = { version = "0.1.25", optional = true }
 ara = { path = "../ara", optional = true }
 async-trait = { version = "0.1.36", optional = true }
 futures = { version = "0.3.5", optional = true }
+async-compression = { version = "0.3.5", optional = true }
 
 [dev-dependencies]
 color-backtrace = "0.2.2"
@@ -48,7 +49,7 @@ tokio = "0.2.22"
 [features]
 default = ["sync", "async-ara"]
 sync = ["positioned-io", "libflate"]
-async-ara = ["ara", "async-trait", "futures"]
+async-ara = ["ara", "async-trait", "futures", "async-compression", "async-compression/futures-io", "async-compression/deflate"]
 
 [workspace]
 members = [ ".", "samples/jean" ]

@@ -210,18 +210,18 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
             let mut done_bytes: u64 = 0;
             use indicatif::{ProgressBar, ProgressStyle};
-            let bar = ProgressBar::new(uncompressed_size);
-            bar.set_style(
+            let pbar = ProgressBar::new(uncompressed_size);
+            pbar.set_style(
                 ProgressStyle::default_bar()
                     .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
                     .progress_chars("=>-"),
             );
 
-            bar.enable_steady_tick(125);
+            pbar.enable_steady_tick(125);
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
-                bar.set_message(entry.name());
+                pbar.set_message(entry.name());
                 match entry.contents() {
                     EntryContents::Symlink(c) => {
                         num_symlinks += 1;
@@ -281,7 +281,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                         let before_entry_bytes = done_bytes;
                         let mut progress_reader =
                             ProgressRead::new(entry_reader, c.entry.uncompressed_size, |prog| {
-                                bar.set_position(before_entry_bytes + prog.done);
+                                pbar.set_position(before_entry_bytes + prog.done);
                             });
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
@@ -289,7 +289,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            bar.finish();
+            pbar.finish();
             let duration = start_time.elapsed()?;
             println!(
                 "Extracted {} (in {} files, {} dirs, {} symlinks)",

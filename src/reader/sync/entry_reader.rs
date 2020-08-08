@@ -234,7 +234,7 @@ where
                 self.read(buf)
             }
             S::Done => Ok(0),
-            _ => unimplemented!(),
+            S::Transitioning => unreachable!(),
         }
     }
 }

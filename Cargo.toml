@@ -42,6 +42,8 @@ futures = { version = "0.3.5", optional = true }
 [dev-dependencies]
 color-backtrace = "0.2.2"
 env_logger = "0.6.2"
+ubio = { path = "../ubio" }
+tokio = "0.2.22"
 
 [features]
 default = ["sync", "async-ara"]

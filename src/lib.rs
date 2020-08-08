@@ -33,7 +33,7 @@ mod tests {
         offset::{FixedOffset, Utc},
         DateTime, TimeZone,
     };
-    use std::path::PathBuf;
+    use std::{path::PathBuf, sync::Arc};
 
     enum ZipSource {
         File(&'static str),
@@ -309,5 +309,28 @@ mod tests {
         };
 
         println!("All done! Archive = {:#?}", archive);
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn test_async_ara() {
+        use futures::AsyncReadExt;
+
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("test-zips")
+            .join("zip64.zip");
+        let f = std::fs::File::open(&path).unwrap();
+        let f = ubio::file::File::new(f).unwrap();
+        let f = Arc::new(f);
+        let ar = f.read_zip().await.unwrap();
+        println!("Got {} entries", ar.entries().len());
+
+        for entry in ar.entries() {
+            println!("Handling entry {}", entry.name());
+            let mut ar = entry.async_reader(f.clone());
+            let mut buf = Vec::new();
+            ar.read_to_end(&mut buf).await.unwrap();
+            println!("Contents = {:?}", String::from_utf8_lossy(&buf[..]));
+        }
     }
 }

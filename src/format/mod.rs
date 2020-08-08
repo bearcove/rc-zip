@@ -15,6 +15,6 @@ mod directory_header;
 mod eocd;
 mod local;
 mod raw;
-pub(crate) use self::{date_time::*, directory_header::*, eocd::*, local::*, raw::*};
+pub use self::{date_time::*, directory_header::*, eocd::*, local::*, raw::*};
 
 use chrono::{offset::Utc, DateTime};

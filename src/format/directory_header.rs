@@ -9,43 +9,43 @@ use nom::{
 
 /// 4.3.12 Central directory structure: File header
 #[derive(Debug)]
-pub(crate) struct DirectoryHeader {
+pub struct DirectoryHeader {
     // version made by
-    pub(crate) creator_version: Version,
+    pub creator_version: Version,
     // version needed to extract
-    pub(crate) reader_version: Version,
+    pub reader_version: Version,
     // general purpose bit flag
-    pub(crate) flags: u16,
+    pub flags: u16,
     // compression method
-    pub(crate) method: u16,
+    pub method: u16,
     // last mod file datetime
-    pub(crate) modified: MsdosTimestamp,
+    pub modified: MsdosTimestamp,
     // crc32
-    pub(crate) crc32: u32,
+    pub crc32: u32,
     // compressed size
-    pub(crate) compressed_size: u32,
+    pub compressed_size: u32,
     // uncompressed size
-    pub(crate) uncompressed_size: u32,
+    pub uncompressed_size: u32,
     // disk number start
-    pub(crate) disk_nbr_start: u16,
+    pub disk_nbr_start: u16,
     // internal file attributes
-    pub(crate) internal_attrs: u16,
+    pub internal_attrs: u16,
     // external file attributes
-    pub(crate) external_attrs: u32,
+    pub external_attrs: u32,
     // relative offset of local header
-    pub(crate) header_offset: u32,
+    pub header_offset: u32,
 
     // name
-    pub(crate) name: ZipString,
+    pub name: ZipString,
     // extra
-    pub(crate) extra: ZipBytes, // comment
-    pub(crate) comment: ZipString,
+    pub extra: ZipBytes, // comment
+    pub comment: ZipString,
 }
 
 impl DirectoryHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
-    pub(crate) fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!({
@@ -92,7 +92,7 @@ impl DirectoryHeader {
 }
 
 impl DirectoryHeader {
-    pub(crate) fn is_non_utf8(&self) -> bool {
+    pub fn is_non_utf8(&self) -> bool {
         let (valid1, require1) = encoding::detect_utf8(&self.name.0[..]);
         let (valid2, require2) = encoding::detect_utf8(&self.comment.0[..]);
         if !valid1 || !valid2 {
@@ -112,11 +112,11 @@ impl DirectoryHeader {
         self.flags & 0x800 == 0
     }
 
-    pub(crate) fn as_stored_entry(
+    pub fn as_stored_entry(
         &self,
         is_zip64: bool,
         encoding: Encoding,
-        global_offset: u64
+        global_offset: u64,
     ) -> Result<StoredEntry, Error> {
         let mut comment: Option<String> = None;
         if let Some(comment_field) = self.comment.clone().as_option() {

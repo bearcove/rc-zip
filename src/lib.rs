@@ -3,7 +3,7 @@
 //! rc-zip is a zip archive library with a focus on compatibility and correctness.
 //!
 //! ### Reading
-//! 
+//!
 //! [ArchiveReader](ArchiveReader) is your first stop. It
 //! ensures we are dealing with a valid zip archive, and reads the central
 //! directory. It does not perform I/O itself, but rather, it is a state machine
@@ -18,23 +18,18 @@
 //!
 #![allow(clippy::all)]
 
-pub mod prelude;
 mod encoding;
 mod error;
+mod format;
+pub mod prelude;
 mod reader;
 mod writer;
-mod format;
 
-pub use self::{
-    error::*,
-    reader::*,
-    writer::*,
-    format::*,
-};
+pub use self::{error::*, format::*, reader::*, writer::*};
 
 #[cfg(test)]
 mod tests {
-    use super::{encoding::Encoding, Error, Archive, prelude::*};
+    use super::{encoding::Encoding, prelude::*, Archive, Error};
     use chrono::{
         offset::{FixedOffset, Utc},
         DateTime, TimeZone,
@@ -146,17 +141,15 @@ mod tests {
         vec![
             ZipTest {
                 source: ZipSource::File("zip64.zip"),
-                files: vec![
-                    ZipTestFile {
-                        name: "README",
-                        content: FileContent::Bytes(
-                            "This small file is in ZIP64 format.\n".as_bytes().into(),
-                        ),
-                        modified: Some(date(2012, 8, 10, 14, 33, 32, 0, time_zone(0))),
-                        mode: Some(0644),
-                        ..Default::default()
-                    }
-                ],
+                files: vec![ZipTestFile {
+                    name: "README",
+                    content: FileContent::Bytes(
+                        "This small file is in ZIP64 format.\n".as_bytes().into(),
+                    ),
+                    modified: Some(date(2012, 8, 10, 14, 33, 32, 0, time_zone(0))),
+                    mode: Some(0644),
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
             ZipTest {
@@ -258,9 +251,12 @@ mod tests {
                 {
                     if let Some(expected) = f.modified {
                         assert_eq!(
-                            expected, entry.modified(),
+                            expected,
+                            entry.modified(),
                             "entry {} (in {}) should have modified = {:?}",
-                            entry.name(), case_name, expected
+                            entry.name(),
+                            case_name,
+                            expected
                         )
                     }
                 }
@@ -283,29 +279,30 @@ mod tests {
                 Some(offset) => {
                     let increment = 128usize;
                     let offset = offset as usize;
-                    let mut slice = 
-                        if offset + increment > bs.len() {
-                            &bs[offset..]
-                        } else {
-                            &bs[offset..offset + increment]
-                        };
+                    let mut slice = if offset + increment > bs.len() {
+                        &bs[offset..]
+                    } else {
+                        &bs[offset..offset + increment]
+                    };
 
                     match zar.read(&mut slice) {
-                        Ok(0) => { panic!("EOF!") },
-                        Ok(read_bytes) => { println!("at {}, zar read {} bytes", offset, read_bytes); },
+                        Ok(0) => panic!("EOF!"),
+                        Ok(read_bytes) => {
+                            println!("at {}, zar read {} bytes", offset, read_bytes);
+                        }
                         Err(err) => {
                             println!("at {}, zar encountered an error:", offset);
                             panic!(err)
                         }
                     }
-                },
+                }
                 None => {} // ok, cool, proceed,
             }
 
             match zar.process() {
                 Ok(res) => match res {
-                    ArchiveReaderResult::Continue => {},
-                    ArchiveReaderResult::Done(archive) => { break 'read_zip archive },
+                    ArchiveReaderResult::Continue => {}
+                    ArchiveReaderResult::Done(archive) => break 'read_zip archive,
                 },
                 Err(err) => {
                     println!("zar processing error: {:#?}", err);

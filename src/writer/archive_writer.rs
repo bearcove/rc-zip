@@ -4,6 +4,7 @@ pub struct ArchiveWriter<W>
 where
     W: Write,
 {
+    #[allow(unused)]
     writer: BufWriter<W>,
 }
 

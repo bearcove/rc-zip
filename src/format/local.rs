@@ -8,31 +8,31 @@ use nom::{
 
 #[derive(Debug)]
 /// 4.3.7 Local file header
-pub(crate) struct LocalFileHeaderRecord {
+pub struct LocalFileHeaderRecord {
     /// version needed to extract
-    pub(crate) reader_version: Version,
+    pub reader_version: Version,
     /// general purpose bit flag
-    pub(crate) flags: u16,
+    pub flags: u16,
     /// compression method
-    pub(crate) method: u16,
+    pub method: u16,
     /// last mod file datetime
-    pub(crate) modified: MsdosTimestamp,
+    pub modified: MsdosTimestamp,
     /// crc-32
-    pub(crate) crc32: u32,
+    pub crc32: u32,
     /// compressed size
-    pub(crate) compressed_size: u32,
+    pub compressed_size: u32,
     /// uncompressed size
-    pub(crate) uncompressed_size: u32,
+    pub uncompressed_size: u32,
     // file name
-    pub(crate) name: ZipString,
+    pub name: ZipString,
     // extra field
-    pub(crate) extra: ZipBytes,
+    pub extra: ZipBytes,
 }
 
 impl LocalFileHeaderRecord {
-    const SIGNATURE: &'static str = "PK\x03\x04";
+    pub const SIGNATURE: &'static str = "PK\x03\x04";
 
-    pub(crate) fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!({
@@ -46,8 +46,8 @@ impl LocalFileHeaderRecord {
                 name_len: le_u16,
                 extra_len: le_u16,
             } chain fields!({
-                name: ZipString::parser(name_len),
-                extra: ZipBytes::parser(extra_len),
+                name: ZipString::parser(dbg!(name_len)),
+                extra: ZipBytes::parser(dbg!(extra_len)),
             } map Self {
                 reader_version,
                 flags,
@@ -62,7 +62,7 @@ impl LocalFileHeaderRecord {
         )(i)
     }
 
-    pub(crate) fn has_data_descriptor(&self) -> bool {
+    pub fn has_data_descriptor(&self) -> bool {
         // 4.3.9.1 This descriptor MUST exist if bit 3 of the general
         // purpose bit flag is set (see below).
         self.flags & 0b1000 != 0
@@ -71,19 +71,19 @@ impl LocalFileHeaderRecord {
 
 /// 4.3.9  Data descriptor:
 #[derive(Debug)]
-pub(crate) struct DataDescriptorRecord {
+pub struct DataDescriptorRecord {
     /// CRC32 checksum
-    pub(crate) crc32: u32,
+    pub crc32: u32,
     /// Compressed size
-    pub(crate) compressed_size: u64,
+    pub compressed_size: u64,
     /// Uncompressed size
-    pub(crate) uncompressed_size: u64,
+    pub uncompressed_size: u64,
 }
 
 impl DataDescriptorRecord {
     const SIGNATURE: &'static str = "PK\x07\x08";
 
-    pub(crate) fn parse<'a>(i: &'a [u8], is_zip64: bool) -> parse::Result<'a, Self> {
+    pub fn parse<'a>(i: &'a [u8], is_zip64: bool) -> parse::Result<'a, Self> {
         if is_zip64 {
             preceded(
                 opt(tag(Self::SIGNATURE)),

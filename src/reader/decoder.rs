@@ -1,5 +1,4 @@
 use libflate::non_blocking::deflate;
-use log::*;
 use std::{cmp, io};
 
 pub trait Decoder<R>: io::Read

@@ -24,7 +24,7 @@ enum EntryReaderState {
         hasher: crc32fast::Hasher,
         uncompressed_size: u64,
         header: LocalFileHeaderRecord,
-        decoder: Box<Decoder<LimitedReader>>,
+        decoder: Box<dyn Decoder<LimitedReader>>,
     },
     ReadDataDescriptor {
         metrics: EntryReadMetrics,
@@ -77,7 +77,7 @@ where
                         debug!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
                             let limited_reader = LimitedReader::new(buffer, self.entry.compressed_size);
-                            let decoder: Box<Decoder<LimitedReader>> = match self.entry.method() {
+                            let decoder: Box<dyn Decoder<LimitedReader>> = match self.entry.method() {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
                                 Method::Deflate => Box::new(deflate::Decoder::new(limited_reader)),
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),

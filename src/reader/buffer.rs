@@ -50,7 +50,7 @@ impl Buffer {
     }
 
     /// fill that buffer from the given Read
-    pub(crate) fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
+    pub(crate) fn read(&mut self, rd: &mut dyn Read) -> Result<usize, std::io::Error> {
         if self.buffer.available_space() == 0 {
             debug!("uh oh, buffer has no available space!")
         }

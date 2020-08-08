@@ -138,7 +138,7 @@ impl ArchiveReader {
     ///
     /// If successful, this returns the number of bytes read. On success,
     /// [process()](ArchiveReader::process()) should be called next.
-    pub fn read(&mut self, rd: &mut Read) -> Result<usize, std::io::Error> {
+    pub fn read(&mut self, rd: &mut dyn Read) -> Result<usize, std::io::Error> {
         if let Some(buffer) = self.state.buffer_as_mut() {
             buffer.read(rd)
         } else {

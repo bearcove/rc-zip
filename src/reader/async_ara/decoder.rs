@@ -1,7 +1,7 @@
 use async_compression::futures::bufread::DeflateDecoder;
 use futures::{AsyncBufRead, AsyncRead};
 
-pub trait AsyncDecoder<R>: AsyncRead
+pub trait AsyncDecoder<R>: AsyncRead + Unpin
 where
     R: AsyncRead,
 {
@@ -10,7 +10,7 @@ where
 
 impl<R> AsyncDecoder<R> for DeflateDecoder<R>
 where
-    R: AsyncRead + AsyncBufRead,
+    R: AsyncRead + AsyncBufRead + Unpin,
 {
     fn into_inner(self) -> R {
         DeflateDecoder::into_inner(self)
@@ -19,7 +19,7 @@ where
 
 impl<R> AsyncDecoder<R> for R
 where
-    R: AsyncRead,
+    R: AsyncRead + Unpin,
 {
     fn into_inner(self) -> R {
         self

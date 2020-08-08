@@ -7,8 +7,14 @@ use nom::Offset;
 use std::{
     io,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
+
+struct EntryReadMetrics {
+    uncompressed_size: u64,
+    crc32: u32,
+}
 
 enum InnerState<R>
 where
@@ -21,9 +27,11 @@ where
         hasher: crc32fast::Hasher,
         uncompressed_size: u64,
         header: LocalFileHeaderRecord,
-        decoder: Pin<Box<dyn AsyncDecoder<BufReader<RangeReader<R>>>>>,
+        decoder: Pin<Box<dyn AsyncDecoder<BufReader<RangeReader<Arc<R>>>> + Unpin>>,
+        reader: Arc<R>,
     },
     ReadDataDescriptor {
+        metrics: EntryReadMetrics,
         header: LocalFileHeaderRecord,
         reader: R,
     },
@@ -89,8 +97,9 @@ where
                     let data_offset = self.entry.header_offset + local_header_size as u64;
 
                     transition!(self.state => (S::ReadLocalHeader { reader }) {
+                        let reader = Arc::new(reader);
                         let range_reader = match RangeReader::new(
-                            reader,
+                            reader.clone(),
                             data_offset..data_offset + self.entry.compressed_size,
                         ) {
                             Ok(r) => r,
@@ -99,7 +108,7 @@ where
                             }
                         };
 
-                        let decoder: Pin<Box<dyn AsyncDecoder<BufReader<RangeReader<R>>>>> =
+                        let decoder: Pin<Box<dyn AsyncDecoder<BufReader<RangeReader<Arc<R>>>> + Unpin>> =
                             match self.entry.method() {
                                 Method::Store => {
                                     // hello
@@ -117,6 +126,7 @@ where
                                 }
                             };
                         S::ReadData {
+                            reader,
                             header,
                             decoder,
                             uncompressed_size: 0,
@@ -128,8 +138,8 @@ where
                 S::ReadData {
                     ref mut hasher,
                     ref mut uncompressed_size,
-                    ref header,
                     ref mut decoder,
+                    ..
                 } => {
                     self.buffer.clear();
                     self.buffer.reserve(read_len);
@@ -140,15 +150,31 @@ where
                     unsafe {
                         self.buffer.set_len(n);
                     }
+                    hasher.update(&self.buffer[..n]);
+                    *uncompressed_size += n as u64;
 
                     if n == 0 {
-                        self.state = S::Done;
+                        transition!(self.state => (S::ReadData { reader, decoder, header, hasher, uncompressed_size }) {
+                            let crc32 = hasher.finalize();
+                            let metrics = EntryReadMetrics {
+                                uncompressed_size,
+                                crc32,
+                            };
+                            drop(decoder);
+
+                            S::ReadDataDescriptor {
+                                reader: Arc::try_unwrap(reader).map_err(|_| "should be able to get reader back").unwrap(),
+                                header,
+                                metrics,
+                            }
+                        });
                     }
                     break Ok(n);
                 }
                 S::ReadDataDescriptor {
                     ref reader,
                     ref header,
+                    ..
                 } => todo!(),
                 S::Validate { ref header } => todo!(),
                 S::Done => break Ok(0),

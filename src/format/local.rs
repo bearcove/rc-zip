@@ -46,8 +46,8 @@ impl LocalFileHeaderRecord {
                 name_len: le_u16,
                 extra_len: le_u16,
             } chain fields!({
-                name: ZipString::parser(dbg!(name_len)),
-                extra: ZipBytes::parser(dbg!(extra_len)),
+                name: ZipString::parser(name_len),
+                extra: ZipBytes::parser(extra_len),
             } map Self {
                 reader_version,
                 flags,

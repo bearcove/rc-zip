@@ -180,17 +180,14 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                         gid = Optional(entry.gid),
                     );
 
-                    match entry.contents() {
-                        rc_zip::EntryContents::Symlink(sl) => {
-                            let mut target = String::new();
-                            rc_zip::reader::sync::EntryReader::new(sl.entry, |offset| {
-                                positioned_io::Cursor::new_pos(&zipfile, offset)
-                            })
-                            .read_to_string(&mut target)
-                            .unwrap();
-                            print!("\t{target}", target = target);
-                        }
-                        _ => {}
+                    if let rc_zip::EntryContents::Symlink(sl) = entry.contents() {
+                        let mut target = String::new();
+                        rc_zip::reader::sync::EntryReader::new(sl.entry, |offset| {
+                            positioned_io::Cursor::new_pos(&zipfile, offset)
+                        })
+                        .read_to_string(&mut target)
+                        .unwrap();
+                        print!("\t{target}", target = target);
                     }
                 }
                 println!();

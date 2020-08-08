@@ -48,7 +48,7 @@ impl Archive {
 /// `Entry` contains normalized metadata fields, that can be set when
 /// writing a zip archive. Additional metadata, along with the information
 /// required to extract an entry, are available in [StoredEntry][] instead.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Entry {
     /// Name of the file
     /// Must be a relative path, not start with a drive letter (e.g. C:),
@@ -97,7 +97,7 @@ impl Entry {
 /// When reading archives, one deals with a list of [StoredEntry][], whereas when writing one, one
 /// typically only specifies an [Entry][] and provides the entry's contents: fields like the CRC32
 /// hash, uncompressed size, and compressed size are derived automatically from the input.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct StoredEntry {
     /// Archive-independent information
     ///
@@ -233,7 +233,7 @@ impl StoredEntry {
     where
         R: ara::ReadAt,
     {
-        reader::async_ara::AsyncEntryReader::new(self, source)
+        reader::async_ara::AsyncEntryReader::new(self.clone(), source)
     }
 }
 

@@ -1,4 +1,8 @@
 use crate::format::*;
+use crate::reader;
+
+#[cfg(feature = "async")]
+use ara::ReadAt;
 
 /// An Archive contains general information about a zip files,
 /// along with a list of [entries][StoredEntry].
@@ -215,12 +219,21 @@ impl StoredEntry {
         self.entry.accessed.as_ref()
     }
 
-    pub fn reader<'a, F, R>(&'a self, get_reader: F) -> crate::reader::EntryReader<'a, R>
+    #[cfg(feature = "sync")]
+    pub fn sync_reader<'a, F, R>(&'a self, get_reader: F) -> reader::sync::EntryReader<'a, R>
     where
         R: std::io::Read,
         F: Fn(u64) -> R,
     {
-        crate::reader::EntryReader::new(self, get_reader)
+        reader::sync::EntryReader::new(self, get_reader)
+    }
+
+    #[cfg(feature = "async-ara")]
+    pub fn async_reader<'a, R>(&'a self, source: R) -> reader::async_ara::AsyncEntryReader<R>
+    where
+        R: ara::ReadAt,
+    {
+        reader::async_ara::AsyncEntryReader::new(self, source)
     }
 }
 

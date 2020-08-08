@@ -183,7 +183,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                     match entry.contents() {
                         rc_zip::EntryContents::Symlink(sl) => {
                             let mut target = String::new();
-                            rc_zip::EntryReader::new(sl.entry, |offset| {
+                            rc_zip::reader::sync::EntryReader::new(sl.entry, |offset| {
                                 positioned_io::Cursor::new_pos(&zipfile, offset)
                             })
                             .read_to_string(&mut target)
@@ -255,7 +255,9 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
                             let mut src = String::new();
                             c.entry
-                                .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset))
+                                .sync_reader(|offset| {
+                                    positioned_io::Cursor::new_pos(&zipfile, offset)
+                                })
                                 .read_to_string(&mut src)?;
                             std::os::unix::fs::symlink(src, &path)?;
                         }
@@ -278,7 +280,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                         let mut entry_writer = File::create(path)?;
                         let entry_reader = c
                             .entry
-                            .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
+                            .sync_reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
                         let before_entry_bytes = done_bytes;
                         let mut progress_reader =
                             ProgressRead::new(entry_reader, c.entry.uncompressed_size, |prog| {
@@ -337,13 +339,13 @@ impl Truncate for &str {
                 name_tokens.extend(rest_tokens.into_iter());
                 break name_tokens.join("/");
             }
-            if rest_tokens.len() == 0 {
+            if rest_tokens.is_empty() {
                 name_tokens.extend(rest_tokens.into_iter());
                 let name = name_tokens.join("/");
                 break name.chars().take(limit - 3).collect::<String>() + "...";
             }
             let token = rest_tokens.pop_front().unwrap();
-            match token.char_indices().skip(1).next() {
+            match token.char_indices().nth(1) {
                 Some((i, _)) => name_tokens.push(&token[..i]),
                 None => name_tokens.push(token),
             }
@@ -354,6 +356,7 @@ impl Truncate for &str {
 #[derive(Clone, Copy)]
 struct Progress {
     done: u64,
+    #[allow(unused)]
     total: u64,
 }
 

@@ -22,10 +22,9 @@ mod encoding;
 mod error;
 mod format;
 pub mod prelude;
-mod reader;
-mod writer;
+pub mod reader;
 
-pub use self::{error::*, format::*, reader::*, writer::*};
+pub use self::{error::*, format::*};
 
 #[cfg(test)]
 mod tests {
@@ -72,10 +71,8 @@ mod tests {
     #[derive(Debug)]
     enum FileContent {
         Unchecked,
-        Error(Error),
         Bytes(Vec<u8>),
         File(&'static str),
-        Size(u64),
     }
 
     impl Default for ZipTestFile {

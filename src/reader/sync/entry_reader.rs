@@ -3,7 +3,7 @@
 use crate::{
     error::*,
     format::*,
-    reader::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
+    reader::sync::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
 };
 
 use libflate::non_blocking::deflate;
@@ -16,7 +16,7 @@ struct EntryReadMetrics {
     crc32: u32,
 }
 
-enum EntryReaderState {
+enum State {
     ReadLocalHeader {
         buffer: circular::Buffer,
     },
@@ -40,11 +40,6 @@ enum EntryReaderState {
     Transitioning,
 }
 
-pub enum EntryReaderResult {
-    Continue,
-    Done,
-}
-
 pub struct EntryReader<'a, R>
 where
     R: io::Read,
@@ -52,7 +47,7 @@ where
     entry: &'a StoredEntry,
     rd: EOFNormalizer<R>,
     eof: bool,
-    state: EntryReaderState,
+    state: State,
 }
 
 impl<'a, R> io::Read for EntryReader<'a, R>
@@ -60,7 +55,7 @@ where
     R: io::Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        use EntryReaderState as S;
+        use State as S;
         match self.state {
             S::ReadLocalHeader { ref mut buffer } => {
                 // FIXME: if this returns less than the size of LocalFileHeader, we'll error out
@@ -259,7 +254,7 @@ where
             entry,
             rd: EOFNormalizer::new(get_reader(entry.header_offset)),
             eof: false,
-            state: EntryReaderState::ReadLocalHeader {
+            state: State::ReadLocalHeader {
                 buffer: circular::Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
             },
         }

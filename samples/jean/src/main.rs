@@ -233,9 +233,9 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                                     .expect("all full entry paths should have parent paths"),
                             )?;
                             let mut entry_writer = File::create(path)?;
-                            let mut entry_reader = c
-                                .entry
-                                .reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
+                            let mut entry_reader = c.entry.sync_reader(|offset| {
+                                positioned_io::Cursor::new_pos(&zipfile, offset)
+                            });
                             std::io::copy(&mut entry_reader, &mut entry_writer)?;
                         }
 

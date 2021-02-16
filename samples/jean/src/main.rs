@@ -221,13 +221,19 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
-                pbar.set_message(entry.name());
+                // sanitized `entry.name()` to mitigate zip slip
+                #[cfg(windows)]
+                let entry_name = entry.name().replace("..\\", "");
+                #[cfg(not(windows))]
+                let entry_name = entry.name().replace("../", "");
+
+                pbar.set_message(&entry_name);
                 match entry.contents() {
                     EntryContents::Symlink(c) => {
                         num_symlinks += 1;
                         #[cfg(windows)]
                         {
-                            let path = dir.join(c.entry.name());
+                            let path = dir.join(entry_name);
                             std::fs::create_dir_all(
                                 path.parent()
                                     .expect("all full entry paths should have parent paths"),
@@ -241,7 +247,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
                         #[cfg(not(windows))]
                         {
-                            let path = dir.join(c.entry.name());
+                            let path = dir.join(entry_name);
                             std::fs::create_dir_all(
                                 path.parent()
                                     .expect("all full entry paths should have parent paths"),
@@ -259,9 +265,9 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                             std::os::unix::fs::symlink(src, &path)?;
                         }
                     }
-                    EntryContents::Directory(c) => {
+                    EntryContents::Directory(_c) => {
                         num_dirs += 1;
-                        let path = dir.join(c.entry.name());
+                        let path = dir.join(entry_name);
                         std::fs::create_dir_all(
                             path.parent()
                                 .expect("all full entry paths should have parent paths"),
@@ -269,7 +275,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                     }
                     EntryContents::File(c) => {
                         num_files += 1;
-                        let path = dir.join(c.entry.name());
+                        let path = dir.join(entry_name);
                         std::fs::create_dir_all(
                             path.parent()
                                 .expect("all full entry paths should have parent paths"),

@@ -103,7 +103,10 @@ fn main() {
         )
         .get_matches();
 
-    do_main(matches).unwrap();
+    match do_main(matches) {
+        Ok(_) => (),
+        Err(error) => println!("Failed to read ZIP file: {}", error),
+    }
 }
 
 fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -221,13 +224,27 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
-                // sanitized `entry.name()` to mitigate zip slip
-                #[cfg(windows)]
-                let entry_name = entry.name().replace("..\\", "");
-                #[cfg(not(windows))]
-                let entry_name = entry.name().replace("../", "");
+                let mut entry_name = entry.name();
 
-                pbar.set_message(&entry_name);
+                // refuse entries with traversed/absolute path to mitigate zip slip
+                if entry_name.contains("..") { continue }
+                #[cfg(windows)]
+                {
+                    if entry_name.contains(":\\") || entry_name.starts_with("\\") {
+                        continue
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    // strip absolute prefix on entries pointing to root path
+                    let mut entry_chars = entry_name.chars();
+                    while entry_name.starts_with("/") {
+                        entry_chars.next();
+                        entry_name = entry_chars.as_str()
+                    }
+                }
+
+                pbar.set_message(entry_name);
                 match entry.contents() {
                     EntryContents::Symlink(c) => {
                         num_symlinks += 1;
@@ -252,8 +269,10 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                                 path.parent()
                                     .expect("all full entry paths should have parent paths"),
                             )?;
-                            if let Ok(_metadata) = std::fs::symlink_metadata(&path) {
-                                std::fs::remove_file(&path)?;
+                            if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+                                if metadata.is_file() {
+                                    std::fs::remove_file(&path)?;
+                                }
                             }
 
                             let mut src = String::new();
@@ -262,10 +281,13 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                                     positioned_io::Cursor::new_pos(&zipfile, offset)
                                 })
                                 .read_to_string(&mut src)?;
+
+                            // validate pointing path before creating a symbolic link
+                            if src.contains("..") { continue }
                             std::os::unix::fs::symlink(src, &path)?;
                         }
                     }
-                    EntryContents::Directory(_c) => {
+                    EntryContents::Directory(_) => {
                         num_dirs += 1;
                         let path = dir.join(entry_name);
                         std::fs::create_dir_all(

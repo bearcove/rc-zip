@@ -1,7 +1,8 @@
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
 use std::fmt;
+use std::path::PathBuf;
 use std::time::Duration;
 use std::{
     fs::File,
@@ -36,59 +37,37 @@ where
     }
 }
 
-fn main() {
-    let matches = App::new("rc-zip sample")
-        .subcommand(
-            SubCommand::with_name("file")
-                .about("Show information about a ZIP file")
-                .arg(
-                    Arg::with_name("zipfile")
-                        .help("ZIP file to analyze")
-                        .required(true)
-                        .index(1),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("ls")
-                .about("List files contained in a ZIP file")
-                .arg(
-                    Arg::with_name("zipfile")
-                        .help("ZIP file to list")
-                        .required(true)
-                        .index(1),
-                )
-                .arg(
-                    Arg::with_name("verbose")
-                        .help("Show verbose information for each file")
-                        .long("--verbose")
-                        .short("v"),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("unzip")
-                .about("Extract files contained in a ZIP archive (unzip)")
-                .arg(
-                    Arg::with_name("zipfile")
-                        .help("ZIP file to extract")
-                        .required(true)
-                        .index(1),
-                )
-                .arg(
-                    Arg::with_name("dir")
-                        .help("Directory to extract to")
-                        .default_value(".")
-                        .short("-d"),
-                ),
-        )
-        .get_matches();
+#[derive(Parser)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    match do_main(matches) {
-        Ok(_) => (),
-        Err(error) => println!("Failed to read ZIP file: {}", error),
+#[derive(Subcommand)]
+enum Commands {
+    File {
+        zipfile: PathBuf,
+    },
+    Ls {
+        zipfile: PathBuf,
+        
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    Unzip {
+        zipfile: PathBuf,
+        
+        #[arg(long)]
+        dir: Option<String>,
     }
 }
 
-fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
+    let cli = Cli::parse();
+    do_main(cli).unwrap();
+}
+
+fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     fn info(archive: &rc_zip::Archive) {
         if let Some(comment) = archive.comment() {
             println!("Comment:\n{}", comment);
@@ -137,15 +116,14 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    match matches.subcommand() {
-        ("file", Some(matches)) => {
-            let reader = File::open(matches.value_of("zipfile").unwrap())?.read_zip()?;
+    match cli.command {
+        Commands::File { zipfile } => {
+            let reader = File::open(zipfile)?.read_zip()?;
             info(&reader);
         }
-        ("ls", Some(matches)) => {
-            let zipfile = File::open(matches.value_of("zipfile").unwrap())?;
+        Commands::Ls { zipfile, verbose } => {
+            let zipfile = File::open(zipfile)?;
             let reader = zipfile.read_zip()?;
-            let verbose = matches.is_present("verbose");
 
             for entry in reader.entries() {
                 print!(
@@ -175,9 +153,9 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                 println!();
             }
         }
-        ("unzip", Some(matches)) => {
-            let zipfile = File::open(matches.value_of("zipfile").unwrap())?;
-            let dir = std::path::Path::new(matches.value_of("dir").unwrap());
+        Commands::Unzip { zipfile, dir } => {
+            let zipfile = File::open(zipfile)?;
+            let dir = PathBuf::from(dir.unwrap_or_else(|| ".".into()));
             let reader = zipfile.read_zip()?;
 
             let mut num_dirs = 0;
@@ -312,10 +290,6 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let seconds = (duration.as_millis() as f64) / 1000.0;
             let bps = (uncompressed_size as f64 / seconds) as u64;
             println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
-        }
-        _ => {
-            println!("{}", matches.usage());
-            std::process::exit(1);
         }
     }
 

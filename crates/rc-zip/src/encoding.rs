@@ -29,15 +29,20 @@ impl fmt::Display for Encoding {
 }
 
 /// Errors encountered while converting text to UTF-8.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DecodingError {
     /// Text claimed to be UTF-8, but wasn't (as far as we can tell).
+    #[error("invalid utf-8: {0}")]
     Utf8Error(std::str::Utf8Error),
+
     /// Text is too large to be converted.
     ///
     /// In practice, this happens if the text's length is larger than
     /// [usize::MAX], which seems unlikely.
+    #[error("text too large to be converted")]
     StringTooLarge,
+
+    #[error("encoding error: {0}")]
     EncodingError(&'static str),
 }
 

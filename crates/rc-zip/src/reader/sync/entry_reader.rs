@@ -65,9 +65,7 @@ where
                 match LocalFileHeaderRecord::parse(buffer.data()) {
                     Ok((remaining, header)) => {
                         let consumed = buffer.data().offset(remaining);
-                        drop(remaining);
                         buffer.consume(consumed);
-                        drop(buffer);
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
@@ -87,7 +85,7 @@ where
                         });
                         self.read(buf)
                     }
-                    Err(_e) => return Err(Error::Format(FormatError::InvalidLocalHeader).into()),
+                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
                 }
             }
             S::ReadData {

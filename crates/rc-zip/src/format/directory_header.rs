@@ -82,9 +82,9 @@ impl DirectoryHeader {
                     internal_attrs,
                     external_attrs,
                     header_offset,
-                    name: name,
-                    extra: extra,
-                    comment: comment,
+                    name,
+                    extra,
+                    comment,
                 })
             }),
         )(i)

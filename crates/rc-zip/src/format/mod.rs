@@ -2,7 +2,6 @@ pub use crate::encoding::Encoding;
 
 #[macro_use]
 pub(crate) mod parse;
-pub(crate) use fields;
 
 mod archive;
 mod extra_field;

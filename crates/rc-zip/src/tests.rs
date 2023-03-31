@@ -5,7 +5,7 @@ use chrono::{
     offset::{FixedOffset, Utc},
     DateTime, TimeZone, Timelike,
 };
-use std::path::PathBuf;
+use std::{fs::File, path::PathBuf};
 
 enum ZipSource {
     File(&'static str),
@@ -169,6 +169,13 @@ fn test_cases() -> Vec<ZipTest> {
             ..Default::default()
         },
     ]
+}
+
+#[test]
+fn read_from_file() {
+    let f = File::open(zips_dir().join("test.zip")).unwrap();
+    let archive = f.read_zip().unwrap();
+    assert_eq!(archive.entries().count(), 2);
 }
 
 #[test]

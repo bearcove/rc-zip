@@ -1,7 +1,7 @@
 # rc-zip
 
-[![Build Status](https://travis-ci.org/fasterthanlime/rc-zip.svg?branch=master)](https://travis-ci.org/fasterthanlime/rc-zip)
-![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)
+[![test pipeline](https://github.com/fasterthanlime/rc-zip/actions/workflows/test.yml/badge.svg)](https://github.com/fasterthanlime/rc-zip/actions/workflows/test.yml?query=branch%3Amain)
+[![Coverage Status (codecov.io)](https://codecov.io/gh/fasterthanlime/rc-zip/branch/main/graph/badge.svg)](https://codecov.io/gh/fasterthanlime/rc-zip/)
 
 ### Motivation
 
@@ -82,7 +82,9 @@ crate never block.
 
 See the inline rustdoc comments for more details on API design.
 
-### License
+## License
 
-rc-zip is released under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is primarily distributed under the terms of both the MIT license
+and the Apache License (Version 2.0).
 
+See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.

@@ -1,0 +1,44 @@
+name: test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+
+jobs:
+  test-macos:
+    runs-on: macos-12
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Install Rust specified toolchain
+        run: rustup show
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,nextest,cargo-llvm-cov
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-targets
+      - name: Run cargo nextest
+        uses: actions-rs/cargo@v1
+        with:
+          command: nextest
+          args: run --profile ci
+      - name: Upload coverage information
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.lcov
+          fail_ci_if_error: true
+          verbose: true

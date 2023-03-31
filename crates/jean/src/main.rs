@@ -50,16 +50,16 @@ enum Commands {
     },
     Ls {
         zipfile: PathBuf,
-        
+
         #[arg(short, long)]
         verbose: bool,
     },
     Unzip {
         zipfile: PathBuf,
-        
+
         #[arg(long)]
         dir: Option<String>,
-    }
+    },
 }
 
 fn main() {
@@ -87,17 +87,17 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             creator_versions.insert(entry.creator_version);
             reader_versions.insert(entry.reader_version);
             match entry.contents() {
-                rc_zip::EntryContents::Symlink(_) => {
+                rc_zip::EntryContents::Symlink => {
                     num_symlinks += 1;
                 }
-                rc_zip::EntryContents::Directory(_) => {
+                rc_zip::EntryContents::Directory => {
                     num_dirs += 1;
                 }
-                rc_zip::EntryContents::File(f) => {
+                rc_zip::EntryContents::File => {
                     methods.insert(entry.method());
                     num_files += 1;
-                    compressed_size += f.entry.compressed_size;
-                    uncompressed_size += f.entry.uncompressed_size;
+                    compressed_size += entry.compressed_size;
+                    uncompressed_size += entry.uncompressed_size;
                 }
             }
         }
@@ -118,7 +118,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::File { zipfile } => {
-            let reader = File::open(zipfile)?.read_zip()?;
+            let file = File::open(zipfile)?;
+            let reader = file.read_zip()?;
             info(&reader);
         }
         Commands::Ls { zipfile, verbose } => {
@@ -140,13 +141,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         gid = Optional(entry.gid),
                     );
 
-                    if let rc_zip::EntryContents::Symlink(sl) = entry.contents() {
+                    if let rc_zip::EntryContents::Symlink = entry.contents() {
                         let mut target = String::new();
-                        rc_zip::reader::sync::EntryReader::new(sl.entry, |offset| {
-                            positioned_io::Cursor::new_pos(&zipfile, offset)
-                        })
-                        .read_to_string(&mut target)
-                        .unwrap();
+                        entry.reader().read_to_string(&mut target).unwrap();
                         print!("\t{target}", target = target);
                     }
                 }
@@ -163,8 +160,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let mut num_symlinks = 0;
             let mut uncompressed_size: u64 = 0;
             for entry in reader.entries() {
-                if let EntryContents::File(f) = entry.contents() {
-                    uncompressed_size += f.entry.uncompressed_size;
+                if let EntryContents::File = entry.contents() {
+                    uncompressed_size += entry.uncompressed_size;
                 }
             }
 
@@ -173,7 +170,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let pbar = ProgressBar::new(uncompressed_size);
             pbar.set_style(
                 ProgressStyle::default_bar()
-                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}").unwrap()
+                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
+                    .unwrap()
                     .progress_chars("=>-"),
             );
 
@@ -205,7 +203,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
                 pbar.set_message(entry_name.to_string());
                 match entry.contents() {
-                    EntryContents::Symlink(c) => {
+                    EntryContents::Symlink => {
                         num_symlinks += 1;
                         #[cfg(windows)]
                         {
@@ -215,9 +213,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                     .expect("all full entry paths should have parent paths"),
                             )?;
                             let mut entry_writer = File::create(path)?;
-                            let mut entry_reader = c.entry.sync_reader(|offset| {
-                                positioned_io::Cursor::new_pos(&zipfile, offset)
-                            });
+                            let mut entry_reader = entry.reader();
                             std::io::copy(&mut entry_reader, &mut entry_writer)?;
                         }
 
@@ -235,11 +231,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             let mut src = String::new();
-                            c.entry
-                                .sync_reader(|offset| {
-                                    positioned_io::Cursor::new_pos(&zipfile, offset)
-                                })
-                                .read_to_string(&mut src)?;
+                            entry.reader().read_to_string(&mut src)?;
 
                             // validate pointing path before creating a symbolic link
                             if src.contains("..") {
@@ -248,7 +240,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             std::os::unix::fs::symlink(src, &path)?;
                         }
                     }
-                    EntryContents::Directory(_) => {
+                    EntryContents::Directory => {
                         num_dirs += 1;
                         let path = dir.join(entry_name);
                         std::fs::create_dir_all(
@@ -256,7 +248,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 .expect("all full entry paths should have parent paths"),
                         )?;
                     }
-                    EntryContents::File(c) => {
+                    EntryContents::File => {
                         num_files += 1;
                         let path = dir.join(entry_name);
                         std::fs::create_dir_all(
@@ -264,12 +256,10 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 .expect("all full entry paths should have parent paths"),
                         )?;
                         let mut entry_writer = File::create(path)?;
-                        let entry_reader = c
-                            .entry
-                            .sync_reader(|offset| positioned_io::Cursor::new_pos(&zipfile, offset));
+                        let entry_reader = entry.reader();
                         let before_entry_bytes = done_bytes;
                         let mut progress_reader =
-                            ProgressRead::new(entry_reader, c.entry.uncompressed_size, |prog| {
+                            ProgressRead::new(entry_reader, entry.uncompressed_size, |prog| {
                                 pbar.set_position(before_entry_bytes + prog.done);
                             });
 

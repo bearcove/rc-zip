@@ -1,11 +1,9 @@
-use crate::reader::sync::EntryReader;
-
 use super::{encoding::Encoding, prelude::*};
 use chrono::{
     offset::{FixedOffset, Utc},
     DateTime, TimeZone, Timelike,
 };
-use std::{io::Read, path::PathBuf};
+use std::path::PathBuf;
 
 enum ZipSource {
     File(&'static str),
@@ -188,7 +186,7 @@ fn real_world_files() {
 
         assert_eq!(
             case.files.len(),
-            archive.entries().len(),
+            archive.entries().count(),
             "{} should have {} entries files",
             case.name(),
             case.files.len()
@@ -215,12 +213,8 @@ fn real_world_files() {
             }
 
             match entry.contents() {
-                crate::EntryContents::File(_) => {
-                    let mut er = EntryReader::new(entry, |offset| {
-                        positioned_io::Cursor::new_pos(case.bytes(), offset)
-                    });
-                    let mut actual_bytes = Vec::new();
-                    er.read_to_end(&mut actual_bytes).unwrap();
+                crate::EntryContents::File => {
+                    let actual_bytes = entry.bytes().unwrap();
 
                     match &f.content {
                         FileContent::Unchecked => {
@@ -235,7 +229,7 @@ fn real_world_files() {
                         }
                     }
                 }
-                crate::EntryContents::Symlink(_) | crate::EntryContents::Directory(_) => {
+                crate::EntryContents::Symlink | crate::EntryContents::Directory => {
                     assert!(matches!(f.content, FileContent::Unchecked));
                 }
             }

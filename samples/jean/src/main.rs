@@ -36,11 +36,6 @@ where
 }
 
 fn main() {
-    #[cfg(feature = "color-backtrace")]
-    color_backtrace::install();
-    #[cfg(feature = "env_logger")]
-    env_logger::init();
-
     let matches = App::new("rc-zip sample")
         .subcommand(
             SubCommand::with_name("file")
@@ -227,18 +222,20 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                 let mut entry_name = entry.name();
 
                 // refuse entries with traversed/absolute path to mitigate zip slip
-                if entry_name.contains("..") { continue }
+                if entry_name.contains("..") {
+                    continue;
+                }
                 #[cfg(windows)]
                 {
                     if entry_name.contains(":\\") || entry_name.starts_with("\\") {
-                        continue
+                        continue;
                     }
                 }
                 #[cfg(not(windows))]
                 {
                     // strip absolute prefix on entries pointing to root path
                     let mut entry_chars = entry_name.chars();
-                    while entry_name.starts_with("/") {
+                    while entry_name.starts_with('/') {
                         entry_chars.next();
                         entry_name = entry_chars.as_str()
                     }
@@ -283,7 +280,9 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                                 .read_to_string(&mut src)?;
 
                             // validate pointing path before creating a symbolic link
-                            if src.contains("..") { continue }
+                            if src.contains("..") {
+                                continue;
+                            }
                             std::os::unix::fs::symlink(src, &path)?;
                         }
                     }

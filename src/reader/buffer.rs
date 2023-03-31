@@ -1,5 +1,6 @@
-use log::*;
 use std::io::Read;
+
+use tracing::trace;
 
 /// A wrapper around [circular::Buffer] that keeps track of how many bytes we've read since
 /// initialization or the last reset.
@@ -52,7 +53,7 @@ impl Buffer {
     /// fill that buffer from the given Read
     pub(crate) fn read(&mut self, rd: &mut dyn Read) -> Result<usize, std::io::Error> {
         if self.buffer.available_space() == 0 {
-            debug!("uh oh, buffer has no available space!")
+            trace!("uh oh, buffer has no available space!")
         }
 
         match rd.read(self.buffer.space()) {

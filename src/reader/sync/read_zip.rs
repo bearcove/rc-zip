@@ -29,7 +29,10 @@ pub trait ReadZip {
     fn read_zip(&self) -> Result<Archive, Error>;
 }
 
-impl ReadZipWithSize for dyn ReadAt {
+impl<T> ReadZipWithSize for T
+where
+    T: ReadAt,
+{
     fn read_zip_with_size(&self, size: u64) -> Result<Archive, Error> {
         let mut ar = ArchiveReader::new(size);
         loop {
@@ -54,13 +57,13 @@ impl ReadZipWithSize for dyn ReadAt {
 
 impl ReadZip for Vec<u8> {
     fn read_zip(&self) -> Result<Archive, Error> {
-        ReadAt::read_zip_with_size(self, self.len() as u64)
+        self.read_zip_with_size(self.len() as u64)
     }
 }
 
 impl ReadZip for File {
     fn read_zip(&self) -> Result<Archive, Error> {
         let size = self.size()?.ok_or(Error::UnknownSize)?;
-        ReadAt::read_zip_with_size(self, size)
+        self.read_zip_with_size(size)
     }
 }

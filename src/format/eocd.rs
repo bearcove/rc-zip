@@ -1,5 +1,4 @@
 use crate::{error::*, format::*};
-use log::*;
 use nom::{
     bytes::streaming::tag,
     combinator::map,
@@ -7,6 +6,7 @@ use nom::{
     number::streaming::{le_u16, le_u32, le_u64},
     sequence::{preceded, tuple},
 };
+use tracing::trace;
 
 /// 4.3.16  End of central directory record:
 #[derive(Debug)]
@@ -235,7 +235,7 @@ impl EndOfCentralDirectory {
         }
 
         // make sure directory_offset points to somewhere in our file
-        debug!(
+        trace!(
             "directory offset = {}, valid range = 0..{}",
             res.directory_offset(),
             size

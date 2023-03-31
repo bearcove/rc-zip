@@ -1,11 +1,11 @@
 use crate::{encoding, error::*, format::*};
 use chrono::offset::TimeZone;
-use log::*;
 use nom::{
     bytes::streaming::tag,
     number::streaming::{le_u16, le_u32},
     sequence::preceded,
 };
+use tracing::trace;
 
 /// 4.3.12 Central directory structure: File header
 #[derive(Debug)]
@@ -194,14 +194,14 @@ impl DirectoryHeader {
                     slice = remaining;
                 }
                 Err(e) => {
-                    debug!("extra field error: {:#?}", e);
+                    trace!("extra field error: {:#?}", e);
                     return Err(FormatError::InvalidExtraField.into());
                 }
             }
         }
 
         if !extra_fields.is_empty() {
-            debug!("{} extra fields: {:#?}", name, extra_fields);
+            trace!("{} extra fields: {:#?}", name, extra_fields);
         }
 
         let modified = match modified {

@@ -31,25 +31,18 @@ chrono = "0.4.7"
 chardet = "0.2.4"
 encoding_rs = "0.8.17"
 codepage-437 = "0.1.0"
-log = "0.4.7"
 crc32fast = "1.2.0"
 positioned-io = { version = "0.2.2", optional = true }
 libflate = { version = "0.1.25", optional = true }
-ara = { version = "0.1.0", optional = true }
-async-trait = { version = "0.1.36", optional = true }
-futures = { version = "0.3.5", optional = true }
-async-compression = { version = "0.3.5", optional = true }
+tracing = "0.1.37"
 
 [dev-dependencies]
 color-backtrace = "0.2.2"
 env_logger = "0.6.2"
-ubio = { version = "0.1.0" }
-tokio = "0.2.22"
 
 [features]
-default = ["sync", "async-ara"]
+default = ["sync"]
 sync = ["positioned-io", "libflate"]
-async-ara = ["ara", "async-trait", "futures", "async-compression", "async-compression/futures-io", "async-compression/deflate"]
 
 [workspace]
 members = [ ".", "samples/jean" ]

@@ -7,9 +7,9 @@ use crate::{
 };
 
 use libflate::non_blocking::deflate;
-use log::*;
 use nom::Offset;
 use std::io;
+use tracing::trace;
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -69,7 +69,7 @@ where
                         buffer.consume(consumed);
                         drop(buffer);
 
-                        debug!("local file header: {:#?}", header);
+                        trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
                             let limited_reader = LimitedReader::new(buffer, self.entry.compressed_size);
                             let decoder: Box<dyn Decoder<LimitedReader>> = match self.entry.method() {
@@ -119,10 +119,10 @@ where
                                 uncompressed_size,
                             };
                             if header.has_data_descriptor() {
-                                debug!("will read data descriptor (flags = {:x})", header.flags);
+                                trace!("will read data descriptor (flags = {:x})", header.flags);
                                 S::ReadDataDescriptor { metrics, buffer, header }
                             } else {
-                                debug!("no data descriptor to read");
+                                trace!("no data descriptor to read");
                                 S::Validate { metrics, header, descriptor: None }
                             }
                         });
@@ -147,7 +147,7 @@ where
                 }
             }
             S::ReadDataDescriptor { ref mut buffer, .. } => {
-                debug!(
+                trace!(
                     "read data descriptor, avail data = {}, avail space = {}",
                     buffer.available_data(),
                     buffer.available_space()
@@ -155,20 +155,20 @@ where
 
                 match DataDescriptorRecord::parse(buffer.data(), self.entry.is_zip64) {
                     Ok((_remaining, descriptor)) => {
-                        debug!("data descriptor = {:#?}", descriptor);
+                        trace!("data descriptor = {:#?}", descriptor);
                         transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
                             S::Validate { metrics, header, descriptor: Some(descriptor) }
                         });
                         self.read(buf)
                     }
                     Err(nom::Err::Incomplete(_)) => {
-                        debug!(
+                        trace!(
                             "incomplete! before shift, data {} / space {}",
                             buffer.available_data(),
                             buffer.available_space()
                         );
                         buffer.shift();
-                        debug!(
+                        trace!(
                             "             after shift, data {} / space {}",
                             buffer.available_data(),
                             buffer.available_space()
@@ -178,7 +178,7 @@ where
                             return Err(io::ErrorKind::UnexpectedEof.into());
                         }
                         buffer.fill(n);
-                        debug!("filled {}", n);
+                        trace!("filled {}", n);
 
                         self.read(buf)
                     }
@@ -219,8 +219,6 @@ where
                 }
 
                 if expected_crc32 != 0 {
-                    debug!("expected CRC-32: {:x}", expected_crc32);
-                    debug!("computed CRC-32: {:x}", metrics.crc32);
                     if expected_crc32 != metrics.crc32 {
                         return Err(Error::Format(FormatError::WrongChecksum {
                             expected: expected_crc32,
@@ -249,7 +247,7 @@ where
     where
         F: Fn(u64) -> R,
     {
-        debug!("entry: {:#?}", entry);
+        trace!("entry: {:#?}", entry);
         Self {
             entry,
             rd: EOFNormalizer::new(get_reader(entry.header_offset)),

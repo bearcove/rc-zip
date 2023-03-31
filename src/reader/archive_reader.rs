@@ -1,8 +1,8 @@
 use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*};
 
-use log::*;
 use nom::Offset;
 use std::io::Read;
+use tracing::trace;
 
 /// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
@@ -262,7 +262,7 @@ impl ArchiveReader {
                 ref eocd,
                 ref mut directory_headers,
             } => {
-                debug!(
+                trace!(
                     "ReadCentralDirectory | process(), available: {}",
                     buffer.available_data()
                 );
@@ -310,9 +310,10 @@ impl ArchiveReader {
                                     } else {
                                         let (charset, confidence, _language) = detector.close();
                                         let label = chardet::charset2encoding(&charset);
-                                        debug!(
+                                        trace!(
                                             "Detected charset {} with confidence {}",
-                                            label, confidence
+                                            label,
+                                            confidence
                                         );
 
                                         match label {

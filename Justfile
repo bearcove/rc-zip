@@ -3,6 +3,10 @@
 _default:
 	just --list
 
+# Run all tests locally
+test *args:
+	cargo nextest run {{args}}
+
 # Run all tests with nextest and cargo-llvm-cov
 ci-test:
 	#!/bin/bash -eux

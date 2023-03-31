@@ -1,9 +1,6 @@
 use crate::format::*;
 use crate::reader;
 
-#[cfg(feature = "async")]
-use ara::ReadAt;
-
 /// An Archive contains general information about a zip files,
 /// along with a list of [entries][StoredEntry].
 ///
@@ -18,6 +15,11 @@ pub struct Archive {
 }
 
 impl Archive {
+    /// The size of .zip file that was read, in bytes.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
     /// Return a list of all files in this zip, read from the
     /// central directory.
     pub fn entries(&self) -> &[StoredEntry] {
@@ -226,14 +228,6 @@ impl StoredEntry {
         F: Fn(u64) -> R,
     {
         reader::sync::EntryReader::new(self, get_reader)
-    }
-
-    #[cfg(feature = "async-ara")]
-    pub fn async_reader<'a, R>(&'a self, source: R) -> reader::async_ara::AsyncEntryReader<R>
-    where
-        R: ara::ReadAt + Unpin + 'static,
-    {
-        reader::async_ara::AsyncEntryReader::new(self.clone(), source)
     }
 }
 

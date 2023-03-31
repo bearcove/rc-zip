@@ -10,4 +10,3 @@ ci-test:
 	cargo llvm-cov clean --workspace
 	cargo nextest run --profile ci
 	cargo llvm-cov report --lcov --output-path coverage.lcov
-	codecov

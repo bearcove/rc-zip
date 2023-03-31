@@ -30,15 +30,11 @@ jobs:
         with:
           command: check
           args: --all-targets
-      - name: Run cargo nextest
-        uses: actions-rs/cargo@v1
-        with:
-          command: nextest
-          args: run --profile ci
+      - name: Run tests and collect coverage
+        run: just ci-test
       - name: Upload coverage information
         uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.lcov
           fail_ci_if_error: true
           verbose: true

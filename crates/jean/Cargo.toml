@@ -11,4 +11,4 @@ rc-zip = { path = "../rc-zip" }
 clap = "2.33.0"
 humansize = "2.0.0"
 positioned-io.workspace = true
-indicatif = "0.11.0"
+indicatif = "0.17.3"

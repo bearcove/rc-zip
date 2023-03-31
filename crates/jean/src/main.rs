@@ -2,6 +2,7 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
 use std::fmt;
+use std::time::Duration;
 use std::{
     fs::File,
     io::{self, Read},
@@ -194,11 +195,11 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let pbar = ProgressBar::new(uncompressed_size);
             pbar.set_style(
                 ProgressStyle::default_bar()
-                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
+                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}").unwrap()
                     .progress_chars("=>-"),
             );
 
-            pbar.enable_steady_tick(125);
+            pbar.enable_steady_tick(Duration::from_millis(125));
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
@@ -224,7 +225,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                pbar.set_message(entry_name);
+                pbar.set_message(entry_name.to_string());
                 match entry.contents() {
                     EntryContents::Symlink(c) => {
                         num_symlinks += 1;

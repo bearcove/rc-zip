@@ -3,18 +3,19 @@ use crate::{
     format::Archive,
     reader::{sync::EntryReader, ArchiveReader, ArchiveReaderResult},
 };
-use positioned_io::{Cursor, ReadAt, Size};
-use std::{fmt, fs::File, io::Read, ops::Deref};
+use std::{fmt, io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive (blocking I/O model)
 ///
 /// See also [ReadZip].
 pub trait ReadZipWithSize {
+    type File: HasCursor;
+
     /// Reads self as a zip archive.
     ///
     /// This functions blocks until the entire archive has been read.
     /// It is not compatible with non-blocking or async I/O.
-    fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_>, Error>;
+    fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, Self::File>, Error>;
 }
 
 /// A trait for reading something as a zip archive (blocking I/O model),
@@ -22,22 +23,26 @@ pub trait ReadZipWithSize {
 ///
 /// See also [ReadZipWithSize].
 pub trait ReadZip {
+    type File: HasCursor;
+
     /// Reads self as a zip archive.
     ///
     /// This functions blocks until the entire archive has been read.
     /// It is not compatible with non-blocking or async I/O.
-    fn read_zip(&self) -> Result<SyncArchive<'_>, Error>;
+    fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error>;
 }
 
-impl<T> ReadZipWithSize for T
+impl<F> ReadZipWithSize for F
 where
-    T: ReadAt,
+    F: HasCursor,
 {
-    fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_>, Error> {
+    type File = F;
+
+    fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, F>, Error> {
         let mut ar = ArchiveReader::new(size);
         loop {
             if let Some(offset) = ar.wants_read() {
-                match ar.read(&mut Cursor::new_pos(&self, offset)) {
+                match ar.read(&mut self.cursor_at(offset)) {
                     Ok(read_bytes) => {
                         if read_bytes == 0 {
                             return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
@@ -60,26 +65,26 @@ where
     }
 }
 
-impl ReadZip for Vec<u8> {
-    fn read_zip(&self) -> Result<SyncArchive<'_>, Error> {
+impl ReadZip for &[u8] {
+    type File = Self;
+
+    fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error> {
         self.read_zip_with_size(self.len() as u64)
     }
 }
 
-#[cfg(feature = "file")]
-impl ReadZip for File {
-    fn read_zip(&self) -> Result<SyncArchive<'_>, Error> {
-        let size = self.size()?.ok_or(Error::UnknownSize)?;
-        self.read_zip_with_size(size)
-    }
-}
-
-pub struct SyncArchive<'a> {
-    file: &'a dyn ReadAt,
+pub struct SyncArchive<'a, F>
+where
+    F: HasCursor,
+{
+    file: &'a F,
     archive: Archive,
 }
 
-impl fmt::Debug for SyncArchive<'_> {
+impl<F> fmt::Debug for SyncArchive<'_, F>
+where
+    F: HasCursor,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SyncArchive")
             .field("archive", &self.archive)
@@ -87,7 +92,10 @@ impl fmt::Debug for SyncArchive<'_> {
     }
 }
 
-impl Deref for SyncArchive<'_> {
+impl<F> Deref for SyncArchive<'_, F>
+where
+    F: HasCursor,
+{
     type Target = Archive;
 
     fn deref(&self) -> &Self::Target {
@@ -95,9 +103,12 @@ impl Deref for SyncArchive<'_> {
     }
 }
 
-impl SyncArchive<'_> {
+impl<F> SyncArchive<'_, F>
+where
+    F: HasCursor,
+{
     /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = SyncStoredEntry<'_>> {
+    pub fn entries(&self) -> impl Iterator<Item = SyncStoredEntry<'_, F>> {
         self.archive.entries().map(move |entry| SyncStoredEntry {
             file: self.file,
             entry,
@@ -106,7 +117,7 @@ impl SyncArchive<'_> {
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
     /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<SyncStoredEntry<'_>> {
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<SyncStoredEntry<'_, F>> {
         self.entries
             .iter()
             .find(|&x| x.name() == name.as_ref())
@@ -117,12 +128,12 @@ impl SyncArchive<'_> {
     }
 }
 
-pub struct SyncStoredEntry<'a> {
-    file: &'a dyn ReadAt,
+pub struct SyncStoredEntry<'a, F> {
+    file: &'a F,
     entry: &'a crate::StoredEntry,
 }
 
-impl Deref for SyncStoredEntry<'_> {
+impl<F> Deref for SyncStoredEntry<'_, F> {
     type Target = crate::StoredEntry;
 
     fn deref(&self) -> &Self::Target {
@@ -130,10 +141,13 @@ impl Deref for SyncStoredEntry<'_> {
     }
 }
 
-impl SyncStoredEntry<'_> {
+impl<F> SyncStoredEntry<'_, F>
+where
+    F: HasCursor,
+{
     /// Returns a reader for the entry.
     pub fn reader(&self) -> impl Read + '_ {
-        EntryReader::new(self.entry, |offset| Cursor::new_pos(self.file, offset))
+        EntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
     }
 
     /// Reads the entire entry into a vector.
@@ -141,5 +155,46 @@ impl SyncStoredEntry<'_> {
         let mut v = Vec::new();
         self.reader().read_to_end(&mut v)?;
         Ok(v)
+    }
+}
+
+/// A sliceable I/O resource: we can ask for a [Read] at a given offset.
+pub trait HasCursor {
+    type Cursor<'a>: Read + 'a
+    where
+        Self: 'a;
+
+    /// Returns a [Read] at the given offset.
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_>;
+}
+
+impl HasCursor for &[u8] {
+    type Cursor<'a> = &'a [u8]
+    where
+        Self: 'a;
+
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
+        &self[offset.try_into().unwrap()..]
+    }
+}
+
+#[cfg(feature = "file")]
+impl HasCursor for std::fs::File {
+    type Cursor<'a> = positioned_io::Cursor<&'a std::fs::File>
+    where
+        Self: 'a;
+
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
+        positioned_io::Cursor::new_pos(self, offset)
+    }
+}
+
+#[cfg(feature = "file")]
+impl ReadZip for std::fs::File {
+    type File = Self;
+
+    fn read_zip(&self) -> Result<SyncArchive<'_, Self>, Error> {
+        let size = self.metadata()?.len();
+        self.read_zip_with_size(size)
     }
 }

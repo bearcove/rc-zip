@@ -164,7 +164,8 @@ fn real_world_files() {
     for case in test_cases() {
         let case_name = case.name();
         let case_bytes = case.bytes();
-        let archive = case_bytes.read_zip();
+        let slice = case_bytes.as_slice();
+        let archive = slice.read_zip();
 
         if let Some(expected) = case.error {
             let actual = archive.expect_err("should have errored");

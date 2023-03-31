@@ -28,5 +28,5 @@ chardetng = "0.1.17"
 
 [features]
 default = ["sync", "file"]
-sync = ["positioned-io", "libflate"]
-file = []
+sync = ["libflate"]
+file = ["positioned-io"]

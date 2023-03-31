@@ -161,7 +161,7 @@ impl DirectoryHeader {
                             }
                         }
                         ExtraField::Timestamp(ts) => {
-                            modified = Some(Utc.timestamp(ts.mtime as i64, 0));
+                            modified = Utc.timestamp_opt(ts.mtime as i64, 0).single();
                         }
                         ExtraField::Ntfs(nf) => {
                             for attr in &nf.attrs {
@@ -176,7 +176,7 @@ impl DirectoryHeader {
                             }
                         }
                         ExtraField::Unix(uf) => {
-                            modified = Some(Utc.timestamp(uf.mtime as i64, 0));
+                            modified = Utc.timestamp_opt(uf.mtime as i64, 0).single();
                             if uid.is_none() {
                                 uid = Some(uf.uid as u32);
                             }

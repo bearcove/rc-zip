@@ -3,7 +3,7 @@ use crate::reader::sync::EntryReader;
 use super::{encoding::Encoding, prelude::*};
 use chrono::{
     offset::{FixedOffset, Utc},
-    DateTime, TimeZone,
+    DateTime, TimeZone, Timelike,
 };
 use std::{io::Read, path::PathBuf};
 
@@ -82,7 +82,7 @@ fn zips_dir() -> PathBuf {
 }
 
 fn time_zone(hours: i32) -> FixedOffset {
-    FixedOffset::east(hours * 3600)
+    FixedOffset::east_opt(hours * 3600).unwrap()
 }
 
 fn date(
@@ -94,11 +94,14 @@ fn date(
     sec: u32,
     nsec: u32,
     offset: FixedOffset,
-) -> DateTime<Utc> {
-    offset
-        .ymd(year, month, day)
-        .and_hms_nano(hour, min, sec, nsec)
-        .into()
+) -> Option<DateTime<Utc>> {
+    Some(
+        offset
+            .with_ymd_and_hms(year, month, day, hour, min, sec)
+            .single()?
+            .with_nanosecond(nsec)?
+            .into(),
+    )
 }
 
 fn test_cases() -> Vec<ZipTest> {
@@ -110,7 +113,7 @@ fn test_cases() -> Vec<ZipTest> {
                 content: FileContent::Bytes(
                     "This small file is in ZIP64 format.\n".as_bytes().into(),
                 ),
-                modified: Some(date(2012, 8, 10, 14, 33, 32, 0, time_zone(0))),
+                modified: Some(date(2012, 8, 10, 14, 33, 32, 0, time_zone(0)).unwrap()),
                 mode: Some(0o644),
                 ..Default::default()
             }],
@@ -124,14 +127,14 @@ fn test_cases() -> Vec<ZipTest> {
                 ZipTestFile {
                     name: "test.txt",
                     content: FileContent::Bytes("This is a test text file.\n".as_bytes().into()),
-                    modified: Some(date(2010, 9, 5, 12, 12, 1, 0, time_zone(10))),
+                    modified: Some(date(2010, 9, 5, 12, 12, 1, 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
                     ..Default::default()
                 },
                 ZipTestFile {
                     name: "gophercolor16x16.png",
                     content: FileContent::File("gophercolor16x16.png"),
-                    modified: Some(date(2010, 9, 5, 15, 52, 58, 0, time_zone(10))),
+                    modified: Some(date(2010, 9, 5, 15, 52, 58, 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
                     ..Default::default()
                 },

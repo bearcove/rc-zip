@@ -2,7 +2,7 @@ use crate::format::parse;
 
 use chrono::{
     offset::{LocalResult, TimeZone, Utc},
-    DateTime,
+    DateTime, Timelike,
 };
 use nom::{
     combinator::map,
@@ -47,7 +47,7 @@ impl MsdosTimestamp {
             let m = ((self.date >> 5) & 0b1111) as u32;
             // bits 9-15: year offset from 1980
             let y = ((self.date >> 9) + 1980) as i32;
-            Utc.ymd_opt(y, m, d)
+            Utc.with_ymd_and_hms(y, m, d, 0, 0, 0)
         } {
             LocalResult::Single(date) => date,
             _ => return None,
@@ -59,7 +59,7 @@ impl MsdosTimestamp {
         let m = (self.time >> 5 & 0b1111_11) as u32;
         // bits 11-15: hour (0-23 on a 24-hour clock)
         let h = (self.time >> 11) as u32;
-        date.and_hms_opt(h, m, s)
+        date.with_hour(h)?.with_minute(m)?.with_second(s)
     }
 }
 
@@ -91,7 +91,7 @@ impl NtfsTimestamp {
         let secs = (self.timestamp / ticks_per_second) as i64;
         let nsecs =
             (1_000_000_000 / ticks_per_second) * ((self.timestamp * ticks_per_second) as u64);
-        let epoch = Utc.ymd(1601, 1, 1).and_hms(0, 0, 0);
+        let epoch = Utc.with_ymd_and_hms(1601, 1, 1, 0, 0, 0).single()?;
         match Utc.timestamp_opt(epoch.timestamp() + secs, nsecs as u32) {
             LocalResult::Single(date) => Some(date),
             _ => None,
@@ -101,7 +101,7 @@ impl NtfsTimestamp {
 
 pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
     chrono::DateTime::from_utc(
-        chrono::naive::NaiveDateTime::from_timestamp(0, 0),
+        chrono::naive::NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
         chrono::offset::Utc,
     )
 }

@@ -282,14 +282,24 @@ impl ArchiveReader {
                             let actual_records = eocd.directory_records() as u16;
 
                             if expected_records == actual_records {
+                                let mut detectorng = chardetng::EncodingDetector::new();
                                 let mut detector = chardet::UniversalDetector::new();
                                 let mut all_utf8 = true;
+                                let mut had_suspicious_chars_for_cp437 = false;
 
                                 {
                                     let max_feed: usize = 4096;
                                     let mut total_fed: usize = 0;
                                     let mut feed = |slice: &[u8]| {
                                         detector.feed(slice);
+                                        detectorng.feed(slice, false);
+                                        for b in slice {
+                                            if (0xB0..=0xDF).contains(b) {
+                                                // those are, like, box drawing characters
+                                                had_suspicious_chars_for_cp437 = true;
+                                            }
+                                        }
+
                                         total_fed += slice.len();
                                         total_fed < max_feed
                                     };
@@ -308,18 +318,21 @@ impl ArchiveReader {
                                     if all_utf8 {
                                         Encoding::Utf8
                                     } else {
-                                        let (charset, confidence, _language) = detector.close();
-                                        let label = chardet::charset2encoding(&charset);
-                                        trace!(
-                                            "Detected charset {} with confidence {}",
-                                            label,
-                                            confidence
-                                        );
-
-                                        match label {
-                                            "SHIFT_JIS" => Encoding::ShiftJis,
-                                            "utf-8" => Encoding::Utf8,
-                                            _ => Encoding::Cp437,
+                                        let encoding = detectorng.guess(None, true);
+                                        if encoding == encoding_rs::SHIFT_JIS {
+                                            // well hold on, sometimes Codepage 437 is detected as
+                                            // Shift-JIS by chardetng. If we have any characters
+                                            // that aren't valid DOS file names, then okay it's probably
+                                            // Shift-JIS. Otherwise, assume it's CP437.
+                                            if had_suspicious_chars_for_cp437 {
+                                                Encoding::ShiftJis
+                                            } else {
+                                                Encoding::Cp437
+                                            }
+                                        } else if encoding == encoding_rs::UTF_8 {
+                                            Encoding::Utf8
+                                        } else {
+                                            Encoding::Cp437
                                         }
                                     }
                                 };

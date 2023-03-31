@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
-use humansize::{file_size_opts::BINARY, FileSize};
+use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
 use std::fmt;
 use std::{
@@ -128,7 +128,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
         println!("Encoding: {}, Methods: {:?}", archive.encoding(), methods);
         println!(
             "{} ({:.2}% compression) ({} files, {} dirs, {} symlinks)",
-            uncompressed_size.file_size(BINARY).unwrap(),
+            format_size(uncompressed_size, BINARY),
             compressed_size as f64 / uncompressed_size as f64 * 100.0,
             num_files,
             num_dirs,
@@ -151,7 +151,7 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                     "{mode:>9} {size:>12} {name}",
                     mode = entry.mode,
                     name = entry.name().truncate_path(55),
-                    size = entry.uncompressed_size.file_size(BINARY).unwrap(),
+                    size = format_size(entry.uncompressed_size, BINARY),
                 );
                 if verbose {
                     print!(
@@ -303,17 +303,14 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
             let duration = start_time.elapsed()?;
             println!(
                 "Extracted {} (in {} files, {} dirs, {} symlinks)",
-                uncompressed_size.file_size(BINARY).unwrap(),
+                format_size(uncompressed_size, BINARY),
                 num_files,
                 num_dirs,
                 num_symlinks
             );
             let seconds = (duration.as_millis() as f64) / 1000.0;
             let bps = (uncompressed_size as f64 / seconds) as u64;
-            println!(
-                "Overall extraction speed: {} / s",
-                bps.file_size(BINARY).unwrap()
-            );
+            println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
         }
         _ => {
             println!("{}", matches.usage());

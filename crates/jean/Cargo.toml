@@ -9,6 +9,6 @@ edition = "2018"
 [dependencies]
 rc-zip = { path = "../rc-zip" }
 clap = "2.33.0"
-humansize = "1.1.0"
+humansize = "2.0.0"
 positioned-io.workspace = true
 indicatif = "0.11.0"

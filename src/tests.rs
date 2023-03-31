@@ -1,6 +1,6 @@
 use crate::reader::sync::EntryReader;
 
-use super::{encoding::Encoding, prelude::*, Archive, Error};
+use super::{encoding::Encoding, prelude::*};
 use chrono::{
     offset::{FixedOffset, Utc},
     DateTime, TimeZone,
@@ -274,7 +274,7 @@ fn test_fsm() {
                     }
                     Err(err) => {
                         println!("at {}, zar encountered an error:", offset);
-                        panic!(err)
+                        panic!("{}", err)
                     }
                 }
             }
@@ -288,7 +288,7 @@ fn test_fsm() {
             },
             Err(err) => {
                 println!("zar processing error: {:#?}", err);
-                panic!(err)
+                panic!("{}", err)
             }
         }
     };

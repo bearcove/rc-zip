@@ -158,6 +158,16 @@ fn test_cases() -> Vec<ZipTest> {
             ],
             ..Default::default()
         },
+        ZipTest {
+            source: ZipSource::File("utf8-winrar.zip"),
+            expected_encoding: Some(Encoding::Utf8),
+            files: vec![ZipTestFile {
+                name: "世界",
+                content: FileContent::Bytes(vec![]),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
     ]
 }
 

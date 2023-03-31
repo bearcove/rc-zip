@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
-use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::{borrow::Cow, fmt};
 use std::{
     fs::File,
     io::{self, Read},
@@ -130,7 +130,11 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 print!(
                     "{mode:>9} {size:>12} {name}",
                     mode = entry.mode,
-                    name = entry.name().truncate_path(55),
+                    name = if verbose {
+                        Cow::from(entry.name())
+                    } else {
+                        Cow::from(entry.name().truncate_path(55))
+                    },
                     size = format_size(entry.uncompressed_size, BINARY),
                 );
                 if verbose {

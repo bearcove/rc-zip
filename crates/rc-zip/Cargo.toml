@@ -26,5 +26,6 @@ oem_cp = "2.0.0"
 thiserror = "1.0.40"
 
 [features]
-default = ["sync"]
+default = ["sync", "file"]
 sync = ["positioned-io", "libflate"]
+file = []

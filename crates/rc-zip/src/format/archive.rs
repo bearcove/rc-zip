@@ -1,5 +1,4 @@
 use crate::format::*;
-use crate::reader;
 
 /// An Archive contains general information about a zip files,
 /// along with a list of [entries][StoredEntry].
@@ -20,10 +19,9 @@ impl Archive {
         self.size
     }
 
-    /// Return a list of all files in this zip, read from the
-    /// central directory.
-    pub fn entries(&self) -> &[StoredEntry] {
-        &self.entries[..]
+    /// Iterate over all files in this zip, read from the central directory.
+    pub fn entries(&self) -> impl Iterator<Item = &StoredEntry> {
+        self.entries.iter()
     }
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
@@ -220,33 +218,24 @@ impl StoredEntry {
     pub fn accessed(&self) -> Option<&DateTime<Utc>> {
         self.entry.accessed.as_ref()
     }
-
-    #[cfg(feature = "sync")]
-    pub fn sync_reader<F, R>(&self, get_reader: F) -> reader::sync::EntryReader<'_, R>
-    where
-        R: std::io::Read,
-        F: Fn(u64) -> R,
-    {
-        reader::sync::EntryReader::new(self, get_reader)
-    }
 }
 
 /// The contents of an entry: a directory, a file, or a symbolic link.
 #[derive(Debug)]
-pub enum EntryContents<'a> {
-    Directory(Directory<'a>),
-    File(File<'a>),
-    Symlink(Symlink<'a>),
+pub enum EntryContents {
+    Directory,
+    File,
+    Symlink,
 }
 
 impl StoredEntry {
-    pub fn contents(&self) -> EntryContents<'_> {
+    pub fn contents(&self) -> EntryContents {
         if self.mode.has(Mode::SYMLINK) {
-            EntryContents::Symlink(Symlink { entry: self })
+            EntryContents::Symlink
         } else if self.mode.has(Mode::DIR) {
-            EntryContents::Directory(Directory { entry: self })
+            EntryContents::Directory
         } else {
-            EntryContents::File(File { entry: self })
+            EntryContents::File
         }
     }
 }

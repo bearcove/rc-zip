@@ -36,10 +36,6 @@ positioned-io = { version = "0.2.2", optional = true }
 libflate = { version = "0.1.25", optional = true }
 tracing = "0.1.37"
 
-[dev-dependencies]
-color-backtrace = "0.2.2"
-env_logger = "0.6.2"
-
 [features]
 default = ["sync"]
 sync = ["positioned-io", "libflate"]

@@ -73,6 +73,14 @@ impl ReadZip for &[u8] {
     }
 }
 
+impl ReadZip for Vec<u8> {
+    type File = Self;
+
+    fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error> {
+        self.read_zip_with_size(self.len() as u64)
+    }
+}
+
 pub struct SyncArchive<'a, F>
 where
     F: HasCursor,
@@ -169,6 +177,16 @@ pub trait HasCursor {
 }
 
 impl HasCursor for &[u8] {
+    type Cursor<'a> = &'a [u8]
+    where
+        Self: 'a;
+
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
+        &self[offset.try_into().unwrap()..]
+    }
+}
+
+impl HasCursor for Vec<u8> {
     type Cursor<'a> = &'a [u8]
     where
         Self: 'a;

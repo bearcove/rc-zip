@@ -1,3 +1,5 @@
+use crate::Archive;
+
 use super::{encoding::Encoding, prelude::*};
 use chrono::{
     offset::{FixedOffset, Utc},
@@ -175,6 +177,8 @@ fn real_world_files() {
         }
         let archive = archive.unwrap();
 
+        assert_eq!(case_bytes.len() as u64, archive.size());
+
         if let Some(expected) = case.comment {
             assert_eq!(expected, archive.comment().expect("should have comment"))
         }
@@ -197,6 +201,10 @@ fn real_world_files() {
                 .by_name(f.name)
                 .expect("should have specific test file");
 
+            let archive_inner: &Archive = &archive;
+            let entry_inner = archive_inner.by_name(f.name).unwrap();
+            assert_eq!(entry.name(), entry_inner.name());
+
             if let Some(expected) = f.modified {
                 assert_eq!(
                     expected,
@@ -211,6 +219,9 @@ fn real_world_files() {
             if let Some(mode) = f.mode {
                 assert_eq!(entry.mode.0 & 0o777, mode);
             }
+
+            // I have honestly yet to see a zip file _entry_ with a comment.
+            assert!(entry.comment().is_none());
 
             match entry.contents() {
                 crate::EntryContents::File => {

@@ -73,22 +73,6 @@ pub struct Entry {
     pub accessed: Option<chrono::DateTime<chrono::offset::Utc>>,
 }
 
-impl Entry {
-    pub fn new<S>(name: S, method: Method) -> Self
-    where
-        S: Into<String>,
-    {
-        Self {
-            name: name.into(),
-            comment: None,
-            modified: zero_datetime(),
-            created: None,
-            accessed: None,
-            method,
-        }
-    }
-}
-
 /// An entry as stored into an Archive. Contains additional metadata and offset information.
 ///
 /// Whereas [Entry][] is archive-independent, [StoredEntry][] contains information that is tied to

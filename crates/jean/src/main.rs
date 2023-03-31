@@ -150,6 +150,10 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         entry.reader().read_to_string(&mut target).unwrap();
                         print!("\t{target}", target = target);
                     }
+
+                    if let Some(comment) = entry.comment() {
+                        print!("\t{comment}", comment = comment);
+                    }
                 }
                 println!();
             }

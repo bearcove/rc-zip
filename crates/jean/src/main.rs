@@ -79,23 +79,6 @@ fn main() {
                         .short("-d"),
                 ),
         )
-        .subcommand(
-            SubCommand::with_name("zip")
-                .about("Add files to a ZIP archive (zip -r)")
-                .arg(
-                    Arg::with_name("zipfile")
-                        .help("Path of the zip file to crate")
-                        .required(true)
-                        .index(1),
-                )
-                .arg(
-                    Arg::with_name("files")
-                        .help("Files to add to the archive")
-                        .required(true)
-                        .multiple(true)
-                        .index(2),
-                ),
-        )
         .get_matches();
 
     match do_main(matches) {
@@ -331,12 +314,6 @@ fn do_main(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
                 "Overall extraction speed: {} / s",
                 bps.file_size(BINARY).unwrap()
             );
-        }
-        ("zip", Some(matches)) => {
-            let zipfile = matches.value_of("zipfile").unwrap();
-            let files = matches.values_of("files").unwrap();
-            println!("Should add {:?} to archive {:?}", files, zipfile);
-            unimplemented!();
         }
         _ => {
             println!("{}", matches.usage());

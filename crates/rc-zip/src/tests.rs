@@ -261,6 +261,7 @@ fn test_cases() -> Vec<ZipTest> {
             files: vec![ZipTestFile {
                 name: "世界",
                 content: FileContent::Bytes(vec![]),
+                modified: Some(date((2017, 11, 6), (13, 9, 26), 0, time_zone(0)).unwrap()),
                 ..Default::default()
             }],
             ..Default::default()

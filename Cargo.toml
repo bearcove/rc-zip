@@ -24,7 +24,7 @@ debug = true
 
 [dependencies]
 nom = "5.0.0"
-pretty-hex = "0.1.0"
+pretty-hex = "0.3.0"
 circular = "0.3.0"
 chrono = "0.4.7"
 chardet = "0.2.4"

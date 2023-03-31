@@ -146,7 +146,7 @@ pub struct ExtraTimestampField {
 impl ExtraTimestampField {
     const TAG: u16 = 0x5455;
 
-    fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             // 1 byte of flags, if bit 0 is set, modification time is present
             verify(le_u8, |x| x & 0b1 != 0),
@@ -174,7 +174,7 @@ impl ExtraUnixField {
     const TAG: u16 = 0x000d;
     const TAG_INFOZIP: u16 = 0x5855;
 
-    fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         let (i, t_size) = le_u16(i)?;
         let t_size = t_size - 12;
         fields!(Self {
@@ -213,7 +213,7 @@ pub struct ExtraNewUnixField {
 impl ExtraNewUnixField {
     const TAG: u16 = 0x7875;
 
-    fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag("\x01"),
             map(
@@ -226,7 +226,7 @@ impl ExtraNewUnixField {
         )(i)
     }
 
-    fn parse_variable_length_integer<'a>(i: &'a [u8]) -> parse::Result<'a, u64> {
+    fn parse_variable_length_integer(i: &[u8]) -> parse::Result<'_, u64> {
         let (i, slice) = length_data(le_u8)(i)?;
         if let Some(u) = match slice.len() {
             1 => Some(le_u8(slice)?.1 as u64),
@@ -251,7 +251,7 @@ pub struct ExtraNtfsField {
 impl ExtraNtfsField {
     const TAG: u16 = 0x000a;
 
-    fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             take(4usize), /* reserved (unused) */
             map(many0(NtfsAttr::parse), |attrs| Self { attrs }),
@@ -267,7 +267,7 @@ pub enum NtfsAttr {
 }
 
 impl NtfsAttr {
-    fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         let (i, (tag, payload)) = tuple((le_u16, length_data(le_u16)))(i)?;
         match tag {
             0x0001 => NtfsAttr1::parse(payload).map(|(i, x)| (i, NtfsAttr::Attr1(x))),
@@ -284,7 +284,7 @@ pub struct NtfsAttr1 {
 }
 
 impl NtfsAttr1 {
-    fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         fields!(Self {
             mtime: NtfsTimestamp::parse,
             atime: NtfsTimestamp::parse,

@@ -86,12 +86,8 @@ fn time_zone(hours: i32) -> FixedOffset {
 }
 
 fn date(
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    min: u32,
-    sec: u32,
+    (year, month, day): (i32, u32, u32),
+    (hour, min, sec): (u32, u32, u32),
     nsec: u32,
     offset: FixedOffset,
 ) -> Option<DateTime<Utc>> {
@@ -113,9 +109,8 @@ fn test_cases() -> Vec<ZipTest> {
                 content: FileContent::Bytes(
                     "This small file is in ZIP64 format.\n".as_bytes().into(),
                 ),
-                modified: Some(date(2012, 8, 10, 14, 33, 32, 0, time_zone(0)).unwrap()),
+                modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)).unwrap()),
                 mode: Some(0o644),
-                ..Default::default()
             }],
             ..Default::default()
         },
@@ -127,16 +122,14 @@ fn test_cases() -> Vec<ZipTest> {
                 ZipTestFile {
                     name: "test.txt",
                     content: FileContent::Bytes("This is a test text file.\n".as_bytes().into()),
-                    modified: Some(date(2010, 9, 5, 12, 12, 1, 0, time_zone(10)).unwrap()),
+                    modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
-                    ..Default::default()
                 },
                 ZipTestFile {
                     name: "gophercolor16x16.png",
                     content: FileContent::File("gophercolor16x16.png"),
-                    modified: Some(date(2010, 9, 5, 15, 52, 58, 0, time_zone(10)).unwrap()),
+                    modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
-                    ..Default::default()
                 },
             ],
             ..Default::default()
@@ -260,28 +253,25 @@ fn test_fsm() {
     let mut zar = ArchiveReader::new(bs.len() as u64);
 
     let archive = 'read_zip: loop {
-        match zar.wants_read() {
-            Some(offset) => {
-                let increment = 128usize;
-                let offset = offset as usize;
-                let mut slice = if offset + increment > bs.len() {
-                    &bs[offset..]
-                } else {
-                    &bs[offset..offset + increment]
-                };
+        if let Some(offset) = zar.wants_read() {
+            let increment = 128usize;
+            let offset = offset as usize;
+            let mut slice = if offset + increment > bs.len() {
+                &bs[offset..]
+            } else {
+                &bs[offset..offset + increment]
+            };
 
-                match zar.read(&mut slice) {
-                    Ok(0) => panic!("EOF!"),
-                    Ok(read_bytes) => {
-                        println!("at {}, zar read {} bytes", offset, read_bytes);
-                    }
-                    Err(err) => {
-                        println!("at {}, zar encountered an error:", offset);
-                        panic!("{}", err)
-                    }
+            match zar.read(&mut slice) {
+                Ok(0) => panic!("EOF!"),
+                Ok(read_bytes) => {
+                    println!("at {}, zar read {} bytes", offset, read_bytes);
+                }
+                Err(err) => {
+                    println!("at {}, zar encountered an error:", offset);
+                    panic!("{}", err)
                 }
             }
-            None => {} // ok, cool, proceed,
         }
 
         match zar.process() {

@@ -25,7 +25,7 @@ impl fmt::Debug for Version {
 
 impl Version {
     /// Parse a version from a byte slice
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         map(le_u16, Self)(i)
     }
 

@@ -32,7 +32,7 @@ pub struct LocalFileHeaderRecord {
 impl LocalFileHeaderRecord {
     pub const SIGNATURE: &'static str = "PK\x03\x04";
 
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!({
@@ -83,7 +83,7 @@ pub struct DataDescriptorRecord {
 impl DataDescriptorRecord {
     const SIGNATURE: &'static str = "PK\x07\x08";
 
-    pub fn parse<'a>(i: &'a [u8], is_zip64: bool) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8], is_zip64: bool) -> parse::Result<'_, Self> {
         if is_zip64 {
             preceded(
                 opt(tag(Self::SIGNATURE)),

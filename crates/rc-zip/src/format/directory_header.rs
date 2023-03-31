@@ -119,7 +119,7 @@ impl DirectoryHeader {
         global_offset: u64,
     ) -> Result<StoredEntry, Error> {
         let mut comment: Option<String> = None;
-        if let Some(comment_field) = self.comment.clone().as_option() {
+        if let Some(comment_field) = self.comment.clone().into_option() {
             comment = Some(encoding.decode(&comment_field.0)?);
         }
 

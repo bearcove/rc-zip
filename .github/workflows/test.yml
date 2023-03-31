@@ -27,11 +27,11 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just,nextest,cargo-llvm-cov
-      - name: Run cargo check
+      - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
-          command: check
-          args: --all-targets
+          command: clippy
+          args: --all-targets --all-features
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information

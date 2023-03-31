@@ -35,7 +35,7 @@ impl ZipString {
         })
     }
 
-    pub(crate) fn as_option(self) -> Option<ZipString> {
+    pub(crate) fn into_option(self) -> Option<ZipString> {
         if !self.0.is_empty() {
             Some(self)
         } else {

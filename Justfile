@@ -3,6 +3,9 @@
 _default:
 	just --list
 
+check:
+	cargo clippy --all-features --all-targets
+
 # Run all tests locally
 test *args:
 	cargo nextest run {{args}}

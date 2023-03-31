@@ -8,8 +8,9 @@ where
     /// Moves the inner reader out of this decoder.
     /// self is boxed because decoders are typically used as trait objects.
     fn into_inner(self: Box<Self>) -> R;
+
     /// Returns a mutable reference to the inner reader.
-    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R;
+    fn as_inner_mut(&mut self) -> &mut R;
 }
 
 impl<R> Decoder<R> for deflate::Decoder<R>
@@ -20,7 +21,7 @@ where
         deflate::Decoder::into_inner(*self)
     }
 
-    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R {
+    fn as_inner_mut(&mut self) -> &mut R {
         deflate::Decoder::as_inner_mut(self)
     }
 }
@@ -58,7 +59,7 @@ where
         self.inner
     }
 
-    fn as_inner_mut<'a>(&'a mut self) -> &'a mut R {
+    fn as_inner_mut(&mut self) -> &mut R {
         &mut self.inner
     }
 }
@@ -79,7 +80,7 @@ impl LimitedReader {
         self.inner
     }
 
-    pub fn as_inner_mut<'a>(&'a mut self) -> &'a mut circular::Buffer {
+    pub fn as_inner_mut(&mut self) -> &mut circular::Buffer {
         &mut self.inner
     }
 }

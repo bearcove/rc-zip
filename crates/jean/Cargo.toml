@@ -1,11 +1,13 @@
 [package]
 name = "jean"
-version = "2.0.0"
-authors = ["Amos Wenger <amoswenger@gmail.com>"]
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
 edition = "2018"
 
 [dependencies]
-rc-zip = { path = "../.." }
+rc-zip = { path = "../rc-zip" }
 clap = "2.33.0"
 humansize = "1.1.0"
 positioned-io = "0.2.2"

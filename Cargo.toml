@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
 edition = "2018"
 description = "zip reading and writing"
-repository = "https://github.com/rust-compress/rc-zip"
+repository = "https://github.com/fasterthanlime/rc-zip"
 readme = "README.md"
 license = "Apache-2.0 OR MIT"
 
@@ -12,7 +12,7 @@ keywords = ["zip", "unzip"]
 categories = ["compression"]
 
 [badges]
-travis-ci = { repository = "rust-compress/rc-zip" }
+travis-ci = { repository = "fasterthanlime/rc-zip" }
 maintenance = { status = "experimental" }
 
 [profile.dev]

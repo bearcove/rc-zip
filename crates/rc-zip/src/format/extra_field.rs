@@ -1,4 +1,4 @@
-use crate::format::*;
+use crate::{fields, format::*};
 use nom::{
     bytes::streaming::{tag, take},
     combinator::{cond, map, verify},

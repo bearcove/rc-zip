@@ -4,6 +4,7 @@ use crate::{
     error::*,
     format::*,
     reader::sync::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
+    transition,
 };
 
 use libflate::non_blocking::deflate;

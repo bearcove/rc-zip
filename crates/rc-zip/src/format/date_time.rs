@@ -1,4 +1,4 @@
-use crate::format::parse;
+use crate::{fields, format::parse};
 
 use chrono::{
     offset::{LocalResult, TimeZone, Utc},

@@ -1,6 +1,4 @@
 mod buffer;
-
-#[macro_use]
 mod macros;
 
 mod archive_reader;

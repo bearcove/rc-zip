@@ -1,4 +1,4 @@
-use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*};
+use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*, transition};
 
 use nom::Offset;
 use std::io::Read;

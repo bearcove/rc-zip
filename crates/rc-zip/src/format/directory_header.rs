@@ -1,4 +1,4 @@
-use crate::{encoding, error::*, format::*};
+use crate::{encoding, error::*, fields, format::*};
 use chrono::offset::TimeZone;
 use nom::{
     bytes::streaming::tag,

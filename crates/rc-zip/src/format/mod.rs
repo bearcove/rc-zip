@@ -1,6 +1,5 @@
 pub use crate::encoding::Encoding;
 
-#[macro_use]
 pub(crate) mod parse;
 
 mod archive;

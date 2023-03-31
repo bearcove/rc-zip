@@ -15,12 +15,8 @@ categories = ["compression"]
 travis-ci = { repository = "fasterthanlime/rc-zip" }
 maintenance = { status = "experimental" }
 
-[profile.dev]
-opt-level = 0
-debug = true
-
 [profile.release]
-debug = true
+debug = 1
 
 [dependencies]
 nom = "5.0.0"

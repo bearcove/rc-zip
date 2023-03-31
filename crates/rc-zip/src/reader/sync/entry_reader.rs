@@ -190,22 +190,18 @@ where
             } => {
                 let expected_crc32 = if self.entry.crc32 != 0 {
                     self.entry.crc32
+                } else if let Some(descriptor) = descriptor.as_ref() {
+                    descriptor.crc32
                 } else {
-                    if let Some(descriptor) = descriptor.as_ref() {
-                        descriptor.crc32
-                    } else {
-                        header.crc32
-                    }
+                    header.crc32
                 };
 
                 let expected_size = if self.entry.uncompressed_size != 0 {
                     self.entry.uncompressed_size
+                } else if let Some(descriptor) = descriptor.as_ref() {
+                    descriptor.uncompressed_size
                 } else {
-                    if let Some(descriptor) = descriptor.as_ref() {
-                        descriptor.uncompressed_size
-                    } else {
-                        header.uncompressed_size as u64
-                    }
+                    header.uncompressed_size as u64
                 };
 
                 if expected_size != metrics.uncompressed_size {
@@ -216,14 +212,12 @@ where
                     .into());
                 }
 
-                if expected_crc32 != 0 {
-                    if expected_crc32 != metrics.crc32 {
-                        return Err(Error::Format(FormatError::WrongChecksum {
-                            expected: expected_crc32,
-                            actual: metrics.crc32,
-                        })
-                        .into());
-                    }
+                if expected_crc32 != 0 && expected_crc32 != metrics.crc32 {
+                    return Err(Error::Format(FormatError::WrongChecksum {
+                        expected: expected_crc32,
+                        actual: metrics.crc32,
+                    })
+                    .into());
                 }
 
                 self.state = S::Done;

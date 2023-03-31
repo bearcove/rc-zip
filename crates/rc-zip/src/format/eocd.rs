@@ -46,7 +46,7 @@ impl EndOfCentralDirectoryRecord {
         None
     }
 
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag(Self::SIGNATURE),
             map(
@@ -96,7 +96,7 @@ impl EndOfCentralDirectory64Locator {
     pub const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x06\x07";
 
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!(Self {
@@ -135,7 +135,7 @@ pub struct EndOfCentralDirectory64Record {
 impl EndOfCentralDirectory64Record {
     const SIGNATURE: &'static str = "PK\x06\x06";
 
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!(Self {

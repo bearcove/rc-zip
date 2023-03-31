@@ -45,7 +45,7 @@ pub struct DirectoryHeader {
 impl DirectoryHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag(Self::SIGNATURE),
             fields!({
@@ -145,8 +145,8 @@ impl DirectoryHeader {
         };
 
         let mut slice = &self.extra.0[..];
-        while slice.len() > 0 {
-            match ExtraField::parse(&slice[..], &settings) {
+        while !slice.is_empty() {
+            match ExtraField::parse(slice, &settings) {
                 Ok((remaining, ef)) => {
                     match &ef {
                         ExtraField::Zip64(z64) => {
@@ -165,13 +165,11 @@ impl DirectoryHeader {
                         }
                         ExtraField::Ntfs(nf) => {
                             for attr in &nf.attrs {
-                                match attr {
-                                    NtfsAttr::Attr1(attr) => {
-                                        modified = attr.mtime.to_datetime();
-                                        created = attr.ctime.to_datetime();
-                                        accessed = attr.atime.to_datetime();
-                                    }
-                                    _ => {}
+                                // note: other attributes are unsupported
+                                if let NtfsAttr::Attr1(attr) = attr {
+                                    modified = attr.mtime.to_datetime();
+                                    created = attr.ctime.to_datetime();
+                                    accessed = attr.atime.to_datetime();
                                 }
                             }
                         }
@@ -226,7 +224,7 @@ impl DirectoryHeader {
                 name,
                 method: self.method.into(),
                 comment,
-                modified: modified.unwrap_or_else(|| zero_datetime()),
+                modified: modified.unwrap_or_else(zero_datetime),
                 created,
                 accessed,
             },

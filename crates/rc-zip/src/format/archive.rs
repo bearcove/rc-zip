@@ -222,7 +222,7 @@ impl StoredEntry {
     }
 
     #[cfg(feature = "sync")]
-    pub fn sync_reader<'a, F, R>(&'a self, get_reader: F) -> reader::sync::EntryReader<'a, R>
+    pub fn sync_reader<F, R>(&self, get_reader: F) -> reader::sync::EntryReader<'_, R>
     where
         R: std::io::Read,
         F: Fn(u64) -> R,
@@ -240,13 +240,13 @@ pub enum EntryContents<'a> {
 }
 
 impl StoredEntry {
-    pub fn contents<'a>(&'a self) -> EntryContents<'a> {
+    pub fn contents(&self) -> EntryContents<'_> {
         if self.mode.has(Mode::SYMLINK) {
-            EntryContents::Symlink(Symlink { entry: &self })
+            EntryContents::Symlink(Symlink { entry: self })
         } else if self.mode.has(Mode::DIR) {
-            EntryContents::Directory(Directory { entry: &self })
+            EntryContents::Directory(Directory { entry: self })
         } else {
-            EntryContents::File(File { entry: &self })
+            EntryContents::File(File { entry: self })
         }
     }
 }
@@ -302,10 +302,10 @@ impl From<u16> for Method {
     }
 }
 
-impl Into<u16> for Method {
-    fn into(self) -> u16 {
+impl From<Method> for u16 {
+    fn from(m: Method) -> Self {
         use Method::*;
-        match self {
+        match m {
             Store => 0,
             Deflate => 8,
             Bzip2 => 12,

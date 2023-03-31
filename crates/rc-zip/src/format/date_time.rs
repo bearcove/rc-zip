@@ -30,7 +30,7 @@ impl fmt::Debug for MsdosTimestamp {
 
 impl MsdosTimestamp {
     /// Parse an MS-DOS timestamp from a byte slice
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         fields!(Self {
             time: le_u16,
             date: le_u16,
@@ -42,7 +42,7 @@ impl MsdosTimestamp {
         // see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
         let date = match {
             // bits 0-4: day of the month (1-31)
-            let d = (self.date & 0b1111_1) as u32;
+            let d = (self.date & 0b1_1111) as u32;
             // bits 5-8: month (1 = january, 2 = february and so on)
             let m = ((self.date >> 5) & 0b1111) as u32;
             // bits 9-15: year offset from 1980
@@ -54,7 +54,7 @@ impl MsdosTimestamp {
         };
 
         // bits 0-4: second divided by 2
-        let s = (self.time & 0b1111_1) as u32 * 2;
+        let s = (self.time & 0b1_1111) as u32 * 2;
         // bits 5-10: minute (0-59)
         let m = (self.time >> 5 & 0b1111_11) as u32;
         // bits 11-15: hour (0-23 on a 24-hour clock)
@@ -80,7 +80,7 @@ impl fmt::Debug for NtfsTimestamp {
 
 impl NtfsTimestamp {
     /// Parse an MS-DOS timestamp from a byte slice
-    pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
+    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         map(le_u64, |timestamp| Self { timestamp })(i)
     }
 
@@ -89,8 +89,7 @@ impl NtfsTimestamp {
         // windows timestamp resolution
         let ticks_per_second = 10_000_000;
         let secs = (self.timestamp / ticks_per_second) as i64;
-        let nsecs =
-            (1_000_000_000 / ticks_per_second) * ((self.timestamp * ticks_per_second) as u64);
+        let nsecs = (1_000_000_000 / ticks_per_second) * (self.timestamp * ticks_per_second);
         let epoch = Utc.with_ymd_and_hms(1601, 1, 1, 0, 0, 0).single()?;
         match Utc.timestamp_opt(epoch.timestamp() + secs, nsecs as u32) {
             LocalResult::Single(date) => Some(date),

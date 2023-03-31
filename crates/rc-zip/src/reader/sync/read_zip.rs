@@ -3,7 +3,7 @@ use crate::{
     format::Archive,
     reader::{sync::EntryReader, ArchiveReader, ArchiveReaderResult},
 };
-use std::{fmt, io::Read, ops::Deref};
+use std::{io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive (blocking I/O model)
 ///
@@ -87,17 +87,6 @@ where
 {
     file: &'a F,
     archive: Archive,
-}
-
-impl<F> fmt::Debug for SyncArchive<'_, F>
-where
-    F: HasCursor,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SyncArchive")
-            .field("archive", &self.archive)
-            .finish_non_exhaustive()
-    }
 }
 
 impl<F> Deref for SyncArchive<'_, F>

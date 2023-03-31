@@ -6,19 +6,10 @@ use nom::{
     number::streaming::{le_u16, le_u32, le_u64, le_u8},
     sequence::{preceded, tuple},
 };
-use pretty_hex::PrettyHex;
-use std::fmt;
-
 /// 4.4.28 extra field: (Variable)
 pub(crate) struct ExtraFieldRecord<'a> {
     pub(crate) tag: u16,
     pub(crate) payload: &'a [u8],
-}
-
-impl<'a> fmt::Debug for ExtraFieldRecord<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "tag 0x{:x}: {}", self.tag, self.payload.hex_dump())
-    }
 }
 
 impl<'a> ExtraFieldRecord<'a> {
@@ -49,7 +40,7 @@ pub(crate) struct ExtraFieldSettings {
 /// This typically contains timestamps, file sizes and offsets, file mode, uid/gid, etc.
 ///
 /// See `extrafld.txt` in this crate's source distribution.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ExtraField {
     /// Zip64 extended information extra field
     Zip64(ExtraZip64Field),
@@ -116,7 +107,7 @@ impl ExtraField {
 }
 
 /// 4.5.3 -Zip64 Extended Information Extra Field (0x0001)
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExtraZip64Field {
     pub uncompressed_size: Option<u64>,
     pub compressed_size: Option<u64>,
@@ -137,7 +128,7 @@ impl ExtraZip64Field {
 }
 
 /// Extended timestamp extra field
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExtraTimestampField {
     /// number of seconds since epoch
     pub mtime: u32,
@@ -156,7 +147,7 @@ impl ExtraTimestampField {
 }
 
 /// 4.5.7 -UNIX Extra Field (0x000d):
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExtraUnixField {
     /// file last access time
     pub atime: u32,
@@ -204,7 +195,7 @@ impl ExtraUnixField {
 /// GIDSize       1 byte      Size of GID field
 /// GID           Variable    GID for this entry
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExtraNewUnixField {
     pub uid: u64,
     pub gid: u64,
@@ -243,7 +234,7 @@ impl ExtraNewUnixField {
 }
 
 /// 4.5.5 -NTFS Extra Field (0x000a):
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExtraNtfsField {
     pub attrs: Vec<NtfsAttr>,
 }
@@ -260,7 +251,7 @@ impl ExtraNtfsField {
 }
 
 /// NTFS attribute for zip entries (mostly timestamps)
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum NtfsAttr {
     Attr1(NtfsAttr1),
     Unknown { tag: u16 },
@@ -276,7 +267,7 @@ impl NtfsAttr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NtfsAttr1 {
     pub mtime: NtfsTimestamp,
     pub atime: NtfsTimestamp,

@@ -8,7 +8,6 @@ use nom::{
 use tracing::trace;
 
 /// 4.3.12 Central directory structure: File header
-#[derive(Debug)]
 pub struct DirectoryHeader {
     // version made by
     pub creator_version: Version,
@@ -196,10 +195,6 @@ impl DirectoryHeader {
                     return Err(FormatError::InvalidExtraField.into());
                 }
             }
-        }
-
-        if !extra_fields.is_empty() {
-            trace!("{} extra fields: {:#?}", name, extra_fields);
         }
 
         let modified = match modified {

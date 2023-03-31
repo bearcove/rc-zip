@@ -16,9 +16,6 @@ pub enum Error {
     Encoding(#[from] encoding::DecodingError),
 
     /// I/O-related error
-    ///
-    /// Only returned by the higher-level API, since
-    /// [ArchiveReader](crate::reader::ArchiveReader) lets you do your own I/O.
     #[error("io: {0}")]
     IO(#[from] std::io::Error),
 

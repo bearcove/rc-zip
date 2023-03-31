@@ -1,4 +1,7 @@
-use crate::Archive;
+use crate::{
+    reader::sync::{HasCursor, SyncArchive, SyncStoredEntry},
+    Archive,
+};
 
 use super::{encoding::Encoding, prelude::*};
 use chrono::{
@@ -32,7 +35,47 @@ impl Default for ZipTest {
     }
 }
 
-#[derive(Debug)]
+impl ZipTest {
+    fn check<F: HasCursor>(&self, archive: Result<SyncArchive<'_, F>, crate::Error>) {
+        let case_bytes = self.bytes();
+
+        if let Some(expected) = &self.error {
+            let actual = match archive {
+                Err(e) => e,
+                Ok(_) => panic!("should have failed"),
+            };
+            let expected = format!("{:#?}", expected);
+            let actual = format!("{:#?}", actual);
+            assert_eq!(expected, actual);
+            return;
+        }
+        let archive = archive.unwrap();
+
+        assert_eq!(case_bytes.len() as u64, archive.size());
+
+        if let Some(expected) = self.comment {
+            assert_eq!(expected, archive.comment().expect("should have comment"))
+        }
+
+        if let Some(exp_encoding) = self.expected_encoding {
+            println!("{}: should be {}", self.name(), exp_encoding);
+            assert_eq!(archive.encoding(), exp_encoding);
+        }
+
+        assert_eq!(
+            self.files.len(),
+            archive.entries().count(),
+            "{} should have {} entries files",
+            self.name(),
+            self.files.len()
+        );
+
+        for f in &self.files {
+            f.check(&archive);
+        }
+    }
+}
+
 struct ZipTestFile {
     name: &'static str,
     mode: Option<u32>,
@@ -40,7 +83,61 @@ struct ZipTestFile {
     content: FileContent,
 }
 
-#[derive(Debug)]
+impl ZipTestFile {
+    fn check<F: HasCursor>(&self, archive: &SyncArchive<'_, F>) {
+        let entry = archive
+            .by_name(self.name)
+            .unwrap_or_else(|| panic!("entry {} should exist", self.name));
+
+        let archive_inner: &Archive = archive;
+        let entry_inner = archive_inner.by_name(self.name).unwrap();
+        assert_eq!(entry.name(), entry_inner.name());
+
+        self.check_against(entry);
+    }
+
+    fn check_against<F: HasCursor>(&self, entry: SyncStoredEntry<'_, F>) {
+        if let Some(expected) = self.modified {
+            assert_eq!(
+                expected,
+                entry.modified(),
+                "entry {} should have modified = {:?}",
+                entry.name(),
+                expected
+            )
+        }
+
+        if let Some(mode) = self.mode {
+            assert_eq!(entry.mode.0 & 0o777, mode);
+        }
+
+        // I have honestly yet to see a zip file _entry_ with a comment.
+        assert!(entry.comment().is_none());
+
+        match entry.contents() {
+            crate::EntryContents::File => {
+                let actual_bytes = entry.bytes().unwrap();
+
+                match &self.content {
+                    FileContent::Unchecked => {
+                        // ah well
+                    }
+                    FileContent::Bytes(expected_bytes) => {
+                        assert_eq!(&actual_bytes[..], &expected_bytes[..])
+                    }
+                    FileContent::File(file_path) => {
+                        let expected_bytes = std::fs::read(zips_dir().join(file_path)).unwrap();
+                        assert_eq!(&actual_bytes[..], &expected_bytes[..])
+                    }
+                }
+            }
+            crate::EntryContents::Symlink | crate::EntryContents::Directory => {
+                assert!(matches!(self.content, FileContent::Unchecked));
+            }
+        }
+    }
+}
+
 enum FileContent {
     Unchecked,
     Bytes(Vec<u8>),
@@ -189,87 +286,7 @@ fn read_from_file() {
 #[test]
 fn real_world_files() {
     for case in test_cases() {
-        let case_name = case.name();
-        let case_bytes = case.bytes();
-        let archive = case_bytes.read_zip();
-
-        if let Some(expected) = case.error {
-            let actual = archive.expect_err("should have errored");
-            let expected = format!("{:#?}", expected);
-            let actual = format!("{:#?}", actual);
-            assert_eq!(expected, actual);
-            continue;
-        }
-        let archive = archive.unwrap();
-
-        assert_eq!(case_bytes.len() as u64, archive.size());
-
-        if let Some(expected) = case.comment {
-            assert_eq!(expected, archive.comment().expect("should have comment"))
-        }
-
-        if let Some(exp_encoding) = case.expected_encoding {
-            println!("{}: should be {}", case.name(), exp_encoding);
-            assert_eq!(archive.encoding(), exp_encoding);
-        }
-
-        assert_eq!(
-            case.files.len(),
-            archive.entries().count(),
-            "{} should have {} entries files",
-            case.name(),
-            case.files.len()
-        );
-
-        for f in &case.files {
-            let entry = archive
-                .by_name(f.name)
-                .expect("should have specific test file");
-
-            let archive_inner: &Archive = &archive;
-            let entry_inner = archive_inner.by_name(f.name).unwrap();
-            assert_eq!(entry.name(), entry_inner.name());
-
-            if let Some(expected) = f.modified {
-                assert_eq!(
-                    expected,
-                    entry.modified(),
-                    "entry {} (in {}) should have modified = {:?}",
-                    entry.name(),
-                    case_name,
-                    expected
-                )
-            }
-
-            if let Some(mode) = f.mode {
-                assert_eq!(entry.mode.0 & 0o777, mode);
-            }
-
-            // I have honestly yet to see a zip file _entry_ with a comment.
-            assert!(entry.comment().is_none());
-
-            match entry.contents() {
-                crate::EntryContents::File => {
-                    let actual_bytes = entry.bytes().unwrap();
-
-                    match &f.content {
-                        FileContent::Unchecked => {
-                            // ah well
-                        }
-                        FileContent::Bytes(expected_bytes) => {
-                            assert_eq!(&actual_bytes[..], &expected_bytes[..])
-                        }
-                        FileContent::File(file_path) => {
-                            let expected_bytes = std::fs::read(zips_dir().join(file_path)).unwrap();
-                            assert_eq!(&actual_bytes[..], &expected_bytes[..])
-                        }
-                    }
-                }
-                crate::EntryContents::Symlink | crate::EntryContents::Directory => {
-                    assert!(matches!(f.content, FileContent::Unchecked));
-                }
-            }
-        }
+        case.check(case.bytes().read_zip());
     }
 }
 
@@ -316,5 +333,10 @@ fn test_fsm() {
         }
     };
 
-    println!("All done! Archive = {:#?}", archive);
+    let sync_archive = bs.read_zip().unwrap();
+    for (se, e) in sync_archive.entries().zip(archive.entries()) {
+        assert_eq!(se.name(), e.name());
+        assert_eq!(se.compressed_size, e.compressed_size);
+        assert_eq!(se.uncompressed_size, e.uncompressed_size);
+    }
 }

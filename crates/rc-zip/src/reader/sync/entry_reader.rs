@@ -240,7 +240,6 @@ where
     where
         F: Fn(u64) -> R,
     {
-        trace!("entry: {:#?}", entry);
         Self {
             entry,
             rd: EOFNormalizer::new(get_reader(entry.header_offset)),

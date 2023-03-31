@@ -13,7 +13,6 @@ pub struct ArchiveReader {
     state: ArchiveReaderState,
 }
 
-#[derive(Debug)]
 pub enum ArchiveReaderResult {
     /// Indicates that [ArchiveReader][] has work left, and the loop should continue.
     Continue,

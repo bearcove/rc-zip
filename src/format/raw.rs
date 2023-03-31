@@ -1,6 +1,6 @@
 use crate::format::*;
-use hex_fmt::HexFmt;
 use nom::{bytes::streaming::take, combinator::map};
+use pretty_hex::PrettyHex;
 use std::fmt;
 
 /// A raw zip string, with no specific encoding.
@@ -20,7 +20,7 @@ impl fmt::Debug for ZipString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match std::str::from_utf8(&self.0) {
             Ok(s) => write!(f, "{:?}", s),
-            Err(_) => write!(f, "[non-utf8 string: {:x}]", HexFmt(&self.0)),
+            Err(_) => write!(f, "[non-utf8 string: {}]", self.0.hex_dump()),
         }
     }
 }
@@ -60,7 +60,7 @@ impl fmt::Debug for ZipBytes {
         } else {
             (&self.0[..], None)
         };
-        write!(f, "{:x}", HexFmt(slice))?;
+        write!(f, "{}", slice.hex_dump())?;
         if let Some(extra) = extra {
             write!(f, " (+ {} bytes)", extra)?;
         }

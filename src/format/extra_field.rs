@@ -1,5 +1,4 @@
 use crate::format::*;
-use hex_fmt::HexFmt;
 use nom::{
     bytes::streaming::{tag, take},
     combinator::{cond, map, verify},
@@ -7,6 +6,7 @@ use nom::{
     number::streaming::{le_u16, le_u32, le_u64, le_u8},
     sequence::{preceded, tuple},
 };
+use pretty_hex::PrettyHex;
 use std::fmt;
 
 /// 4.4.28 extra field: (Variable)
@@ -17,7 +17,7 @@ pub(crate) struct ExtraFieldRecord<'a> {
 
 impl<'a> fmt::Debug for ExtraFieldRecord<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "tag 0x{:x}: {}", self.tag, HexFmt(self.payload))
+        write!(f, "tag 0x{:x}: {}", self.tag, self.payload.hex_dump())
     }
 }
 

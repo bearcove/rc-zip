@@ -167,8 +167,6 @@ fn test_cases() -> Vec<ZipTest> {
 
 #[test]
 fn real_world_files() {
-    color_backtrace::install();
-
     for case in test_cases() {
         let case_name = case.name();
         let case_bytes = case.bytes();

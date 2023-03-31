@@ -8,8 +8,8 @@ on:
   merge_group:
 
 jobs:
-  test-macos:
-    runs-on: macos-12
+  test-linux:
+    runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
     steps:

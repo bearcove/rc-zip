@@ -55,7 +55,7 @@ enum ArchiveReaderState {
 }
 
 impl ArchiveReaderState {
-    fn buffer_as_mut<'a>(&'a mut self) -> Option<&'a mut Buffer> {
+    fn buffer_as_mut(&mut self) -> Option<&mut Buffer> {
         use ArchiveReaderState as S;
         match self {
             S::ReadEocd { ref mut buffer, .. } => Some(buffer),
@@ -327,7 +327,7 @@ impl ArchiveReader {
                                 let is_zip64 = eocd.dir64.is_some();
                                 let global_offset = eocd.global_offset as u64;
                                 let entries: Result<Vec<StoredEntry>, Error> = directory_headers
-                                    .into_iter()
+                                    .iter()
                                     .map(|x| x.as_stored_entry(is_zip64, encoding, global_offset))
                                     .collect();
                                 let entries = entries?;
@@ -356,7 +356,6 @@ impl ArchiveReader {
                         }
                         Ok((remaining, dh)) => {
                             let consumed = buffer.data().offset(remaining);
-                            drop(remaining);
                             buffer.consume(consumed);
                             directory_headers.push(dh);
                         }
@@ -364,7 +363,7 @@ impl ArchiveReader {
                 }
 
                 // need more data
-                return Ok(R::Continue);
+                Ok(R::Continue)
             }
             S::Done { .. } => panic!("Called process() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),

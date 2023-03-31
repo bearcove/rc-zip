@@ -106,8 +106,8 @@ impl From<encoding::DecodingError> for Error {
     }
 }
 
-impl Into<std::io::Error> for Error {
-    fn into(self) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::Other, self)
+impl From<Error> for std::io::Error {
+    fn from(err: Error) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, err)
     }
 }

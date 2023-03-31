@@ -16,7 +16,6 @@
 //!
 //! Writing archives is not implemented yet.
 //!
-#![allow(clippy::all)]
 
 mod encoding;
 mod error;

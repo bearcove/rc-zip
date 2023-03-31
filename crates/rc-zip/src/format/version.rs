@@ -26,7 +26,7 @@ impl fmt::Debug for Version {
 impl Version {
     /// Parse a version from a byte slice
     pub fn parse<'a>(i: &'a [u8]) -> parse::Result<'a, Self> {
-        map(le_u16, |v| Self(v))(i)
+        map(le_u16, Self)(i)
     }
 
     /// Identifies the host system on which the zip attributes are compatible.

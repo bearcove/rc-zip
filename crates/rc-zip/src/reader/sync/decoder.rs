@@ -55,7 +55,7 @@ where
     R: io::Read,
 {
     fn into_inner(self: Box<Self>) -> R {
-        (*self).inner
+        self.inner
     }
 
     fn as_inner_mut<'a>(&'a mut self) -> &'a mut R {
@@ -75,7 +75,7 @@ impl LimitedReader {
         Self { inner, remaining }
     }
 
-    pub fn into_inner(self: Self) -> circular::Buffer {
+    pub fn into_inner(self) -> circular::Buffer {
         self.inner
     }
 

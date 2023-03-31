@@ -1,6 +1,10 @@
 
 # Changelog
 
+## 2.0.1 (2023-03-31)
+
+Remove dependency on `chardet` (woops!) since only `chardetng` is used now.
+
 ## 2.0.0 (2023-03-31)
 
 Migrate from nom 5 to nom 7, closes

@@ -282,7 +282,6 @@ impl ArchiveReader {
 
                             if expected_records == actual_records {
                                 let mut detectorng = chardetng::EncodingDetector::new();
-                                let mut detector = chardet::UniversalDetector::new();
                                 let mut all_utf8 = true;
                                 let mut had_suspicious_chars_for_cp437 = false;
 
@@ -290,7 +289,6 @@ impl ArchiveReader {
                                     let max_feed: usize = 4096;
                                     let mut total_fed: usize = 0;
                                     let mut feed = |slice: &[u8]| {
-                                        detector.feed(slice);
                                         detectorng.feed(slice, false);
                                         for b in slice {
                                             if (0xB0..=0xDF).contains(b) {

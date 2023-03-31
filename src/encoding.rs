@@ -54,11 +54,10 @@ impl Encoding {
                 let s = std::str::from_utf8(i)?;
                 Ok(s.to_string())
             }
-            Encoding::Cp437 => {
-                use codepage_437::{BorrowFromCp437, CP437_CONTROL};
-                let s = String::borrow_from_cp437(i, &CP437_CONTROL);
-                Ok(s.to_string())
-            }
+            Encoding::Cp437 => Ok(oem_cp::decode_string_complete_table(
+                i,
+                &oem_cp::code_table::DECODING_TABLE_CP437,
+            )),
             Encoding::ShiftJis => self.decode_as(i, encoding_rs::SHIFT_JIS),
         }
     }

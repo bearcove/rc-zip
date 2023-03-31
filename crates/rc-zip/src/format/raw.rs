@@ -26,7 +26,7 @@ impl fmt::Debug for ZipString {
 }
 
 impl ZipString {
-    pub(crate) fn parser<'a, C>(count: C) -> impl Fn(&'a [u8]) -> parse::Result<'a, Self>
+    pub(crate) fn parser<'a, C>(count: C) -> impl FnMut(&'a [u8]) -> parse::Result<'a, Self>
     where
         C: nom::ToUsize,
     {
@@ -69,7 +69,7 @@ impl fmt::Debug for ZipBytes {
 }
 
 impl ZipBytes {
-    pub(crate) fn parser<'a, C>(count: C) -> impl Fn(&'a [u8]) -> parse::Result<'a, Self>
+    pub(crate) fn parser<'a, C>(count: C) -> impl FnMut(&'a [u8]) -> parse::Result<'a, Self>
     where
         C: nom::ToUsize,
     {

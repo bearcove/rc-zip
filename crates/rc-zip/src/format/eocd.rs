@@ -51,7 +51,7 @@ impl EndOfCentralDirectoryRecord {
             tag(Self::SIGNATURE),
             map(
                 tuple((
-                    le_u16,
+                    le_u16::<&[u8], _>,
                     le_u16,
                     le_u16,
                     le_u16,

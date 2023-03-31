@@ -172,6 +172,14 @@ fn test_cases() -> Vec<ZipTest> {
 }
 
 #[test]
+fn read_from_slice() {
+    let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
+    let slice = &bytes[..];
+    let archive = slice.read_zip().unwrap();
+    assert_eq!(archive.entries().count(), 2);
+}
+
+#[test]
 fn read_from_file() {
     let f = File::open(zips_dir().join("test.zip")).unwrap();
     let archive = f.read_zip().unwrap();

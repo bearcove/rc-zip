@@ -138,12 +138,12 @@ impl<F> Deref for SyncStoredEntry<'_, F> {
     }
 }
 
-impl<F> SyncStoredEntry<'_, F>
+impl<'a, F> SyncStoredEntry<'a, F>
 where
     F: HasCursor,
 {
     /// Returns a reader for the entry.
-    pub fn reader(&self) -> impl Read + '_ {
+    pub fn reader(&self) -> EntryReader<<F as HasCursor>::Cursor<'a>> {
         EntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
     }
 

@@ -41,17 +41,23 @@ enum State {
     Transitioning,
 }
 
-pub struct EntryReader<'a, R>
+pub struct EntryReader<R>
 where
     R: io::Read,
 {
-    entry: &'a StoredEntry,
     rd: EOFNormalizer<R>,
     eof: bool,
     state: State,
+    // entry info required for extraction
+    // copy them over to reduce the amount of necessary lifetimes/references
+    compressed_size: u64,
+    uncompressed_size: u64,
+    method: Method,
+    is_zip64: bool,
+    crc32: u32,
 }
 
-impl<'a, R> io::Read for EntryReader<'a, R>
+impl<R> io::Read for EntryReader<R>
 where
     R: io::Read,
 {
@@ -70,8 +76,8 @@ where
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
-                            let limited_reader = LimitedReader::new(buffer, self.entry.compressed_size);
-                            let decoder: Box<dyn Decoder<LimitedReader>> = match self.entry.method() {
+                            let limited_reader = LimitedReader::new(buffer, self.compressed_size);
+                            let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
                                 Method::Deflate => Box::new(deflate::Decoder::new(limited_reader)),
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
@@ -152,7 +158,7 @@ where
                     buffer.available_space()
                 );
 
-                match DataDescriptorRecord::parse(buffer.data(), self.entry.is_zip64) {
+                match DataDescriptorRecord::parse(buffer.data(), self.is_zip64) {
                     Ok((_remaining, descriptor)) => {
                         trace!("data descriptor = {:#?}", descriptor);
                         transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
@@ -189,16 +195,16 @@ where
                 ref header,
                 ref descriptor,
             } => {
-                let expected_crc32 = if self.entry.crc32 != 0 {
-                    self.entry.crc32
+                let expected_crc32 = if self.crc32 != 0 {
+                    self.crc32
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.crc32
                 } else {
                     header.crc32
                 };
 
-                let expected_size = if self.entry.uncompressed_size != 0 {
-                    self.entry.uncompressed_size
+                let expected_size = if self.uncompressed_size != 0 {
+                    self.uncompressed_size
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.uncompressed_size
                 } else {
@@ -230,23 +236,27 @@ where
     }
 }
 
-impl<'a, R> EntryReader<'a, R>
+impl<R> EntryReader<R>
 where
     R: io::Read,
 {
     const DEFAULT_BUFFER_SIZE: usize = 8 * 1024;
 
-    pub fn new<F>(entry: &'a StoredEntry, get_reader: F) -> Self
+    pub fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
     where
         F: Fn(u64) -> R,
     {
         Self {
-            entry,
             rd: EOFNormalizer::new(get_reader(entry.header_offset)),
             eof: false,
             state: State::ReadLocalHeader {
                 buffer: circular::Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
             },
+            compressed_size: entry.compressed_size,
+            uncompressed_size: entry.uncompressed_size,
+            method: entry.method(),
+            is_zip64: entry.is_zip64,
+            crc32: entry.crc32,
         }
     }
 }

@@ -75,7 +75,13 @@ where
                             let limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
                             let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
-                                Method::Deflate => Box::new(DeflateDecoder::new(limited_reader)),
+                                Method::Deflate => {
+                                    #[cfg(feature = "deflate")]
+                                    { Box::new(DeflateDecoder::new(limited_reader)) }
+
+                                    #[cfg(not(feature = "deflate"))]
+                                    { return Err(Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(Method::Deflate)).into()) }
+                                },
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
                             };
 

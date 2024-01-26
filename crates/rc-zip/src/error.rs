@@ -28,6 +28,8 @@ pub enum Error {
 pub enum UnsupportedError {
     #[error("unsupported compression method: {0:?}")]
     UnsupportedCompressionMethod(crate::format::Method),
+    #[error("compression method supported, but not enabled in this build: {0:?}")]
+    CompressionMethodNotEnabled(crate::format::Method),
 }
 
 /// Specific zip format errors, mostly due to invalid zip archives but that could also stem from

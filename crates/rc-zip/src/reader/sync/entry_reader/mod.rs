@@ -55,6 +55,8 @@ where
     eof: bool,
     state: State,
     inner: StoredEntryInner,
+    /// General-purpose bit flag
+    flags: u16,
     method: Method,
 }
 
@@ -253,6 +255,7 @@ where
             },
             method: entry.method(),
             inner: entry.inner,
+            flags: entry.flags,
         }
     }
 
@@ -279,7 +282,7 @@ where
             Method::Lzma => {
                 cfg_if! {
                     if #[cfg(feature = "lzma")] {
-                        lzma_support::mk_decoder(limited_reader, self.inner.uncompressed_size)?
+                        lzma_support::mk_decoder(limited_reader, self.inner.uncompressed_size, self.flags)?
                     } else {
                         return Err(
                             Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(

@@ -10,6 +10,7 @@ struct LzmaDecoderAdapter<R> {
     input: BufReader<R>,
     raw: lzma_rs::decompress::raw::LzmaDecoder,
     buf: Vec<u8>,
+    total_write_count: u64,
 }
 
 impl<R> Read for LzmaDecoderAdapter<R>
@@ -32,6 +33,12 @@ where
         // TODO: use a ring buffer instead
         self.buf = self.buf.split_off(write_count);
 
+        self.total_write_count += write_count as u64;
+        trace!(
+            "LzmaDecoderAdapter::read, returning {write_count} bytes, total_write_count = {}",
+            self.total_write_count
+        );
+
         Ok(write_count)
     }
 }
@@ -52,6 +59,7 @@ where
 pub(crate) fn mk_decoder(
     mut r: LimitedReader,
     uncompressed_size: u64,
+    flags: u16,
 ) -> std::io::Result<Box<dyn Decoder<LimitedReader>>> {
     use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -81,21 +89,27 @@ pub(crate) fn mk_decoder(
         );
     }
 
+    let memlimit = 128 * 1024 * 1024;
     let opts = lzma_rs::decompress::Options {
         unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(uncompressed_size)),
-        ..Default::default()
+        allow_incomplete: true,
+        memlimit: Some(memlimit),
     };
     let mut limited_reader = BufReader::new(r);
     let params = lzma_rs::decompress::raw::LzmaParams::read_header(&mut limited_reader, &opts)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     trace!(?params, "Read lzma params");
 
-    let memlimit = 128 * 1024 * 1024;
+    // general-purpose bit flag 1 indicates that the stream has an EOS marker
+    let has_eos = flags & 0b01 != 0;
+    trace!(?has_eos, "EOS marker?, flags = {flags:x?}");
+
     let dec = lzma_rs::decompress::raw::LzmaDecoder::new(params, Some(memlimit))
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     Ok(Box::new(LzmaDecoderAdapter {
         input: limited_reader,
         raw: dec,
         buf: Vec::new(),
+        total_write_count: 0,
     }))
 }

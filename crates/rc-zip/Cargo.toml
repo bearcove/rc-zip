@@ -28,7 +28,7 @@ num_enum = "0.7.2"
 byteorder = "1.5.0"
 cfg-if = "1.0.0"
 # lzma-rs = { version = "0.3.0", features = ["raw_decoder", "enable_logging"], optional = true }
-lzma-rs = { path = "../../../lzma-rs", features = ["raw_decoder", "enable_logging"], optional = true }
+lzma-rs = { path = "../../../lzma-rs", features = ["raw_decoder", "stream", "enable_logging"], optional = true }
 
 [features]
 default = ["sync", "file", "deflate"]

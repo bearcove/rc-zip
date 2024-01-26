@@ -1,4 +1,5 @@
-use std::io::{BufReader, Read};
+use lzma_rs::decompress::Stream;
+use std::io::{Read, Write};
 use tracing::trace;
 
 use crate::{
@@ -6,11 +7,15 @@ use crate::{
     Error, UnsupportedError,
 };
 
+enum LzmaDecoderState {
+    Writing(Stream<Vec<u8>>),
+    Draining(Vec<u8>),
+    Transition,
+}
 struct LzmaDecoderAdapter<R> {
-    input: BufReader<R>,
-    raw: lzma_rs::decompress::raw::LzmaDecoder,
-    buf: Vec<u8>,
+    input: R,
     total_write_count: u64,
+    state: LzmaDecoderState,
 }
 
 impl<R> Read for LzmaDecoderAdapter<R>
@@ -18,24 +23,78 @@ where
     R: Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if let Err(e) = self.raw.decompress(&mut self.input, &mut self.buf) {
-            trace!("LzmaDecoderAdapter::read, got error {e:?}");
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
-        }
+        let mut state = LzmaDecoderState::Transition;
+        std::mem::swap(&mut state, &mut self.state);
 
-        let write_count = std::cmp::min(buf.len(), self.buf.len());
+        match state {
+            LzmaDecoderState::Writing(mut stream) => {
+                // FIXME: all this is terribly wasteful, I'm just trying to see if it
+                // will decompress
+                let mut read_buf = vec![0u8; 8192];
+                let bytes_read = self.input.read(&mut read_buf)?;
+                if bytes_read == 0 {
+                    // we're EOF: finish and move on to draining
+                    self.state = LzmaDecoderState::Draining(stream.finish()?);
+                    // and recurse
+                    return self.read(buf);
+                }
+
+                trace!(
+                    "Writing {} bytes to lzma_rs::decompress::Stream",
+                    bytes_read
+                );
+                if let Err(e) = stream.write_all(&read_buf[..bytes_read]) {
+                    if e.kind() == std::io::ErrorKind::WriteZero {
+                        // that's expected actually! from the lzma-rs tests:
+                        //
+                        // A WriteZero error may occur if decompression is finished but there
+                        // are remaining `compressed` bytes to write.
+                        // This is the case when the unpacked size is encoded as unknown but
+                        // provided when decoding. I.e. the 5 or 6 byte end-of-stream marker
+                        // is not read.
+                        trace!("WriteZero error, flushing lzma_rs::decompress::Stream");
+
+                        // finish and move on to draining
+                        self.state = LzmaDecoderState::Draining(stream.finish()?);
+                        // and recurse
+                        return self.read(buf);
+                    } else {
+                        trace!("Error writing to lzma_rs::decompress::Stream: {:?}", e);
+                        return Err(e);
+                    }
+                }
+
+                self.state = LzmaDecoderState::Writing(stream);
+            }
+            LzmaDecoderState::Draining(vec) => {
+                // nothing more to decode, we just need to empty our
+                // internal buffer
+                self.state = LzmaDecoderState::Draining(vec);
+            }
+            LzmaDecoderState::Transition => {
+                unreachable!()
+            }
+        };
+
+        let write_buf = match &mut self.state {
+            LzmaDecoderState::Writing(stream) => stream.get_output_mut().unwrap(),
+            LzmaDecoderState::Draining(vec) => vec,
+            LzmaDecoderState::Transition => unreachable!(),
+        };
+        trace!("write_buf.len() = {}", write_buf.len());
+        let write_count = std::cmp::min(buf.len(), write_buf.len());
         {
-            let src_slice = &self.buf[..write_count];
+            let src_slice = &write_buf[..write_count];
             let dst_slice = &mut buf[..write_count];
             dst_slice.copy_from_slice(src_slice);
         }
 
         // TODO: use a ring buffer instead
-        self.buf = self.buf.split_off(write_count);
+        *write_buf = write_buf.split_off(write_count);
 
         self.total_write_count += write_count as u64;
         trace!(
-            "LzmaDecoderAdapter::read, returning {write_count} bytes, total_write_count = {}",
+            "lzma_rs::decompress::Stream has returned {write_count} bytes, total = {}",
             self.total_write_count
         );
 
@@ -48,11 +107,11 @@ where
     R: Read,
 {
     fn into_inner(self: Box<Self>) -> R {
-        self.input.into_inner()
+        self.input
     }
 
     fn get_mut(&mut self) -> &mut R {
-        self.input.get_mut()
+        &mut self.input
     }
 }
 
@@ -92,24 +151,18 @@ pub(crate) fn mk_decoder(
     let memlimit = 128 * 1024 * 1024;
     let opts = lzma_rs::decompress::Options {
         unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(uncompressed_size)),
-        allow_incomplete: true,
+        allow_incomplete: false,
         memlimit: Some(memlimit),
     };
-    let mut limited_reader = BufReader::new(r);
-    let params = lzma_rs::decompress::raw::LzmaParams::read_header(&mut limited_reader, &opts)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    trace!(?params, "Read lzma params");
 
     // general-purpose bit flag 1 indicates that the stream has an EOS marker
     let has_eos = flags & 0b01 != 0;
     trace!(?has_eos, "EOS marker?, flags = {flags:x?}");
 
-    let dec = lzma_rs::decompress::raw::LzmaDecoder::new(params, Some(memlimit))
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let stream = Stream::new_with_options(&opts, vec![]);
     Ok(Box::new(LzmaDecoderAdapter {
-        input: limited_reader,
-        raw: dec,
-        buf: Vec::new(),
+        input: r,
         total_write_count: 0,
+        state: LzmaDecoderState::Writing(stream),
     }))
 }

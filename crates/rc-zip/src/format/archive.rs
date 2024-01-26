@@ -116,7 +116,9 @@ pub struct StoredEntry {
     ///
     /// In the zip format, the most noteworthy flag (bit 11) is for UTF-8 names.
     /// Other flags can indicate: encryption (unsupported), various compression
-    /// settings (depending on the [Method][] used).
+    /// settings (depending on the [Method] used).
+    ///
+    /// For LZMA, general-purpose bit 1 denotes the EOS marker.
     pub flags: u16,
 
     /// Unix user ID

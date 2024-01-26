@@ -1,3 +1,5 @@
+use crate::Method;
+
 use super::encoding;
 
 /// Any zip-related error, from invalid archives to encoding problems.
@@ -24,12 +26,30 @@ pub enum Error {
     UnknownSize,
 }
 
+impl Error {
+    #[allow(unused)]
+    pub(crate) fn method_not_supported(method: Method) -> Self {
+        Self::Unsupported(UnsupportedError::MethodNotSupported(method))
+    }
+
+    #[allow(unused)]
+    pub(crate) fn method_not_enabled(method: Method) -> Self {
+        Self::Unsupported(UnsupportedError::MethodNotEnabled(method))
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum UnsupportedError {
-    #[error("unsupported compression method: {0:?}")]
-    UnsupportedCompressionMethod(crate::format::Method),
+    #[error("compression method not supported: {0:?}")]
+    MethodNotSupported(crate::format::Method),
+
     #[error("compression method supported, but not enabled in this build: {0:?}")]
-    CompressionMethodNotEnabled(crate::format::Method),
+    MethodNotEnabled(crate::format::Method),
+
+    #[error("only LZMA2.0 is supported, found LZMA{minor}.{major}")]
+    LzmaVersionUnsupported { minor: u8, major: u8 },
+    #[error("LZMA properties header wrong size: expected {expected} bytes, got {actual} bytes")]
+    LzmaPropertiesHeaderWrongSize { expected: u16, actual: u16 },
 }
 
 /// Specific zip format errors, mostly due to invalid zip archives but that could also stem from
@@ -93,6 +113,9 @@ pub enum FormatError {
     /// The CRC-32 checksum didn't match.
     #[error("checksum didn't match: expected {expected:x?}, got {actual:x?}")]
     WrongChecksum { expected: u32, actual: u32 },
+
+    #[error("lzma properties larger than max")]
+    LzmaPropertiesLargerThanMax,
 }
 
 impl From<Error> for std::io::Error {

@@ -1,6 +1,3 @@
-#[cfg(feature = "deflate")]
-use flate2::read::DeflateDecoder;
-
 use std::{cmp, io};
 
 pub trait Decoder<R>: io::Read
@@ -13,20 +10,6 @@ where
 
     /// Returns a mutable reference to the inner reader.
     fn get_mut(&mut self) -> &mut R;
-}
-
-#[cfg(feature = "deflate")]
-impl<R> Decoder<R> for DeflateDecoder<R>
-where
-    R: io::Read,
-{
-    fn into_inner(self: Box<Self>) -> R {
-        DeflateDecoder::into_inner(*self)
-    }
-
-    fn get_mut(&mut self) -> &mut R {
-        DeflateDecoder::get_mut(self)
-    }
 }
 
 pub struct StoreDecoder<R>

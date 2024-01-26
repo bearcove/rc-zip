@@ -7,8 +7,13 @@ use crate::{
     transition,
 };
 
+#[cfg(feature = "lzma")]
+mod lzma_dec;
+
 #[cfg(feature = "deflate")]
-use flate2::read::DeflateDecoder;
+mod deflate_dec;
+
+use cfg_if::cfg_if;
 use nom::Offset;
 use std::io;
 use tracing::trace;
@@ -72,18 +77,10 @@ where
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
-                            let limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
-                            let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
-                                Method::Store => Box::new(StoreDecoder::new(limited_reader)),
-                                Method::Deflate => {
-                                    #[cfg(feature = "deflate")]
-                                    { Box::new(DeflateDecoder::new(limited_reader)) }
-
-                                    #[cfg(not(feature = "deflate"))]
-                                    { return Err(Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(Method::Deflate)).into()) }
-                                },
-                                method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
-                            };
+                            // allow unnecessary mut for some feature combinations
+                            #[allow(unused_mut)]
+                            let mut limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
+                            let decoder: Box<dyn Decoder<LimitedReader>> = self.get_decoder(limited_reader)?;
 
                             S::ReadData {
                                 hasher: crc32fast::Hasher::new(),
@@ -257,5 +254,37 @@ where
             method: entry.method(),
             inner: entry.inner,
         }
+    }
+
+    fn get_decoder(
+        &self,
+        #[allow(unused_mut)] mut limited_reader: LimitedReader,
+    ) -> Result<Box<dyn Decoder<LimitedReader>>, Error> {
+        let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
+            Method::Store => Box::new(StoreDecoder::new(limited_reader)),
+            Method::Deflate => {
+                cfg_if! {
+                    if #[cfg(feature = "deflate")] {
+                        Box::new(deflate_dec::mk_decoder(limited_reader))
+                    } else {
+                        return Err(Error::method_not_enabled(self.method));
+                    }
+                }
+            }
+            Method::Lzma => {
+                cfg_if! {
+                    if #[cfg(feature = "lzma")] {
+                        Box::new(lzma_dec::mk_decoder(limited_reader,self.inner.uncompressed_size)?)
+                    } else {
+                        return Err(Error::method_not_enabled(self.method));
+                    }
+                }
+            }
+            method => {
+                return Err(Error::method_not_supported(method));
+            }
+        };
+
+        Ok(decoder)
     }
 }

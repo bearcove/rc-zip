@@ -25,9 +25,16 @@ thiserror = "1.0.56"
 chardetng = "0.1.17"
 flate2 = { version = "1.0.28", optional = true }
 num_enum = "0.7.2"
+byteorder = "1.5.0"
+cfg-if = "1.0.0"
+lzma-rs = { version = "0.3.0", features = ["stream"], optional = true }
 
 [features]
 default = ["sync", "file", "deflate"]
 sync = []
 file = ["positioned-io"]
 deflate = ["flate2"]
+lzma = ["lzma-rs"]
+
+[dev-dependencies]
+tracing-test = "0.2.4"

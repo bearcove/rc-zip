@@ -187,27 +187,11 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
-                let mut entry_name = entry.name();
-
-                // refuse entries with traversed/absolute path to mitigate zip slip
-                if entry_name.contains("..") {
-                    continue;
-                }
-                #[cfg(windows)]
-                {
-                    if entry_name.contains(":\\") || entry_name.starts_with("\\") {
-                        continue;
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    // strip absolute prefix on entries pointing to root path
-                    let mut entry_chars = entry_name.chars();
-                    while entry_name.starts_with('/') {
-                        entry_chars.next();
-                        entry_name = entry_chars.as_str()
-                    }
-                }
+                let entry_name = entry.name();
+                let entry_name = match sanitize_entry_name(entry_name) {
+                    Some(name) => name,
+                    None => continue,
+                };
 
                 pbar.set_message(entry_name.to_string());
                 match entry.contents() {
@@ -367,5 +351,35 @@ where
             (self.callback)(self.progress);
         }
         res
+    }
+}
+
+/// Sanitize zip entry names: skip entries with traversed/absolute path to
+/// mitigate zip slip, and strip absolute prefix on entries pointing to root
+/// path.
+fn sanitize_entry_name(name: &str) -> Option<&str> {
+    // refuse entries with traversed/absolute path to mitigate zip slip
+    if name.contains("..") {
+        return None;
+    }
+
+    #[cfg(windows)]
+    {
+        if name.contains(":\\") || name.starts_with("\\") {
+            return None;
+        }
+        Some(name)
+    }
+
+    #[cfg(not(windows))]
+    {
+        // strip absolute prefix on entries pointing to root path
+        let mut entry_chars = name.chars();
+        let mut name = name;
+        while name.starts_with('/') {
+            entry_chars.next();
+            name = entry_chars.as_str()
+        }
+        Some(name)
     }
 }

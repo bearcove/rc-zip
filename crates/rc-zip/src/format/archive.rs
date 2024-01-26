@@ -87,12 +87,6 @@ pub struct StoredEntry {
     /// This contains the entry's name, timestamps, comment, compression method.
     pub entry: Entry,
 
-    /// CRC-32 hash as found in the central directory.
-    ///
-    /// Note that this may be zero, and the actual CRC32 might be in the local header, or (more
-    /// commonly) in the data descriptor instead.
-    pub crc32: u32,
-
     /// Offset of the local file header in the zip file
     ///
     /// ```text
@@ -107,14 +101,6 @@ pub struct StoredEntry {
     /// [end of central directory record]
     /// ```
     pub header_offset: u64,
-
-    /// Size in bytes, after compression
-    pub compressed_size: u64,
-
-    /// Size in bytes, before compression
-    ///
-    /// This will be zero for directories.
-    pub uncompressed_size: u64,
 
     /// External attributes (zip)
     pub external_attrs: u32,
@@ -151,6 +137,25 @@ pub struct StoredEntry {
     /// but they are also made available here raw.
     pub extra_fields: Vec<ExtraField>,
 
+    pub inner: StoredEntryInner,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct StoredEntryInner {
+    /// CRC-32 hash as found in the central directory.
+    ///
+    /// Note that this may be zero, and the actual CRC32 might be in the local header, or (more
+    /// commonly) in the data descriptor instead.
+    pub crc32: u32,
+
+    /// Size in bytes, after compression
+    pub compressed_size: u64,
+
+    /// Size in bytes, before compression
+    ///
+    /// This will be zero for directories.
+    pub uncompressed_size: u64,
+
     /// True if this entry was read from a zip64 archive
     pub is_zip64: bool,
 }
@@ -172,6 +177,7 @@ impl StoredEntry {
     }
 
     /// The compression method used for this entry
+    #[inline(always)]
     pub fn method(&self) -> Method {
         self.entry.method
     }
@@ -184,6 +190,7 @@ impl StoredEntry {
     /// epoch, if something went really wrong.
     ///
     /// If you're reading this after the year 2038, or after the year 2108, godspeed.
+    #[inline(always)]
     pub fn modified(&self) -> DateTime<Utc> {
         self.entry.modified
     }
@@ -191,6 +198,7 @@ impl StoredEntry {
     /// This entry's "created" timestamp, if available.
     ///
     /// See [StoredEntry::modified()] for caveats.
+    #[inline(always)]
     pub fn created(&self) -> Option<&DateTime<Utc>> {
         self.entry.created.as_ref()
     }
@@ -198,6 +206,7 @@ impl StoredEntry {
     /// This entry's "last accessed" timestamp, if available.
     ///
     /// See [StoredEntry::modified()] for caveats.
+    #[inline(always)]
     pub fn accessed(&self) -> Option<&DateTime<Utc>> {
         self.entry.accessed.as_ref()
     }

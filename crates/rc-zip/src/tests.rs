@@ -337,7 +337,7 @@ fn test_fsm() {
     let sync_archive = bs.read_zip().unwrap();
     for (se, e) in sync_archive.entries().zip(archive.entries()) {
         assert_eq!(se.name(), e.name());
-        assert_eq!(se.compressed_size, e.compressed_size);
-        assert_eq!(se.uncompressed_size, e.uncompressed_size);
+        assert_eq!(se.inner.compressed_size, e.inner.compressed_size);
+        assert_eq!(se.inner.uncompressed_size, e.inner.uncompressed_size);
     }
 }

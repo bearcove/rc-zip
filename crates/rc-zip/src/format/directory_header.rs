@@ -228,9 +228,12 @@ impl DirectoryHeader {
             reader_version: self.reader_version,
             flags: self.flags,
 
-            crc32: self.crc32,
-            compressed_size,
-            uncompressed_size,
+            inner: StoredEntryInner {
+                crc32: self.crc32,
+                compressed_size,
+                uncompressed_size,
+                is_zip64,
+            },
             header_offset,
 
             uid,
@@ -240,7 +243,6 @@ impl DirectoryHeader {
             extra_fields,
 
             external_attrs: self.external_attrs,
-            is_zip64,
         })
     }
 }

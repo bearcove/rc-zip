@@ -8,7 +8,7 @@ use crate::{
 };
 
 enum LzmaDecoderState {
-    Writing(Stream<Vec<u8>>),
+    Writing(Box<Stream<Vec<u8>>>),
     Draining(Vec<u8>),
     Transition,
 }
@@ -163,6 +163,6 @@ pub(crate) fn mk_decoder(
     Ok(Box::new(LzmaDecoderAdapter {
         input: r,
         total_write_count: 0,
-        state: LzmaDecoderState::Writing(stream),
+        state: LzmaDecoderState::Writing(Box::new(stream)),
     }))
 }

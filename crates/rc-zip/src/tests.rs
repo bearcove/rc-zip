@@ -123,10 +123,14 @@ impl ZipTestFile {
                         // ah well
                     }
                     FileContent::Bytes(expected_bytes) => {
+                        // first check length
+                        assert_eq!(actual_bytes.len(), expected_bytes.len());
                         assert_eq!(&actual_bytes[..], &expected_bytes[..])
                     }
                     FileContent::File(file_path) => {
                         let expected_bytes = std::fs::read(zips_dir().join(file_path)).unwrap();
+                        // first check length
+                        assert_eq!(actual_bytes.len(), expected_bytes.len());
                         assert_eq!(&actual_bytes[..], &expected_bytes[..])
                     }
                 }
@@ -272,7 +276,7 @@ fn test_cases() -> Vec<ZipTest> {
             expected_encoding: Some(Encoding::Utf8),
             files: vec![ZipTestFile {
                 name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me!\n".repeat(5000).into()),
+                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (17, 14, 36), 0, time_zone(0)).unwrap()),
                 ..Default::default()
             }],

@@ -15,6 +15,7 @@ where
     fn get_mut(&mut self) -> &mut R;
 }
 
+#[cfg(feature = "deflate")]
 impl<R> Decoder<R> for DeflateDecoder<R>
 where
     R: io::Read,

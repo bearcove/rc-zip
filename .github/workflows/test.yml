@@ -24,17 +24,17 @@ jobs:
         run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.3
-      - name: Install cargo-nextest
+      - name: Install just, nextest, cargo-llvm-cov, and cargo-hack
         uses: taiki-e/install-action@v2
         with:
-          tool: just,nextest,cargo-llvm-cov
+          tool: just,nextest,cargo-llvm-cov,cargo-hack
       - name: Run cargo doc, deny warnings
         run: |
           export RUSTDOCFLAGS="-D warnings"
           cargo doc --all-features --no-deps
       - name: Run cargo clippy
         run: |
-          cargo clippy --all-targets --all-features
+          cargo hack clippy --feature-powerset
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information

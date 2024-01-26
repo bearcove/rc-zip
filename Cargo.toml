@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
 
 [workspace.dependencies]
-positioned-io = { version = "0.3.1" }
+positioned-io = { version = "0.3.3" }
 
 [profile.release]
 debug = 1

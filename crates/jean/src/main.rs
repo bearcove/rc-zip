@@ -1,12 +1,15 @@
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
-use std::path::PathBuf;
-use std::time::Duration;
-use std::{borrow::Cow, fmt};
+
 use std::{
+    borrow::Cow,
+    collections::HashSet,
+    fmt,
     fs::File,
     io::{self, Read},
+    path::PathBuf,
+    time::Duration,
 };
 
 struct Optional<T>(Option<T>);
@@ -73,7 +76,6 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("Comment:\n{}", comment);
         }
 
-        use std::collections::HashSet;
         let mut creator_versions = HashSet::<rc_zip::Version>::new();
         let mut reader_versions = HashSet::<rc_zip::Version>::new();
         let mut methods = HashSet::<rc_zip::Method>::new();

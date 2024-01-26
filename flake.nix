@@ -46,7 +46,7 @@
           Security
         ]);
       commonArgs = {
-        pname = "fluke";
+        pname = "rc_zip";
         version = "latest";
         strictDeps = true;
         dontStrip = true;

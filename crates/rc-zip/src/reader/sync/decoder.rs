@@ -2,7 +2,7 @@
 use flate2::read::DeflateDecoder;
 
 #[cfg(feature = "lzma")]
-use xz2::read::XzDecoder;
+use lzma::reader::LzmaReader;
 
 use std::{cmp, io};
 
@@ -24,25 +24,25 @@ where
     R: io::Read,
 {
     fn into_inner(self: Box<Self>) -> R {
-        DeflateDecoder::into_inner(*self)
+        Self::into_inner(*self)
     }
 
     fn get_mut(&mut self) -> &mut R {
-        DeflateDecoder::get_mut(self)
+        Self::get_mut(self)
     }
 }
 
 #[cfg(feature = "lzma")]
-impl<R> Decoder<R> for XzDecoder<R>
+impl<R> Decoder<R> for LzmaReader<R>
 where
     R: io::Read,
 {
     fn into_inner(self: Box<Self>) -> R {
-        XzDecoder::into_inner(*self)
+        Self::into_inner(*self)
     }
 
     fn get_mut(&mut self) -> &mut R {
-        XzDecoder::get_mut(self)
+        Self::get_mut(self)
     }
 }
 

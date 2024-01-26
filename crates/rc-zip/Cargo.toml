@@ -26,7 +26,9 @@ chardetng = "0.1.17"
 flate2 = { version = "1.0.28", optional = true }
 num_enum = "0.7.2"
 byteorder = "1.5.0"
-rust-lzma = { version = "0.6.0", optional = true }
+# rust-lzma = { version = "0.6.0", optional = true }
+# FIXME:
+rust-lzma = { path = "../../../rust-lzma", optional = true }
 
 [features]
 default = ["sync", "file", "deflate"]

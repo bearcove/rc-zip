@@ -102,7 +102,7 @@ where
                                         let data = &data[..size as usize];
                                         trace!(%major, %minor, %size, "LZMA properties header, data = {data:02x?}");
 
-                                        Box::new(xz2::read::XzDecoder::new_stream(limited_reader, xz2::stream::Stream::new_lzma_decoder(128 * 1024 * 1024)?))
+                                        Box::new(lzma::reader::LzmaReader::new_decompressor(limited_reader).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?)
                                     }
 
                                     #[cfg(not(feature = "lzma"))]

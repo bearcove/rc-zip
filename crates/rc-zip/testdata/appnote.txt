@@ -1,8 +1,8 @@
 File:    APPNOTE.TXT - .ZIP File Format Specification
-Version: 6.3.6 
-Status: FINAL - replaces version 6.3.5
-Revised: April 26, 2019
-Copyright (c) 1989 - 2014, 2018, 2019 PKWARE Inc., All Rights Reserved.
+Version: 6.3.10 
+Status: FINAL - replaces version 6.3.9
+Revised: Nov 01, 2022
+Copyright (c) 1989 - 2014, 2018, 2019, 2020, 2022 PKWARE Inc., All Rights Reserved.
 
 1.0 Introduction
 ---------------
@@ -208,6 +208,32 @@ Copyright (c) 1989 - 2014, 2018, 2019 PKWARE Inc., All Rights Reserved.
    6.3.6         -Corrected typographical error          04/26/2019
                   (4.4.1.3) 
 
+   6.3.7         -Added Zstandard compression method ID  
+                  (4.4.5)
+
+                 -Corrected several reported typos
+
+                 -Marked intended use for general purpose bit 14
+ 
+                 -Added Data Stream Alignment Extra Data info
+                  (4.6.11)
+
+   6.3.8         -Resolved Zstandard compression method ID conflict  
+                  (4.4.5)
+
+                 -Added additional compression method ID values in use
+
+   6.3.9         -Corrected a typo in Data Stream Alignment description
+                  (4.6.11)
+
+   6.3.10        -Added several z/OS attribute values for APPENDIX B
+
+                 -Added several additional 3rd party Extra Field mappings
+                  (thanks to Armijn Hemel @tjaldur.nl for forwarding info
+                  on several of the Header ID's)
+
+
+
 3.0 Notations
 -------------
 
@@ -314,7 +340,7 @@ Copyright (c) 1989 - 2014, 2018, 2019 PKWARE Inc., All Rights Reserved.
    records defined in this specification MAY be used as needed to support 
    storage requirements for individual ZIP files.
 
-   4.3.2 Each file placed into a ZIP file MUST be preceeded by  a "local 
+   4.3.2 Each file placed into a ZIP file MUST be preceded by  a "local 
    file header" record for that file.  Each "local file header" MUST be 
    accompanied by a corresponding "central directory header" record within 
    the central directory section of the ZIP file.
@@ -821,7 +847,7 @@ Copyright (c) 1989 - 2014, 2018, 2019 PKWARE Inc., All Rights Reserved.
                 PKWARE Proprietary Technology into Your Product" for 
                 more information.
 
-        Bit 14: Reserved by PKWARE.
+        Bit 14: Reserved by PKWARE for alternate streams.
 
         Bit 15: Reserved by PKWARE.
 
@@ -846,7 +872,11 @@ Copyright (c) 1989 - 2014, 2018, 2019 PKWARE Inc., All Rights Reserved.
        16 - IBM z/OS CMPSC Compression
        17 - Reserved by PKWARE
        18 - File is compressed using IBM TERSE (new)
-       19 - IBM LZ77 z Architecture (PFS)
+       19 - IBM LZ77 z Architecture 
+       20 - deprecated (use method 93 for zstd)
+       93 - Zstandard (zstd) Compression 
+       94 - MP3 Compression 
+       95 - XZ Compression 
        96 - JPEG variant
        97 - WavPack compressed data
        98 - PPMd version I, Rev 1
@@ -1535,17 +1565,21 @@ Value     Size      Description
    4.6.1 Third party mappings commonly used are:
 
           0x07c8        Macintosh
+          0x1986        Pixar USD header ID
           0x2605        ZipIt Macintosh
           0x2705        ZipIt Macintosh 1.3.5+
           0x2805        ZipIt Macintosh 1.3.5+
           0x334d        Info-ZIP Macintosh
+          0x4154        Tandem
           0x4341        Acorn/SparkFS 
           0x4453        Windows NT security descriptor (binary ACL)
           0x4704        VM/CMS
           0x470f        MVS
+          0x4854        THEOS (old?)
           0x4b46        FWKCS MD5 (see below)
           0x4c41        OS/2 access control list (text ACL)
-          0x4d49        Info-ZIP OpenVMS
+          0x4d49        Info-ZIP OpenVMS 
+          0x4d63        Macintosh Smartzip (??)
           0x4f4c        Xceed original location extra field
           0x5356        AOS/VS (ACL)
           0x5455        extended timestamp
@@ -1553,10 +1587,17 @@ Value     Size      Description
           0x5855        Info-ZIP UNIX (original, also OS/2, NT, etc)
           0x6375        Info-ZIP Unicode Comment Extra Field
           0x6542        BeOS/BeBox
+          0x6854        THEOS
           0x7075        Info-ZIP Unicode Path Extra Field
+          0x7441        AtheOS/Syllable
           0x756e        ASi UNIX
           0x7855        Info-ZIP UNIX (new)
+          0x7875        Info-ZIP UNIX (newer UID/GID)
+          0xa11e        Data Stream Alignment (Apache Commons-Compress)
           0xa220        Microsoft Open Packaging Growth Hint
+          0xcafe        Java JAR file Extra Field Header ID
+          0xd935        Android ZIP Alignment Extra Field        
+          0xe57a        Korean ZIP code page info
           0xfd4a        SMS/QDOS
           0x9901        AE-x encryption structure (see APPENDIX E)
           0x9902        unknown
@@ -1591,6 +1632,7 @@ Value     Size      Description
    known type.
          
    Third-party Mappings:
+   Not all third-party extra field mappings are documented here.
           
    4.6.4 -ZipIt Macintosh Extra Field (long) (0x2605):
 
@@ -1784,6 +1826,32 @@ Value     Size      Description
           Sig           Short       verification signature (A028)
           PadVal        Short       Initial padding value
           Padding       variable    filled with NULL characters
+
+    4.6.11 -Data Stream Alignment (Apache Commons-Compress) (0xa11e):
+
+       (per Zbynek Vyskovsky) Defines alignment of data stream of this 
+       entry within the zip archive.  Additionally, indicates whether the 
+       compression method should be kept when re-compressing the zip file.
+
+       The purpose of this extra field is to align specific resources to 
+       word or page boundaries so they can be easily mapped into memory.  
+
+         Value         Size        Description
+         -----         ----        -----------
+         0xa11e        Short       tag for this extra block type
+         TSize         Short       total data size for this block (2+padding)
+         alignment     Short       required alignment and indicator
+         0x00          Variable    padding
+
+       The alignment field (lower 15 bits) defines the minimal alignment 
+       required by the data stream.   Bit 15 of alignment field indicates 
+       whether the compression method of this entry can be changed when 
+       recompressing the zip file.  The value 0 means the compression method 
+       should not be changed.  The value 1 indicates  the compression method 
+       may be changed. The padding field contains padding to ensure the correct 
+       alignment.  It can be changed at any time when the offset or required 
+       alignment changes. (see https://issues.apache.org/jira/browse/COMPRESS-391)
+
 
 4.7 Manifest Files
 ------------------
@@ -3329,7 +3397,7 @@ from 9-13).  Flag values are defined below.
       8.5.1 Capacities for split archives are as follows:
 
       Maximum number of segments = 4,294,967,295 - 1
-      Maximum .ZIP segment size = 4,294,967,295 bytes (refer to section 8.5.6)
+      Maximum .ZIP segment size = 4,294,967,295 bytes 
       Minimum segment size = 64K
       Maximum PKSFX segment size = 2,147,483,647 bytes
           
@@ -3597,6 +3665,9 @@ B.2 Field Code  Description
    009D     NONVSAM DSORG                       2 bytes  
    009E     Program Virtual Object Info         3 bytes  
    009F     Encapsulated file Info              9 bytes
+   00A2     Cluster Log                         4 bytes  Binary
+   00A3     Cluster LSID Length                 4 bytes  Binary
+   00A4     Cluster LSID                       26 bytes  EBCDIC
    400C     Unix File Creation Time             4 bytes
    400D     Unix File Access Time               4 bytes
    400E     Unix File Modification time         4 bytes

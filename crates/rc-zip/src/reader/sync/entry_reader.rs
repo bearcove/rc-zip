@@ -48,13 +48,8 @@ where
     rd: EOFNormalizer<R>,
     eof: bool,
     state: State,
-    // entry info required for extraction
-    // copy them over to reduce the amount of necessary lifetimes/references
-    compressed_size: u64,
-    uncompressed_size: u64,
+    inner: StoredEntryInner,
     method: Method,
-    is_zip64: bool,
-    crc32: u32,
 }
 
 impl<R> io::Read for EntryReader<R>
@@ -76,7 +71,7 @@ where
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
-                            let limited_reader = LimitedReader::new(buffer, self.compressed_size);
+                            let limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
                             let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
                                 Method::Deflate => Box::new(deflate::Decoder::new(limited_reader)),
@@ -158,7 +153,7 @@ where
                     buffer.available_space()
                 );
 
-                match DataDescriptorRecord::parse(buffer.data(), self.is_zip64) {
+                match DataDescriptorRecord::parse(buffer.data(), self.inner.is_zip64) {
                     Ok((_remaining, descriptor)) => {
                         trace!("data descriptor = {:#?}", descriptor);
                         transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
@@ -195,16 +190,16 @@ where
                 ref header,
                 ref descriptor,
             } => {
-                let expected_crc32 = if self.crc32 != 0 {
-                    self.crc32
+                let expected_crc32 = if self.inner.crc32 != 0 {
+                    self.inner.crc32
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.crc32
                 } else {
                     header.crc32
                 };
 
-                let expected_size = if self.uncompressed_size != 0 {
-                    self.uncompressed_size
+                let expected_size = if self.inner.uncompressed_size != 0 {
+                    self.inner.uncompressed_size
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.uncompressed_size
                 } else {
@@ -252,11 +247,8 @@ where
             state: State::ReadLocalHeader {
                 buffer: circular::Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
             },
-            compressed_size: entry.compressed_size,
-            uncompressed_size: entry.uncompressed_size,
             method: entry.method(),
-            is_zip64: entry.is_zip64,
-            crc32: entry.crc32,
+            inner: entry.inner,
         }
     }
 }

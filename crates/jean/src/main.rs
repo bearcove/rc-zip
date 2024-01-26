@@ -1,12 +1,15 @@
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
-use std::path::PathBuf;
-use std::time::Duration;
-use std::{borrow::Cow, fmt};
+
 use std::{
+    borrow::Cow,
+    collections::HashSet,
+    fmt,
     fs::File,
     io::{self, Read},
+    path::PathBuf,
+    time::Duration,
 };
 
 struct Optional<T>(Option<T>);
@@ -73,7 +76,6 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("Comment:\n{}", comment);
         }
 
-        use std::collections::HashSet;
         let mut creator_versions = HashSet::<rc_zip::Version>::new();
         let mut reader_versions = HashSet::<rc_zip::Version>::new();
         let mut methods = HashSet::<rc_zip::Method>::new();
@@ -96,8 +98,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 rc_zip::EntryContents::File => {
                     methods.insert(entry.method());
                     num_files += 1;
-                    compressed_size += entry.compressed_size;
-                    uncompressed_size += entry.uncompressed_size;
+                    compressed_size += entry.inner.compressed_size;
+                    uncompressed_size += entry.inner.uncompressed_size;
                 }
             }
         }
@@ -135,7 +137,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         Cow::from(entry.name().truncate_path(55))
                     },
-                    size = format_size(entry.uncompressed_size, BINARY),
+                    size = format_size(entry.inner.uncompressed_size, BINARY),
                 );
                 if verbose {
                     print!(
@@ -169,7 +171,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let mut uncompressed_size: u64 = 0;
             for entry in reader.entries() {
                 if let EntryContents::File = entry.contents() {
-                    uncompressed_size += entry.uncompressed_size;
+                    uncompressed_size += entry.inner.uncompressed_size;
                 }
             }
 
@@ -250,10 +252,13 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         let mut entry_writer = File::create(path)?;
                         let entry_reader = entry.reader();
                         let before_entry_bytes = done_bytes;
-                        let mut progress_reader =
-                            ProgressRead::new(entry_reader, entry.uncompressed_size, |prog| {
+                        let mut progress_reader = ProgressRead::new(
+                            entry_reader,
+                            entry.inner.uncompressed_size,
+                            |prog| {
                                 pbar.set_position(before_entry_bytes + prog.done);
-                            });
+                            },
+                        );
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
                         done_bytes = before_entry_bytes + copied_bytes;

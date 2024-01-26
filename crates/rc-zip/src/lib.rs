@@ -4,12 +4,12 @@
 //!
 //! ### Reading
 //!
-//! [ArchiveReader](ArchiveReader) is your first stop. It
+//! [ArchiveReader](reader::ArchiveReader) is your first stop. It
 //! ensures we are dealing with a valid zip archive, and reads the central
 //! directory. It does not perform I/O itself, but rather, it is a state machine
 //! that asks for reads at specific offsets.
 //!
-//! An [Archive](Archive) contains a full list of [entries](types::StoredEntry),
+//! An [Archive] contains a full list of [entries](StoredEntry),
 //! which you can then extract.
 //!
 //! ### Writing

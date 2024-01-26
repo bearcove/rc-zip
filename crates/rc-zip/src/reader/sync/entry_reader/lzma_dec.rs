@@ -1,6 +1,5 @@
 use lzma_rs::decompress::Stream;
 use std::io::{Read, Write};
-use tracing::trace;
 
 use crate::{
     reader::sync::{Decoder, LimitedReader},
@@ -37,10 +36,6 @@ where
                     return self.read(buf);
                 }
 
-                trace!(
-                    "Writing {} bytes to lzma_rs::decompress::Stream",
-                    bytes_read
-                );
                 if let Err(e) = stream.write_all(&self.read_buf[..bytes_read]) {
                     if e.kind() == std::io::ErrorKind::WriteZero {
                         // that's expected actually! from the lzma-rs tests:
@@ -50,14 +45,12 @@ where
                         // This is the case when the unpacked size is encoded as unknown but
                         // provided when decoding. I.e. the 5 or 6 byte end-of-stream marker
                         // is not read.
-                        trace!("WriteZero error, flushing lzma_rs::decompress::Stream");
 
                         // finish and move on to draining
                         self.state = LzmaDecoderState::Draining(stream.finish()?);
                         // and recurse
                         return self.read(buf);
                     } else {
-                        trace!("Error writing to lzma_rs::decompress::Stream: {:?}", e);
                         return Err(e);
                     }
                 }
@@ -79,7 +72,6 @@ where
             LzmaDecoderState::Draining(vec) => vec,
             LzmaDecoderState::Transition => unreachable!(),
         };
-        trace!("write_buf.len() = {}", write_buf.len());
         let write_count = std::cmp::min(buf.len(), write_buf.len());
         {
             let src_slice = &write_buf[..write_count];
@@ -91,11 +83,6 @@ where
         *write_buf = write_buf.split_off(write_count);
 
         self.total_write_count += write_count as u64;
-        trace!(
-            "lzma_rs::decompress::Stream has returned {write_count} bytes, total = {}",
-            self.total_write_count
-        );
-
         Ok(write_count)
     }
 }

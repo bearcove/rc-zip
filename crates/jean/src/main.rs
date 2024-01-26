@@ -66,6 +66,8 @@ enum Commands {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let cli = Cli::parse();
     do_main(cli).unwrap();
 }

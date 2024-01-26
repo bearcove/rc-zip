@@ -173,11 +173,17 @@ impl ArchiveReader {
                 } {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
                     Some(mut eocdr) => {
+                        trace!(?eocdr, "ReadEocd | found end of central directory record");
                         buffer.reset();
                         eocdr.offset += self.size - haystack_size;
 
                         if eocdr.offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
                             // no room for an EOCD64 locator, definitely not a zip64 file
+                            trace!(
+                                offset = eocdr.offset,
+                                eocd64locator_length = EndOfCentralDirectory64Locator::LENGTH,
+                                "no room for an EOCD64 locator, definitely not a zip64 file"
+                            );
                             transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
                                 buffer.reset();
                                 S::ReadCentralDirectory {

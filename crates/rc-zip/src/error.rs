@@ -1,3 +1,5 @@
+use crate::Method;
+
 use super::encoding;
 
 /// Any zip-related error, from invalid archives to encoding problems.
@@ -24,12 +26,25 @@ pub enum Error {
     UnknownSize,
 }
 
+impl Error {
+    pub(crate) fn method_not_supported(method: Method) -> Self {
+        Self::Unsupported(UnsupportedError::MethodNotSupported(method))
+    }
+
+    #[allow(unused)]
+    pub(crate) fn method_not_enabled(method: Method) -> Self {
+        Self::Unsupported(UnsupportedError::MethodNotEnabled(method))
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum UnsupportedError {
-    #[error("unsupported compression method: {0:?}")]
-    UnsupportedCompressionMethod(crate::format::Method),
+    #[error("compression method not supported: {0:?}")]
+    MethodNotSupported(crate::format::Method),
+
     #[error("compression method supported, but not enabled in this build: {0:?}")]
-    CompressionMethodNotEnabled(crate::format::Method),
+    MethodNotEnabled(crate::format::Method),
+
     #[error("only LZMA2.0 is supported, found LZMA{minor}.{major}")]
     LzmaVersionUnsupported { minor: u8, major: u8 },
     #[error("LZMA properties header wrong size: expected {expected} bytes, got {actual} bytes")]

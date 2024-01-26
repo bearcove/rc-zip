@@ -118,8 +118,7 @@ where
 pub(crate) fn mk_decoder(
     mut r: LimitedReader,
     uncompressed_size: u64,
-    flags: u16,
-) -> std::io::Result<Box<dyn Decoder<LimitedReader>>> {
+) -> std::io::Result<impl Decoder<LimitedReader>> {
     use byteorder::{LittleEndian, ReadBytesExt};
 
     // see `appnote.txt` section 5.8
@@ -155,14 +154,10 @@ pub(crate) fn mk_decoder(
         memlimit: Some(memlimit),
     };
 
-    // general-purpose bit flag 1 indicates that the stream has an EOS marker
-    let has_eos = flags & 0b01 != 0;
-    trace!(?has_eos, "EOS marker?, flags = {flags:x?}");
-
     let stream = Stream::new_with_options(&opts, vec![]);
-    Ok(Box::new(LzmaDecoderAdapter {
+    Ok(LzmaDecoderAdapter {
         input: r,
         total_write_count: 0,
         state: LzmaDecoderState::Writing(Box::new(stream)),
-    }))
+    })
 }

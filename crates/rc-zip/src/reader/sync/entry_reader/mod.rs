@@ -8,15 +8,15 @@ use crate::{
 };
 
 #[cfg(feature = "lzma")]
-mod lzma_support;
+mod lzma_dec;
+
+#[cfg(feature = "deflate")]
+mod deflate_dec;
 
 use cfg_if::cfg_if;
 use nom::Offset;
 use std::io;
 use tracing::trace;
-
-#[cfg(feature = "deflate")]
-use flate2::read::DeflateDecoder;
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -55,8 +55,6 @@ where
     eof: bool,
     state: State,
     inner: StoredEntryInner,
-    /// General-purpose bit flag
-    flags: u16,
     method: Method,
 }
 
@@ -255,49 +253,35 @@ where
             },
             method: entry.method(),
             inner: entry.inner,
-            flags: entry.flags,
         }
     }
 
     fn get_decoder(
         &self,
         #[allow(unused_mut)] mut limited_reader: LimitedReader,
-    ) -> std::io::Result<Box<dyn Decoder<LimitedReader>>> {
+    ) -> Result<Box<dyn Decoder<LimitedReader>>, Error> {
         let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
             Method::Store => Box::new(StoreDecoder::new(limited_reader)),
             Method::Deflate => {
                 cfg_if! {
                     if #[cfg(feature = "deflate")] {
-                        Box::new(DeflateDecoder::new(limited_reader))
+                        Box::new(deflate_dec::mk_decoder(limited_reader))
                     } else {
-                        return Err(
-                            Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(
-                                Method::Deflate,
-                            ))
-                            .into(),
-                        );
+                        return Err(Error::method_not_enabled(method));
                     }
                 }
             }
             Method::Lzma => {
                 cfg_if! {
                     if #[cfg(feature = "lzma")] {
-                        lzma_support::mk_decoder(limited_reader, self.inner.uncompressed_size, self.flags)?
+                        Box::new(lzma_dec::mk_decoder(limited_reader,self.inner.uncompressed_size)?)
                     } else {
-                        return Err(
-                            Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(
-                                Method::Lzma,
-                            ))
-                            .into(),
-                        );
+                        return Err(Error::method_not_enabled(method));
                     }
                 }
             }
             method => {
-                return Err(
-                    Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method))
-                        .into(),
-                )
+                return Err(Error::method_not_supported(method));
             }
         };
 

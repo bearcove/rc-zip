@@ -17,13 +17,11 @@ where
     R: Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        // this may grow self.buf, which is on purpose
         if let Err(e) = self.raw.decompress(&mut self.input, &mut self.buf) {
             trace!("LzmaDecoderAdapter::read, got error {e:?}");
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
         }
 
-        // copy from self.buf to buf
         let write_count = std::cmp::min(buf.len(), self.buf.len());
         {
             let src_slice = &self.buf[..write_count];
@@ -31,7 +29,6 @@ where
             dst_slice.copy_from_slice(src_slice);
         }
 
-        // then remove the bytes we copied from the vec
         // TODO: use a ring buffer instead
         self.buf = self.buf.split_off(write_count);
 
@@ -57,6 +54,8 @@ pub(crate) fn mk_decoder(
     uncompressed_size: u64,
 ) -> std::io::Result<Box<dyn Decoder<LimitedReader>>> {
     use byteorder::{LittleEndian, ReadBytesExt};
+
+    // see `appnote.txt` section 5.8
 
     // major & minor version are each 1 byte
     let major = r.read_u8()?;
@@ -94,7 +93,6 @@ pub(crate) fn mk_decoder(
     let memlimit = 128 * 1024 * 1024;
     let dec = lzma_rs::decompress::raw::LzmaDecoder::new(params, Some(memlimit))
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
     Ok(Box::new(LzmaDecoderAdapter {
         input: limited_reader,
         raw: dec,

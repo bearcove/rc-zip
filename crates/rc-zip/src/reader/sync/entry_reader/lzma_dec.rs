@@ -16,6 +16,7 @@ struct LzmaDecoderAdapter<R> {
     input: R,
     total_write_count: u64,
     state: LzmaDecoderState,
+    read_buf: Vec<u8>,
 }
 
 impl<R> Read for LzmaDecoderAdapter<R>
@@ -28,10 +29,7 @@ where
 
         match state {
             LzmaDecoderState::Writing(mut stream) => {
-                // FIXME: all this is terribly wasteful, I'm just trying to see if it
-                // will decompress
-                let mut read_buf = vec![0u8; 8192];
-                let bytes_read = self.input.read(&mut read_buf)?;
+                let bytes_read = self.input.read(&mut self.read_buf)?;
                 if bytes_read == 0 {
                     // we're EOF: finish and move on to draining
                     self.state = LzmaDecoderState::Draining(stream.finish()?);
@@ -43,7 +41,7 @@ where
                     "Writing {} bytes to lzma_rs::decompress::Stream",
                     bytes_read
                 );
-                if let Err(e) = stream.write_all(&read_buf[..bytes_read]) {
+                if let Err(e) = stream.write_all(&self.read_buf[..bytes_read]) {
                     if e.kind() == std::io::ErrorKind::WriteZero {
                         // that's expected actually! from the lzma-rs tests:
                         //
@@ -159,5 +157,6 @@ pub(crate) fn mk_decoder(
         input: r,
         total_write_count: 0,
         state: LzmaDecoderState::Writing(Box::new(stream)),
+        read_buf: vec![0u8; 8192],
     })
 }

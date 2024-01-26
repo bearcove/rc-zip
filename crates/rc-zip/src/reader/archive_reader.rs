@@ -173,11 +173,21 @@ impl ArchiveReader {
                 } {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
                     Some(mut eocdr) => {
+                        trace!(
+                            ?eocdr,
+                            size = self.size,
+                            "ReadEocd | found end of central directory record"
+                        );
                         buffer.reset();
                         eocdr.offset += self.size - haystack_size;
 
                         if eocdr.offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
                             // no room for an EOCD64 locator, definitely not a zip64 file
+                            trace!(
+                                offset = eocdr.offset,
+                                eocd64locator_length = EndOfCentralDirectory64Locator::LENGTH,
+                                "no room for an EOCD64 locator, definitely not a zip64 file"
+                            );
                             transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
                                 buffer.reset();
                                 S::ReadCentralDirectory {
@@ -188,6 +198,7 @@ impl ArchiveReader {
                             });
                             Ok(R::Continue)
                         } else {
+                            trace!("ReadEocd | transition to ReadEocd64Locator");
                             transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
                                 buffer.reset();
                                 S::ReadEocd64Locator { buffer, eocdr }
@@ -205,6 +216,8 @@ impl ArchiveReader {
                     }
                     Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
+                        trace!("ReadEocd64Locator | no zip64 end of central directory locator");
+                        trace!("ReadEocd64Locator | data we got: {:02x?}", buffer.data());
                         transition!(self.state => (S::ReadEocd64Locator { mut buffer, eocdr }) {
                             buffer.reset();
                             S::ReadCentralDirectory {
@@ -216,6 +229,10 @@ impl ArchiveReader {
                         Ok(R::Continue)
                     }
                     Ok((_, locator)) => {
+                        trace!(
+                            ?locator,
+                            "ReadEocd64Locator | found zip64 end of central directory locator"
+                        );
                         transition!(self.state => (S::ReadEocd64Locator { mut buffer, eocdr }) {
                             buffer.reset();
                             S::ReadEocd64 {

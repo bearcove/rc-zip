@@ -29,6 +29,7 @@ impl<'a> ExtraFieldRecord<'a> {
 // is created. The order of the fields in the zip64 extended information record
 // is fixed, but the fields MUST only appear if the corresponding Local or
 // Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
+#[derive(Debug)]
 pub(crate) struct ExtraFieldSettings {
     pub(crate) needs_uncompressed_size: bool,
     pub(crate) needs_compressed_size: bool,

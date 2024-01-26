@@ -9,6 +9,7 @@ use nom::{
 use tracing::trace;
 
 /// 4.3.16  End of central directory record:
+#[derive(Debug)]
 pub struct EndOfCentralDirectoryRecord {
     /// number of this disk
     pub disk_nbr: u16,
@@ -81,6 +82,7 @@ impl EndOfCentralDirectoryRecord {
 }
 
 /// 4.3.15 Zip64 end of central directory locator
+#[derive(Debug)]
 pub struct EndOfCentralDirectory64Locator {
     /// number of the disk with the start of the zip64 end of central directory
     pub dir_disk_number: u32,
@@ -107,6 +109,7 @@ impl EndOfCentralDirectory64Locator {
 }
 
 /// 4.3.14  Zip64 end of central directory record
+#[derive(Debug)]
 pub struct EndOfCentralDirectory64Record {
     /// size of zip64 end of central directory record
     pub record_size: u64,
@@ -150,6 +153,7 @@ impl EndOfCentralDirectory64Record {
     }
 }
 
+#[derive(Debug)]
 pub struct Located<T> {
     pub offset: u64,
     pub inner: T,

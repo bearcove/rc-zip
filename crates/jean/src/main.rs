@@ -75,6 +75,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(comment) = archive.comment() {
             println!("Comment:\n{}", comment);
         }
+        let has_zip64 = archive.entries().any(|entry| entry.inner.is_zip64);
+        println!("{}", if has_zip64 { "Zip64" } else { "Zip32" });
 
         let mut creator_versions = HashSet::<rc_zip::Version>::new();
         let mut reader_versions = HashSet::<rc_zip::Version>::new();
@@ -155,6 +157,11 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
                     if let Some(comment) = entry.comment() {
                         print!("\t{comment}", comment = comment);
+                    }
+                    if entry.inner.is_zip64 {
+                        print!("\tZip64");
+                    } else {
+                        print!("\tZip32");
                     }
                 }
                 println!();

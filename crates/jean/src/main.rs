@@ -307,11 +307,11 @@ impl Truncate for &str {
             let len_strings = name_tokens.iter().map(|x| x.len()).sum::<usize>()
                 + rest_tokens.iter().map(|x| x.len()).sum::<usize>();
             if len_separators + len_strings < limit {
-                name_tokens.extend(rest_tokens.into_iter());
+                name_tokens.extend(rest_tokens);
                 break name_tokens.join("/");
             }
             if rest_tokens.is_empty() {
-                name_tokens.extend(rest_tokens.into_iter());
+                name_tokens.extend(rest_tokens);
                 let name = name_tokens.join("/");
                 break name.chars().take(limit - 3).collect::<String>() + "...";
             }

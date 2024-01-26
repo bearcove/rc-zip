@@ -56,7 +56,7 @@ impl MsdosTimestamp {
         // bits 0-4: second divided by 2
         let s = (self.time & 0b1_1111) as u32 * 2;
         // bits 5-10: minute (0-59)
-        let m = (self.time >> 5 & 0b1111_11) as u32;
+        let m = (self.time >> 5 & 0b11_1111) as u32;
         // bits 11-15: hour (0-23 on a 24-hour clock)
         let h = (self.time >> 11) as u32;
         date.with_hour(h)?.with_minute(m)?.with_second(s)

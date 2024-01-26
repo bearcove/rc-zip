@@ -78,7 +78,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("Comment:\n{}", comment);
         }
         let has_zip64 = archive.entries().any(|entry| entry.inner.is_zip64);
-        println!("{}", if has_zip64 { "Zip64" } else { "Zip32" });
+        if has_zip64 {
+            println!("Found Zip64 end of central directory locator")
+        }
 
         let mut creator_versions = HashSet::<rc_zip::Version>::new();
         let mut reader_versions = HashSet::<rc_zip::Version>::new();

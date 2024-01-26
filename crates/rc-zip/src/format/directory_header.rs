@@ -142,7 +142,6 @@ impl DirectoryHeader {
             needs_uncompressed_size: self.uncompressed_size == !0u32,
             needs_header_offset: self.header_offset == !0u32,
         };
-        trace!("extra field settings: {:#?}", settings);
 
         let mut slice = &self.extra.0[..];
         while !slice.is_empty() {

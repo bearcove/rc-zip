@@ -5,6 +5,7 @@ repository.workspace = true
 license.workspace = true
 authors.workspace = true
 edition = "2021"
+publish = false
 
 [dependencies]
 rc-zip = { path = "../rc-zip" }

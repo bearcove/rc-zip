@@ -7,6 +7,9 @@ use crate::{
     transition,
 };
 
+#[cfg(feature = "lzma")]
+mod lzma_support;
+
 use cfg_if::cfg_if;
 use nom::Offset;
 use std::io;
@@ -276,87 +279,7 @@ where
             Method::Lzma => {
                 cfg_if! {
                     if #[cfg(feature = "lzma")] {
-                        // TODO: use a parser combinator library for this probably?
-
-                        // read LZMA properties header first.
-                        use byteorder::{LittleEndian, ReadBytesExt};
-                        let major: u8 = limited_reader.read_u8()?;
-                        let minor: u8 = limited_reader.read_u8()?;
-                        if (major, minor) != (2, 0) {
-                            return Err(
-                                Error::Unsupported(UnsupportedError::LzmaVersionUnsupported {
-                                    minor,
-                                    major,
-                                })
-                                .into(),
-                            );
-                        }
-
-                        let props_size: u16 = limited_reader.read_u16::<LittleEndian>()?;
-
-                        const LZMA_2_0_PROPS_SIZE: u16 = 5;
-                        if props_size != LZMA_2_0_PROPS_SIZE {
-                            return Err(Error::Unsupported(
-                                UnsupportedError::LzmaPropertiesHeaderTooShort {
-                                    expected: 5,
-                                    actual: props_size,
-                                },
-                            )
-                            .into());
-                        }
-                        let bits_byte: u8 = limited_reader.read_u8()?;
-
-                        #[derive(Debug, Clone, Copy)]
-                        struct LzmaProperties {
-                            literal_context_bits: u8,
-                            literal_pos_state_bits: u8,
-                            pos_state_bits: u8,
-                        }
-
-                        // from `lzma-specification.txt`
-                        fn decode_properties(mut d: u8) -> Result<LzmaProperties, FormatError> {
-                            if d >= (9 * 5 * 5) {
-                                return Err(FormatError::LzmaPropertiesLargerThanMax);
-                            }
-
-                            let lc = d % 9;
-                            d /= 9;
-                            let pb = d / 5;
-                            let lp = d % 5;
-
-                            Ok(LzmaProperties {
-                                literal_context_bits: lc,
-                                literal_pos_state_bits: lp,
-                                pos_state_bits: pb,
-                            })
-                        }
-
-                        let props = decode_properties(bits_byte);
-                        trace!("LZMA properties: {:#?}", props);
-
-                        const LZMA_DIC_MIN: u32 = 1 << 12;
-                        let dict_size_read = limited_reader.read_u32::<LittleEndian>()?;
-                        trace!("LZMA dictionary size (raw): {}", dict_size_read);
-                        let dict_size: u32 =
-                            std::cmp::max(LZMA_DIC_MIN, dict_size_read);
-                        trace!("LZMA dictionary size: {}", dict_size);
-
-                        // let mut opts = xz2::stream::LzmaOptions::new_preset(0)?;
-                        // opts.dict_size(dict_size);
-                        // opts.position_bits(props.pos_state_bits as _);
-                        // opts.literal_position_bits(props.literal_pos_state_bits as _);
-                        // opts.literal_context_bits(props.literal_context_bits as _);
-
-                        // let mut filters = xz2::stream::Filters::new();
-                        // filters.lzma2(&opts);
-
-                        // uncompressed size is stored as a little-endian 64-bit integer
-                        let uncompressed_size: u64 = limited_reader.read_u64::<LittleEndian>()?;
-                        trace!("LZMA uncompressed size: {}", uncompressed_size);
-
-                        let stream = xz2::stream::Stream::new_lzma_decoder(128 * 1024 * 1024)?;
-
-                        Box::new(xz2::read::XzDecoder::new_stream(limited_reader, stream))
+                        lzma_support::mk_decoder(limited_reader, self.inner.uncompressed_size)?
                     } else {
                         return Err(
                             Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(

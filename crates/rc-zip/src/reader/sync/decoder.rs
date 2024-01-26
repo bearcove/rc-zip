@@ -29,20 +29,6 @@ where
     }
 }
 
-#[cfg(feature = "lzma")]
-impl<R> Decoder<R> for xz2::read::XzDecoder<R>
-where
-    R: io::Read,
-{
-    fn into_inner(self: Box<Self>) -> R {
-        Self::into_inner(*self)
-    }
-
-    fn get_mut(&mut self) -> &mut R {
-        Self::get_mut(self)
-    }
-}
-
 pub struct StoreDecoder<R>
 where
     R: io::Read,

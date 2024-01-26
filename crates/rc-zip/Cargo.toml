@@ -35,3 +35,6 @@ sync = []
 file = ["positioned-io"]
 deflate = ["flate2"]
 lzma = ["lzma-rs"]
+
+[dev-dependencies]
+tracing-test = "0.2.4"

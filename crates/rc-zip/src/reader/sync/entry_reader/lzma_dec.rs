@@ -79,8 +79,9 @@ where
             dst_slice.copy_from_slice(src_slice);
         }
 
-        // TODO: use a ring buffer instead
-        *write_buf = write_buf.split_off(write_count);
+        // copy the remaining bytes to the front of the buffer
+        write_buf.rotate_left(write_count);
+        write_buf.truncate(write_buf.len() - write_count);
 
         self.total_write_count += write_count as u64;
         Ok(write_count)

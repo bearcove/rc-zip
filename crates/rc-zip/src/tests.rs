@@ -1,3 +1,5 @@
+use tracing_test::traced_test;
+
 use crate::{
     reader::sync::{HasCursor, SyncArchive, SyncStoredEntry},
     Archive,
@@ -286,6 +288,7 @@ fn test_cases() -> Vec<ZipTest> {
 }
 
 #[test]
+#[traced_test]
 fn read_from_slice() {
     let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
     let slice = &bytes[..];
@@ -294,6 +297,7 @@ fn read_from_slice() {
 }
 
 #[test]
+#[traced_test]
 fn read_from_file() {
     let f = File::open(zips_dir().join("test.zip")).unwrap();
     let archive = f.read_zip().unwrap();
@@ -301,6 +305,7 @@ fn read_from_file() {
 }
 
 #[test]
+#[traced_test]
 fn real_world_files() {
     for case in test_cases() {
         case.check(case.bytes().read_zip());
@@ -308,6 +313,7 @@ fn real_world_files() {
 }
 
 #[test]
+#[traced_test]
 fn test_fsm() {
     use super::reader::{ArchiveReader, ArchiveReaderResult};
 

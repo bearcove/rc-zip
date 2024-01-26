@@ -1,4 +1,5 @@
 use crate::format::*;
+use num_enum::{FromPrimitive, IntoPrimitive};
 
 /// An Archive contains general information about a zip files,
 /// along with a list of [entries][StoredEntry].
@@ -278,44 +279,46 @@ impl StoredEntry {
 ///
 /// However, in the wild, it is not too uncommon to encounter [Bzip2][Method::Bzip2],
 /// [Lzma][Method::Lzma] or others.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
+#[repr(u16)]
 pub enum Method {
     /// No compression is applied
-    Store,
+    Store = 0,
+
     /// [DEFLATE (RFC 1951)](https://www.ietf.org/rfc/rfc1951.txt)
-    Deflate,
+    Deflate = 8,
+
+    /// [DEFLATE64](https://deflate64.com/)
+    Deflate64 = 9,
+
     /// [BZIP-2](https://github.com/dsnet/compress/blob/master/doc/bzip2-format.pdf)
-    Bzip2,
+    Bzip2 = 12,
+
     /// [LZMA](https://github.com/jljusten/LZMA-SDK/blob/master/DOC/lzma-specification.txt)
-    Lzma,
-    /// A compression method that isn't supported by this crate.
-    ///
-    /// The original u16 is preserved.
-    Unsupported(u16),
-}
+    Lzma = 14,
 
-impl From<u16> for Method {
-    fn from(m: u16) -> Self {
-        use Method::*;
-        match m {
-            0 => Store,
-            8 => Deflate,
-            12 => Bzip2,
-            14 => Lzma,
-            _ => Unsupported(m),
-        }
-    }
-}
+    /// [zstd](https://datatracker.ietf.org/doc/html/rfc8878)
+    Zstd = 93,
 
-impl From<Method> for u16 {
-    fn from(m: Method) -> Self {
-        use Method::*;
-        match m {
-            Store => 0,
-            Deflate => 8,
-            Bzip2 => 12,
-            Lzma => 14,
-            Unsupported(m) => m,
-        }
-    }
+    /// [MP3](https://www.iso.org/obp/ui/#iso:std:iso-iec:11172:-3:ed-1:v1:en)
+    Mp3 = 94,
+
+    /// [XZ](https://tukaani.org/xz/xz-file-format.txt)
+    Xz = 95,
+
+    /// [JPEG](https://jpeg.org/jpeg/)
+    Jpeg = 96,
+
+    /// [WavPack](https://www.wavpack.com/)
+    WavPack = 97,
+
+    /// [PPMd](https://en.wikipedia.org/wiki/Prediction_by_partial_matching)
+    Ppmd = 98,
+
+    /// AE-x encryption marker (see Appendix E of appnote)
+    Aex = 99,
+
+    /// A compression method that isn't recognized by this crate.
+    #[num_enum(catch_all)]
+    Unrecognized(u16),
 }

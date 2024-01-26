@@ -78,7 +78,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("Comment:\n{}", comment);
         }
         let has_zip64 = archive.entries().any(|entry| entry.inner.is_zip64);
-        println!("{}", if has_zip64 { "Zip64" } else { "Zip32" });
+        if has_zip64 {
+            println!("Found Zip64 end of central directory locator")
+        }
 
         let mut creator_versions = HashSet::<rc_zip::Version>::new();
         let mut reader_versions = HashSet::<rc_zip::Version>::new();
@@ -131,6 +133,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Ls { zipfile, verbose } => {
             let zipfile = File::open(zipfile)?;
             let reader = zipfile.read_zip()?;
+            info(&reader);
 
             for entry in reader.entries() {
                 print!(
@@ -157,13 +160,12 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         print!("\t{target}", target = target);
                     }
 
-                    if let Some(comment) = entry.comment() {
-                        print!("\t{comment}", comment = comment);
-                    }
+                    print!("\t{:?}", entry.method());
                     if entry.inner.is_zip64 {
                         print!("\tZip64");
-                    } else {
-                        print!("\tZip32");
+                    }
+                    if let Some(comment) = entry.comment() {
+                        print!("\t{comment}", comment = comment);
                     }
                 }
                 println!();

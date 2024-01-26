@@ -24,6 +24,7 @@ oem_cp = "2.0.0"
 thiserror = "1.0.56"
 chardetng = "0.1.17"
 flate2 = { version = "1.0.28", optional = true }
+num_enum = "0.7.2"
 
 [features]
 default = ["sync", "file", "deflate"]

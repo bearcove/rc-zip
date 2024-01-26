@@ -97,6 +97,9 @@ pub enum FormatError {
     /// The CRC-32 checksum didn't match.
     #[error("checksum didn't match: expected {expected:x?}, got {actual:x?}")]
     WrongChecksum { expected: u32, actual: u32 },
+
+    #[error("lzma properties larger than max")]
+    LzmaPropertiesLargerThanMax,
 }
 
 impl From<Error> for std::io::Error {

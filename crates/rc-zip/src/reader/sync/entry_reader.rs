@@ -314,36 +314,47 @@ where
                         }
 
                         // from `lzma-specification.txt`
-                        fn decode_properties(mut d: u8) -> LzmaProperties {
+                        fn decode_properties(mut d: u8) -> Result<LzmaProperties, FormatError> {
+                            if d >= (9 * 5 * 5) {
+                                return Err(FormatError::LzmaPropertiesLargerThanMax);
+                            }
+
                             let lc = d % 9;
                             d /= 9;
                             let pb = d / 5;
                             let lp = d % 5;
 
-                            LzmaProperties {
+                            Ok(LzmaProperties {
                                 literal_context_bits: lc,
                                 literal_pos_state_bits: lp,
                                 pos_state_bits: pb,
-                            }
+                            })
                         }
 
                         let props = decode_properties(bits_byte);
+                        trace!("LZMA properties: {:#?}", props);
+
                         const LZMA_DIC_MIN: u32 = 1 << 12;
+                        let dict_size_read = limited_reader.read_u32::<LittleEndian>()?;
+                        trace!("LZMA dictionary size (raw): {}", dict_size_read);
                         let dict_size: u32 =
-                            std::cmp::min(LZMA_DIC_MIN, limited_reader.read_u32::<LittleEndian>()?);
+                            std::cmp::max(LZMA_DIC_MIN, dict_size_read);
+                        trace!("LZMA dictionary size: {}", dict_size);
 
-                        let mut opts = xz2::stream::LzmaOptions::new_preset(0)?;
-                        opts.dict_size(dict_size);
-                        opts.position_bits(props.pos_state_bits as _);
-                        opts.literal_position_bits(props.literal_pos_state_bits as _);
-                        opts.literal_context_bits(props.literal_context_bits as _);
+                        // let mut opts = xz2::stream::LzmaOptions::new_preset(0)?;
+                        // opts.dict_size(dict_size);
+                        // opts.position_bits(props.pos_state_bits as _);
+                        // opts.literal_position_bits(props.literal_pos_state_bits as _);
+                        // opts.literal_context_bits(props.literal_context_bits as _);
 
-                        let mut filters = xz2::stream::Filters::new();
-                        filters.lzma2(&opts);
-                        // let stream = xz2::stream::Stream::new_lzma_decoder(&filters)?;
+                        // let mut filters = xz2::stream::Filters::new();
+                        // filters.lzma2(&opts);
 
-                        // let stream = xz2::stream::Stream::new_lzma_encoder(&opts)?;
-                        let stream = xz2::stream::Stream::new_stream_encoder(&filters, xz2::stream::Check::None)?;
+                        // uncompressed size is stored as a little-endian 64-bit integer
+                        let uncompressed_size: u64 = limited_reader.read_u64::<LittleEndian>()?;
+                        trace!("LZMA uncompressed size: {}", uncompressed_size);
+
+                        let stream = xz2::stream::Stream::new_lzma_decoder(128 * 1024 * 1024)?;
 
                         Box::new(xz2::read::XzDecoder::new_stream(limited_reader, stream))
                     } else {

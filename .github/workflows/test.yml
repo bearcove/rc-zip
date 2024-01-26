@@ -63,12 +63,9 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      - name: Run cargo check
-        run: |
-          cargo check --all-targets --all-features
       - name: Run cargo nextest
         run: |
-          cargo nextest run --profile ci
+          cargo nextest run --profile ci --all-features
   test-macos:
     runs-on: macos-12
     env:
@@ -89,9 +86,6 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      - name: Run cargo check
-        run: |
-          cargo check --all-targets --all-features
       - name: Run cargo nextest
         run: |
-          cargo nextest run --profile ci
+          cargo nextest run --profile ci --all-features

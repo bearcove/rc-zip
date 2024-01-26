@@ -28,8 +28,9 @@ num_enum = "0.7.2"
 byteorder = "1.5.0"
 cfg-if = "1.0.0"
 lzma-rs = { version = "0.3.0", features = ["stream"], optional = true }
-# deflate64 = { version = "0.1.6", optional = true }
-deflate64 = { path = "../../../deflate64-rs", optional = true }
+# TODO: revert back to upstream when this lands: 
+# https://github.com/anatawa12/deflate64-rs/pull/15
+deflate64 = { git = "https://github.com/fasterthanlime/deflate64-rs", branch = "get_mut", optional = true }
 
 [features]
 default = ["sync", "file", "deflate"]

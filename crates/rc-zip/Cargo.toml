@@ -25,9 +25,12 @@ thiserror = "1.0.56"
 chardetng = "0.1.17"
 flate2 = { version = "1.0.28", optional = true }
 num_enum = "0.7.2"
+xz2 = { version = "0.1.7", optional = true }
+byteorder = "1.5.0"
 
 [features]
 default = ["sync", "file", "deflate"]
 sync = []
 file = ["positioned-io"]
 deflate = ["flate2"]
+lzma = ["xz2"]

@@ -72,7 +72,10 @@ where
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
-                            let limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
+                            // allow unnecessary mut for some feature combinations
+                            #[allow(unused_mut)]
+                            let mut limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
+
                             let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
                                 Method::Deflate => {
@@ -82,6 +85,29 @@ where
                                     #[cfg(not(feature = "deflate"))]
                                     { return Err(Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(Method::Deflate)).into()) }
                                 },
+                                Method::Lzma => {
+                                    #[cfg(feature = "lzma")]
+                                    {
+                                        // TODO: use a parser combinator library for this probably
+
+                                        // read LZMA properties header first.
+                                        use byteorder::{LittleEndian, ReadBytesExt};
+                                        let major: u8 = limited_reader.read_u8()?;
+                                        let minor: u8 = limited_reader.read_u8()?;
+
+                                        let size: u16 = limited_reader.read_u16::<LittleEndian>()?;
+                                        // this is an u16, worse case scenario is 65536 bytes
+                                        let mut data = [0u8; 1 << 16];
+                                        limited_reader.read_exact(&mut data[..size as usize])?;
+                                        let data = &data[..size as usize];
+                                        trace!(%major, %minor, %size, "LZMA properties header, data = {data:02x?}");
+
+                                        Box::new(xz2::read::XzDecoder::new_stream(limited_reader, xz2::stream::Stream::new_lzma_decoder(128 * 1024 * 1024)?))
+                                    }
+
+                                    #[cfg(not(feature = "lzma"))]
+                                    { return Err(Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(Method::Lzma)).into()) }
+                                }
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
                             };
 

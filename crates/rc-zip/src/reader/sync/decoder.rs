@@ -1,6 +1,9 @@
 #[cfg(feature = "deflate")]
 use flate2::read::DeflateDecoder;
 
+#[cfg(feature = "lzma")]
+use xz2::read::XzDecoder;
+
 use std::{cmp, io};
 
 pub trait Decoder<R>: io::Read
@@ -26,6 +29,20 @@ where
 
     fn get_mut(&mut self) -> &mut R {
         DeflateDecoder::get_mut(self)
+    }
+}
+
+#[cfg(feature = "lzma")]
+impl<R> Decoder<R> for XzDecoder<R>
+where
+    R: io::Read,
+{
+    fn into_inner(self: Box<Self>) -> R {
+        XzDecoder::into_inner(*self)
+    }
+
+    fn get_mut(&mut self) -> &mut R {
+        XzDecoder::get_mut(self)
     }
 }
 

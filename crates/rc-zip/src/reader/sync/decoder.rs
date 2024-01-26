@@ -1,9 +1,6 @@
 #[cfg(feature = "deflate")]
 use flate2::read::DeflateDecoder;
 
-#[cfg(feature = "lzma")]
-use lzma::reader::LzmaReader;
-
 use std::{cmp, io};
 
 pub trait Decoder<R>: io::Read
@@ -33,7 +30,7 @@ where
 }
 
 #[cfg(feature = "lzma")]
-impl<R> Decoder<R> for LzmaReader<R>
+impl<R> Decoder<R> for xz2::read::XzDecoder<R>
 where
     R: io::Read,
 {

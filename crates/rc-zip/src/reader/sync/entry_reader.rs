@@ -7,11 +7,13 @@ use crate::{
     transition,
 };
 
-#[cfg(feature = "deflate")]
-use flate2::read::DeflateDecoder;
+use cfg_if::cfg_if;
 use nom::Offset;
 use std::io;
 use tracing::trace;
+
+#[cfg(feature = "deflate")]
+use flate2::read::DeflateDecoder;
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -75,41 +77,7 @@ where
                             // allow unnecessary mut for some feature combinations
                             #[allow(unused_mut)]
                             let mut limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
-
-                            let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
-                                Method::Store => Box::new(StoreDecoder::new(limited_reader)),
-                                Method::Deflate => {
-                                    #[cfg(feature = "deflate")]
-                                    { Box::new(DeflateDecoder::new(limited_reader)) }
-
-                                    #[cfg(not(feature = "deflate"))]
-                                    { return Err(Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(Method::Deflate)).into()) }
-                                },
-                                Method::Lzma => {
-                                    #[cfg(feature = "lzma")]
-                                    {
-                                        // TODO: use a parser combinator library for this probably
-
-                                        // read LZMA properties header first.
-                                        use byteorder::{LittleEndian, ReadBytesExt};
-                                        let major: u8 = limited_reader.read_u8()?;
-                                        let minor: u8 = limited_reader.read_u8()?;
-
-                                        let size: u16 = limited_reader.read_u16::<LittleEndian>()?;
-                                        // this is an u16, worse case scenario is 65536 bytes
-                                        let mut data = [0u8; 1 << 16];
-                                        limited_reader.read_exact(&mut data[..size as usize])?;
-                                        let data = &data[..size as usize];
-                                        trace!(%major, %minor, %size, "LZMA properties header, data = {data:02x?}");
-
-                                        Box::new(lzma::reader::LzmaReader::new_decompressor(limited_reader).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?)
-                                    }
-
-                                    #[cfg(not(feature = "lzma"))]
-                                    { return Err(Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(Method::Lzma)).into()) }
-                                }
-                                method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
-                            };
+                            let decoder: Box<dyn Decoder<LimitedReader>> = self.get_decoder(limited_reader)?;
 
                             S::ReadData {
                                 hasher: crc32fast::Hasher::new(),
@@ -283,5 +251,119 @@ where
             method: entry.method(),
             inner: entry.inner,
         }
+    }
+
+    fn get_decoder(
+        &self,
+        #[allow(unused_mut)] mut limited_reader: LimitedReader,
+    ) -> std::io::Result<Box<dyn Decoder<LimitedReader>>> {
+        let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
+            Method::Store => Box::new(StoreDecoder::new(limited_reader)),
+            Method::Deflate => {
+                cfg_if! {
+                    if #[cfg(feature = "deflate")] {
+                        Box::new(DeflateDecoder::new(limited_reader))
+                    } else {
+                        return Err(
+                            Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(
+                                Method::Deflate,
+                            ))
+                            .into(),
+                        );
+                    }
+                }
+            }
+            Method::Lzma => {
+                cfg_if! {
+                    if #[cfg(feature = "lzma")] {
+                        // TODO: use a parser combinator library for this probably?
+
+                        // read LZMA properties header first.
+                        use byteorder::{LittleEndian, ReadBytesExt};
+                        let major: u8 = limited_reader.read_u8()?;
+                        let minor: u8 = limited_reader.read_u8()?;
+                        if (major, minor) != (2, 0) {
+                            return Err(
+                                Error::Unsupported(UnsupportedError::LzmaVersionUnsupported {
+                                    minor,
+                                    major,
+                                })
+                                .into(),
+                            );
+                        }
+
+                        let props_size: u16 = limited_reader.read_u16::<LittleEndian>()?;
+
+                        const LZMA_2_0_PROPS_SIZE: u16 = 5;
+                        if props_size != LZMA_2_0_PROPS_SIZE {
+                            return Err(Error::Unsupported(
+                                UnsupportedError::LzmaPropertiesHeaderTooShort {
+                                    expected: 5,
+                                    actual: props_size,
+                                },
+                            )
+                            .into());
+                        }
+                        let bits_byte: u8 = limited_reader.read_u8()?;
+
+                        #[derive(Debug, Clone, Copy)]
+                        struct LzmaProperties {
+                            literal_context_bits: u8,
+                            literal_pos_state_bits: u8,
+                            pos_state_bits: u8,
+                        }
+
+                        // from `lzma-specification.txt`
+                        fn decode_properties(mut d: u8) -> LzmaProperties {
+                            let lc = d % 9;
+                            d /= 9;
+                            let pb = d / 5;
+                            let lp = d % 5;
+
+                            LzmaProperties {
+                                literal_context_bits: lc,
+                                literal_pos_state_bits: lp,
+                                pos_state_bits: pb,
+                            }
+                        }
+
+                        let props = decode_properties(bits_byte);
+                        const LZMA_DIC_MIN: u32 = 1 << 12;
+                        let dict_size: u32 =
+                            std::cmp::min(LZMA_DIC_MIN, limited_reader.read_u32::<LittleEndian>()?);
+
+                        let mut opts = xz2::stream::LzmaOptions::new_preset(0)?;
+                        opts.dict_size(dict_size);
+                        opts.position_bits(props.pos_state_bits as _);
+                        opts.literal_position_bits(props.literal_pos_state_bits as _);
+                        opts.literal_context_bits(props.literal_context_bits as _);
+
+                        let mut filters = xz2::stream::Filters::new();
+                        filters.lzma2(&opts);
+                        // let stream = xz2::stream::Stream::new_lzma_decoder(&filters)?;
+
+                        // let stream = xz2::stream::Stream::new_lzma_encoder(&opts)?;
+                        let stream = xz2::stream::Stream::new_stream_encoder(&filters, xz2::stream::Check::None)?;
+
+                        Box::new(xz2::read::XzDecoder::new_stream(limited_reader, stream))
+                    } else {
+                        return Err(
+                            Error::Unsupported(UnsupportedError::CompressionMethodNotEnabled(
+                                Method::Lzma,
+                            ))
+                            .into(),
+                        );
+                    }
+                }
+            }
+            method => {
+                return Err(
+                    Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method))
+                        .into(),
+                )
+            }
+        };
+
+        Ok(decoder)
     }
 }

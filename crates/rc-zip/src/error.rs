@@ -30,6 +30,10 @@ pub enum UnsupportedError {
     UnsupportedCompressionMethod(crate::format::Method),
     #[error("compression method supported, but not enabled in this build: {0:?}")]
     CompressionMethodNotEnabled(crate::format::Method),
+    #[error("only LZMA2.0 is supported, found LZMA{minor}.{major}")]
+    LzmaVersionUnsupported { minor: u8, major: u8 },
+    #[error("LZMA properties header too short: expected {expected} bytes, got {actual} bytes")]
+    LzmaPropertiesHeaderTooShort { expected: u16, actual: u16 },
 }
 
 /// Specific zip format errors, mostly due to invalid zip archives but that could also stem from

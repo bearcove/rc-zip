@@ -82,6 +82,7 @@ impl EndOfCentralDirectoryRecord {
 }
 
 /// 4.3.15 Zip64 end of central directory locator
+#[derive(Debug)]
 pub struct EndOfCentralDirectory64Locator {
     /// number of the disk with the start of the zip64 end of central directory
     pub dir_disk_number: u32,

@@ -28,6 +28,10 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just,nextest,cargo-llvm-cov
+      - name: Run cargo doc, deny warnings
+        run: |
+          export RUSTDOCFLAGS="-D warnings"
+          cargo doc --all-features --no-deps
       - name: Run cargo clippy
         run: |
           cargo clippy --all-targets --all-features

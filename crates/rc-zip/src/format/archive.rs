@@ -4,7 +4,7 @@ use crate::format::*;
 /// along with a list of [entries][StoredEntry].
 ///
 /// It is obtained via an [ArchiveReader](crate::reader::ArchiveReader), or via a higher-level API
-/// like the [ReadZip](crate::reader::ReadZip) trait.
+/// like the [ReadZip](crate::reader::sync::ReadZip) trait.
 pub struct Archive {
     pub(crate) size: u64,
     pub(crate) encoding: Encoding,
@@ -161,12 +161,51 @@ pub struct StoredEntryInner {
 }
 
 impl StoredEntry {
-    /// Returns the entry's name
+    /// Returns the entry's name. See also
+    /// [sanitized_name()](StoredEntry::sanitized_name), which returns a
+    /// sanitized version of the name.
     ///
-    /// This should be a relative path, separated by `/`. However, there are zip files in the wild
-    /// with all sorts of evil variants, so, be conservative in what you accept.
+    /// This should be a relative path, separated by `/`. However, there are zip
+    /// files in the wild with all sorts of evil variants, so, be conservative
+    /// in what you accept.
     pub fn name(&self) -> &str {
         self.entry.name.as_ref()
+    }
+
+    /// Returns a sanitized version of the entry's name, if it
+    /// seems safe. In particular, if this method feels like the
+    /// entry name is trying to do a zip slip (cf.
+    /// <https://snyk.io/research/zip-slip-vulnerability>), it'll return
+    /// None.
+    ///
+    /// Other than that, it will strip any leading slashes on non-Windows OSes.
+    pub fn sanitized_name(&self) -> Option<&str> {
+        let name = self.name();
+
+        // refuse entries with traversed/absolute path to mitigate zip slip
+        if name.contains("..") {
+            return None;
+        }
+
+        #[cfg(windows)]
+        {
+            if name.contains(":\\") || name.starts_with("\\") {
+                return None;
+            }
+            Some(name)
+        }
+
+        #[cfg(not(windows))]
+        {
+            // strip absolute prefix on entries pointing to root path
+            let mut entry_chars = name.chars();
+            let mut name = name;
+            while name.starts_with('/') {
+                entry_chars.next();
+                name = entry_chars.as_str()
+            }
+            Some(name)
+        }
     }
 
     /// The entry's comment, if any.

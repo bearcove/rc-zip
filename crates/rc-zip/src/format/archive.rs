@@ -288,7 +288,7 @@ pub enum Method {
     /// [DEFLATE (RFC 1951)](https://www.ietf.org/rfc/rfc1951.txt)
     Deflate = 8,
 
-    /// [DEFLATE64](
+    /// [DEFLATE64](https://deflate64.com/)
     Deflate64 = 9,
 
     /// [BZIP-2](https://github.com/dsnet/compress/blob/master/doc/bzip2-format.pdf)

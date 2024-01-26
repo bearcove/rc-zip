@@ -13,6 +13,9 @@ mod lzma_dec;
 #[cfg(feature = "deflate")]
 mod deflate_dec;
 
+#[cfg(feature = "deflate64")]
+mod deflate64_dec;
+
 use cfg_if::cfg_if;
 use nom::Offset;
 use std::io;
@@ -266,6 +269,15 @@ where
                 cfg_if! {
                     if #[cfg(feature = "deflate")] {
                         Box::new(deflate_dec::mk_decoder(limited_reader))
+                    } else {
+                        return Err(Error::method_not_enabled(self.method));
+                    }
+                }
+            }
+            Method::Deflate64 => {
+                cfg_if! {
+                    if #[cfg(feature = "deflate64")] {
+                        Box::new(deflate64_dec::mk_decoder(limited_reader))
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }

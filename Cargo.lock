@@ -234,6 +234,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "deflate64"
+version = "0.1.7-SNAPSHOT"
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -630,6 +634,7 @@ dependencies = [
  "chrono",
  "circular",
  "crc32fast",
+ "deflate64",
  "encoding_rs",
  "flate2",
  "lzma-rs",

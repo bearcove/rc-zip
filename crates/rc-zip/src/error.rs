@@ -27,6 +27,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[allow(unused)]
     pub(crate) fn method_not_supported(method: Method) -> Self {
         Self::Unsupported(UnsupportedError::MethodNotSupported(method))
     }

@@ -267,7 +267,7 @@ where
                     if #[cfg(feature = "deflate")] {
                         Box::new(deflate_dec::mk_decoder(limited_reader))
                     } else {
-                        return Err(Error::method_not_enabled(method));
+                        return Err(Error::method_not_enabled(self.method));
                     }
                 }
             }
@@ -276,7 +276,7 @@ where
                     if #[cfg(feature = "lzma")] {
                         Box::new(lzma_dec::mk_decoder(limited_reader,self.inner.uncompressed_size)?)
                     } else {
-                        return Err(Error::method_not_enabled(method));
+                        return Err(Error::method_not_enabled(self.method));
                     }
                 }
             }

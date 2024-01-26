@@ -8,7 +8,7 @@ check:
 
 # Run all tests locally
 test *args:
-	cargo nextest run {{args}}
+	cargo nextest run {{args}} --all-features
 
 # Run all tests with nextest and cargo-llvm-cov
 ci-test:

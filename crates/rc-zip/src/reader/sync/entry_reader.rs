@@ -7,7 +7,8 @@ use crate::{
     transition,
 };
 
-use libflate::non_blocking::deflate;
+#[cfg(feature = "deflate")]
+use flate2::read::DeflateDecoder;
 use nom::Offset;
 use std::io;
 use tracing::trace;
@@ -74,7 +75,7 @@ where
                             let limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
                             let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
                                 Method::Store => Box::new(StoreDecoder::new(limited_reader)),
-                                Method::Deflate => Box::new(deflate::Decoder::new(limited_reader)),
+                                Method::Deflate => Box::new(DeflateDecoder::new(limited_reader)),
                                 method => return Err(Error::Unsupported(UnsupportedError::UnsupportedCompressionMethod(method)).into()),
                             };
 
@@ -97,7 +98,7 @@ where
                 ..
             } => {
                 {
-                    let buffer = decoder.as_inner_mut().as_inner_mut();
+                    let buffer = decoder.get_mut().get_mut();
                     if !self.eof && buffer.available_space() > 0 {
                         match self.rd.read(buffer.space())? {
                             0 => {
@@ -135,7 +136,7 @@ where
                     }
                     Err(e) => match e.kind() {
                         io::ErrorKind::UnexpectedEof => {
-                            let buffer = decoder.as_inner_mut().as_inner_mut();
+                            let buffer = decoder.get_mut().get_mut();
                             if self.eof || buffer.available_space() == 0 {
                                 Err(e)
                             } else {

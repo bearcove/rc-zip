@@ -1,4 +1,6 @@
-use libflate::non_blocking::deflate;
+#[cfg(feature = "deflate")]
+use flate2::read::DeflateDecoder;
+
 use std::{cmp, io};
 
 pub trait Decoder<R>: io::Read
@@ -10,19 +12,19 @@ where
     fn into_inner(self: Box<Self>) -> R;
 
     /// Returns a mutable reference to the inner reader.
-    fn as_inner_mut(&mut self) -> &mut R;
+    fn get_mut(&mut self) -> &mut R;
 }
 
-impl<R> Decoder<R> for deflate::Decoder<R>
+impl<R> Decoder<R> for DeflateDecoder<R>
 where
     R: io::Read,
 {
     fn into_inner(self: Box<Self>) -> R {
-        deflate::Decoder::into_inner(*self)
+        DeflateDecoder::into_inner(*self)
     }
 
-    fn as_inner_mut(&mut self) -> &mut R {
-        deflate::Decoder::as_inner_mut(self)
+    fn get_mut(&mut self) -> &mut R {
+        DeflateDecoder::get_mut(self)
     }
 }
 
@@ -59,7 +61,7 @@ where
         self.inner
     }
 
-    fn as_inner_mut(&mut self) -> &mut R {
+    fn get_mut(&mut self) -> &mut R {
         &mut self.inner
     }
 }
@@ -80,7 +82,7 @@ impl LimitedReader {
         self.inner
     }
 
-    pub fn as_inner_mut(&mut self) -> &mut circular::Buffer {
+    pub fn get_mut(&mut self) -> &mut circular::Buffer {
         &mut self.inner
     }
 }

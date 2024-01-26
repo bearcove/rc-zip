@@ -133,6 +133,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Ls { zipfile, verbose } => {
             let zipfile = File::open(zipfile)?;
             let reader = zipfile.read_zip()?;
+            info(&reader);
 
             for entry in reader.entries() {
                 print!(
@@ -159,13 +160,12 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         print!("\t{target}", target = target);
                     }
 
-                    if let Some(comment) = entry.comment() {
-                        print!("\t{comment}", comment = comment);
-                    }
+                    print!("\t{:?}", entry.method());
                     if entry.inner.is_zip64 {
                         print!("\tZip64");
-                    } else {
-                        print!("\tZip32");
+                    }
+                    if let Some(comment) = entry.comment() {
+                        print!("\t{comment}", comment = comment);
                     }
                 }
                 println!();

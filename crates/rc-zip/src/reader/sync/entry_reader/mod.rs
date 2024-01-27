@@ -105,7 +105,11 @@ where
             } => {
                 {
                     let buffer = decoder.get_mut().get_mut();
-                    if !self.eof && buffer.available_space() > 0 {
+                    if !self.eof && buffer.available_data() == 0 {
+                        if buffer.available_space() == 0 {
+                            buffer.shift();
+                        }
+
                         match self.rd.read(buffer.space())? {
                             0 => {
                                 self.eof = true;

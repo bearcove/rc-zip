@@ -1,3 +1,4 @@
+use cfg_if::cfg_if;
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use rc_zip::{prelude::*, EntryContents};
@@ -214,39 +215,38 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 match entry.contents() {
                     EntryContents::Symlink => {
                         num_symlinks += 1;
-                        #[cfg(windows)]
-                        {
-                            let path = dir.join(entry_name);
-                            std::fs::create_dir_all(
-                                path.parent()
-                                    .expect("all full entry paths should have parent paths"),
-                            )?;
-                            let mut entry_writer = File::create(path)?;
-                            let mut entry_reader = entry.reader();
-                            std::io::copy(&mut entry_reader, &mut entry_writer)?;
-                        }
 
-                        #[cfg(not(windows))]
-                        {
-                            let path = dir.join(entry_name);
-                            std::fs::create_dir_all(
-                                path.parent()
-                                    .expect("all full entry paths should have parent paths"),
-                            )?;
-                            if let Ok(metadata) = std::fs::symlink_metadata(&path) {
-                                if metadata.is_file() {
-                                    std::fs::remove_file(&path)?;
+                        cfg_if! {
+                            if #[cfg(windows)] {
+                                let path = dir.join(entry_name);
+                                std::fs::create_dir_all(
+                                    path.parent()
+                                        .expect("all full entry paths should have parent paths"),
+                                )?;
+                                let mut entry_writer = File::create(path)?;
+                                let mut entry_reader = entry.reader();
+                                std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                            } else {
+                                let path = dir.join(entry_name);
+                                std::fs::create_dir_all(
+                                    path.parent()
+                                        .expect("all full entry paths should have parent paths"),
+                                )?;
+                                if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+                                    if metadata.is_file() {
+                                        std::fs::remove_file(&path)?;
+                                    }
                                 }
-                            }
 
-                            let mut src = String::new();
-                            entry.reader().read_to_string(&mut src)?;
+                                let mut src = String::new();
+                                entry.reader().read_to_string(&mut src)?;
 
-                            // validate pointing path before creating a symbolic link
-                            if src.contains("..") {
-                                continue;
+                                // validate pointing path before creating a symbolic link
+                                if src.contains("..") {
+                                    continue;
+                                }
+                                std::os::unix::fs::symlink(src, &path)?;
                             }
-                            std::os::unix::fs::symlink(src, &path)?;
                         }
                     }
                     EntryContents::Directory => {

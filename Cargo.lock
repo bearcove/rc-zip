@@ -235,10 +235,9 @@ dependencies = [
 
 [[package]]
 name = "deflate64"
-version = "0.1.7-SNAPSHOT"
-dependencies = [
- "tracing",
-]
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9576c1de19747eb6f5efb6a806c3e836512bbdb17bfedc984ccb0bcc953c8390"
 
 [[package]]
 name = "encode_unicode"

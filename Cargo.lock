@@ -236,7 +236,9 @@ dependencies = [
 [[package]]
 name = "deflate64"
 version = "0.1.7-SNAPSHOT"
-source = "git+https://github.com/fasterthanlime/deflate64-rs?branch=get_mut#c9abc9842c84359c957a1a20b350c94a3e0b5576"
+dependencies = [
+ "tracing",
+]
 
 [[package]]
 name = "encode_unicode"

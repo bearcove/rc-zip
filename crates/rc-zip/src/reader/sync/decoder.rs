@@ -74,12 +74,25 @@ impl LimitedReader {
 impl io::Read for LimitedReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.inner.available_space() == 0 {
+            tracing::trace!("shifting buffer");
             self.inner.shift();
+
+            if self.inner.available_space() == 0 {
+                tracing::trace!(
+                    "growing buffer from {} to {}",
+                    self.inner.capacity(),
+                    self.inner.capacity() * 2
+                );
+                self.inner.grow(self.inner.capacity() * 2);
+            }
         }
 
         let len = cmp::min(buf.len() as u64, self.remaining) as usize;
+        tracing::trace!(%len, buf_len = buf.len(), remaining = self.remaining, "computing len");
+
         let res = self.inner.read(&mut buf[..len]);
         if let Ok(n) = res {
+            tracing::trace!(%n, "read ok");
             self.remaining -= n as u64;
         }
         res

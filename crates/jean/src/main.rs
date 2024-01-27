@@ -148,6 +148,10 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 );
                 if verbose {
                     print!(
+                        " ({} compressed)",
+                        format_size(entry.inner.compressed_size, BINARY)
+                    );
+                    print!(
                         " {modified} {uid} {gid}",
                         modified = entry.modified(),
                         uid = Optional(entry.uid),

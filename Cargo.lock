@@ -234,6 +234,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "deflate64"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9576c1de19747eb6f5efb6a806c3e836512bbdb17bfedc984ccb0bcc953c8390"
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -350,6 +356,7 @@ checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 name = "jean"
 version = "2.0.1"
 dependencies = [
+ "cfg-if",
  "clap",
  "humansize",
  "indicatif",
@@ -630,6 +637,7 @@ dependencies = [
  "chrono",
  "circular",
  "crc32fast",
+ "deflate64",
  "encoding_rs",
  "flate2",
  "lzma-rs",

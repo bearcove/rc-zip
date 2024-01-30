@@ -34,7 +34,7 @@ impl EndOfCentralDirectoryRecord {
     pub fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
         for i in (0..(b.len() - Self::MIN_LENGTH + 1)).rev() {
             let mut input = Partial::new(&b[i..]);
-            if let Ok(directory) = Self::parse.parse_next(&mut input) {
+            if let Ok(directory) = Self::parser.parse_next(&mut input) {
                 return Some(Located {
                     offset: i as u64,
                     inner: directory,
@@ -44,7 +44,7 @@ impl EndOfCentralDirectoryRecord {
         None
     }
 
-    pub fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let _ = tag(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
             disk_nbr: le_u16,

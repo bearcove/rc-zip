@@ -2,7 +2,7 @@ use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*, transiti
 
 use std::io::Read;
 use tracing::trace;
-use winnow::stream::Offset;
+use winnow::{error::ErrMode, stream::Offset, Parser, Partial};
 
 /// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
@@ -209,12 +209,13 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64Locator { ref mut buffer, .. } => {
-                match EndOfCentralDirectory64Locator::parser(buffer.data()) {
-                    Err(winnow::Err::Incomplete(_)) => {
+                let mut input = Partial::new(buffer.data());
+                match EndOfCentralDirectory64Locator::parser.parse_peek(input) {
+                    Err(ErrMode::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(winnow::Err::Error(_)) | Err(winnow::Err::Failure(_)) => {
+                    Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
                         trace!("ReadEocd64Locator | no zip64 end of central directory locator");
                         trace!("ReadEocd64Locator | data we got: {:02x?}", buffer.data());

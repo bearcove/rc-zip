@@ -1,7 +1,6 @@
-use crate::format::*;
-use nom::{bytes::streaming::take, combinator::map};
 use pretty_hex::PrettyHex;
 use std::fmt;
+use winnow::{stream::ToUsize, token::take, PResult, Parser, Partial};
 
 /// A raw zip string, with no specific encoding.
 ///
@@ -26,16 +25,15 @@ impl fmt::Debug for ZipString {
 }
 
 impl ZipString {
-    pub(crate) fn parser<'a, C>(count: C) -> impl FnMut(&'a [u8]) -> parse::Result<'a, Self>
+    pub(crate) fn parser<C>(count: C) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self>
     where
-        C: nom::ToUsize,
+        C: ToUsize,
     {
-        map(take(count.to_usize()), |slice: &'a [u8]| {
-            ZipString(slice.into())
-        })
+        let count = count.to_usize();
+        move |i| (take(count).map(|slice: &[u8]| Self(slice.into()))).parse_next(i)
     }
 
-    pub(crate) fn into_option(self) -> Option<ZipString> {
+    pub(crate) fn into_option(self) -> Option<Self> {
         if !self.0.is_empty() {
             Some(self)
         } else {
@@ -69,12 +67,11 @@ impl fmt::Debug for ZipBytes {
 }
 
 impl ZipBytes {
-    pub(crate) fn parser<'a, C>(count: C) -> impl FnMut(&'a [u8]) -> parse::Result<'a, Self>
+    pub(crate) fn parser<C>(count: C) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self>
     where
-        C: nom::ToUsize,
+        C: ToUsize,
     {
-        map(take(count.to_usize()), |slice: &'a [u8]| {
-            ZipBytes(slice.into())
-        })
+        let count = count.to_usize();
+        move |i| (take(count).map(|slice: &[u8]| Self(slice.into()))).parse_next(i)
     }
 }

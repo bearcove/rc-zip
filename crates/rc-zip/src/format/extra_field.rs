@@ -1,10 +1,12 @@
-use crate::{fields, format::*};
-use nom::{
-    bytes::streaming::{tag, take},
-    combinator::{cond, map, verify},
-    multi::{length_data, many0},
-    number::streaming::{le_u16, le_u32, le_u64, le_u8},
-    sequence::{preceded, tuple},
+use crate::format::*;
+use tracing::trace;
+use winnow::{
+    binary::{le_u16, le_u32, le_u64, le_u8, length_take},
+    combinator::{cond, opt, preceded, repeat_till},
+    error::{ErrMode, ErrorKind, ParserError, StrContext},
+    seq,
+    token::{tag, take},
+    PResult, Parser, Partial,
 };
 /// 4.4.28 extra field: (Variable)
 pub(crate) struct ExtraFieldRecord<'a> {
@@ -13,11 +15,12 @@ pub(crate) struct ExtraFieldRecord<'a> {
 }
 
 impl<'a> ExtraFieldRecord<'a> {
-    pub(crate) fn parse(i: &'a [u8]) -> parse::Result<'a, Self> {
-        fields!(Self {
+    pub(crate) fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
+        seq! {Self {
             tag: le_u16,
-            payload: length_data(le_u16),
-        })(i)
+            payload: length_take(le_u16),
+        }}
+        .parse_next(i)
     }
 }
 
@@ -29,7 +32,7 @@ impl<'a> ExtraFieldRecord<'a> {
 // is created. The order of the fields in the zip64 extended information record
 // is fixed, but the fields MUST only appear if the corresponding Local or
 // Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ExtraFieldSettings {
     pub(crate) needs_uncompressed_size: bool,
     pub(crate) needs_compressed_size: bool,
@@ -58,57 +61,42 @@ pub enum ExtraField {
 }
 
 impl ExtraField {
-    pub(crate) fn parse<'a>(i: &'a [u8], settings: &ExtraFieldSettings) -> parse::Result<'a, Self> {
-        use ExtraField as EF;
+    pub(crate) fn mk_parser(
+        settings: ExtraFieldSettings,
+    ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
+        move |i| {
+            use ExtraField as EF;
+            let rec = ExtraFieldRecord::parser.parse_next(i)?;
+            trace!("parsing extra field record, tag {:04x}", rec.tag);
+            let payload = &mut Partial::new(rec.payload);
 
-        let (remaining, rec) = ExtraFieldRecord::parse(i)?;
+            let variant = match rec.tag {
+                ExtraZip64Field::TAG => opt(ExtraZip64Field::mk_parser(settings).map(EF::Zip64))
+                    .context(StrContext::Label("zip64"))
+                    .parse_next(payload)?,
+                ExtraTimestampField::TAG => opt(ExtraTimestampField::parser.map(EF::Timestamp))
+                    .context(StrContext::Label("timestamp"))
+                    .parse_next(payload)?,
+                ExtraNtfsField::TAG => {
+                    opt(ExtraNtfsField::parse.map(EF::Ntfs)).parse_next(payload)?
+                }
+                ExtraUnixField::TAG | ExtraUnixField::TAG_INFOZIP => {
+                    opt(ExtraUnixField::parser.map(EF::Unix)).parse_next(payload)?
+                }
+                ExtraNewUnixField::TAG => {
+                    opt(ExtraNewUnixField::parser.map(EF::NewUnix)).parse_next(payload)?
+                }
+                _ => None,
+            }
+            .unwrap_or(EF::Unknown { tag: rec.tag });
 
-        let variant = match rec.tag {
-            ExtraZip64Field::TAG => {
-                if let Ok((_, tag)) = ExtraZip64Field::parse(rec.payload, settings) {
-                    Some(EF::Zip64(tag))
-                } else {
-                    None
-                }
-            }
-            ExtraTimestampField::TAG => {
-                if let Ok((_, tag)) = ExtraTimestampField::parse(rec.payload) {
-                    Some(EF::Timestamp(tag))
-                } else {
-                    None
-                }
-            }
-            ExtraNtfsField::TAG => {
-                if let Ok((_, tag)) = ExtraNtfsField::parse(rec.payload) {
-                    Some(EF::Ntfs(tag))
-                } else {
-                    None
-                }
-            }
-            ExtraUnixField::TAG | ExtraUnixField::TAG_INFOZIP => {
-                if let Ok((_, tag)) = ExtraUnixField::parse(rec.payload) {
-                    Some(EF::Unix(tag))
-                } else {
-                    None
-                }
-            }
-            ExtraNewUnixField::TAG => {
-                if let Ok((_, tag)) = ExtraNewUnixField::parse(rec.payload) {
-                    Some(EF::NewUnix(tag))
-                } else {
-                    None
-                }
-            }
-            _ => None,
+            Ok(variant)
         }
-        .unwrap_or(EF::Unknown { tag: rec.tag });
-
-        Ok((remaining, variant))
     }
 }
 
 /// 4.5.3 -Zip64 Extended Information Extra Field (0x0001)
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ExtraZip64Field {
     pub uncompressed_size: Option<u64>,
     pub compressed_size: Option<u64>,
@@ -118,13 +106,18 @@ pub struct ExtraZip64Field {
 impl ExtraZip64Field {
     const TAG: u16 = 0x0001;
 
-    pub(crate) fn parse<'a>(i: &'a [u8], settings: &ExtraFieldSettings) -> parse::Result<'a, Self> {
-        // N.B: we ignore "disk start number"
-        fields!(Self {
-            uncompressed_size: cond(settings.needs_uncompressed_size, le_u64),
-            compressed_size: cond(settings.needs_compressed_size, le_u64),
-            header_offset: cond(settings.needs_header_offset, le_u64),
-        })(i)
+    pub(crate) fn mk_parser(
+        settings: ExtraFieldSettings,
+    ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
+        move |i| {
+            // N.B: we ignore "disk start number"
+            seq! {Self {
+                uncompressed_size: cond(settings.needs_uncompressed_size, le_u64),
+                compressed_size: cond(settings.needs_compressed_size, le_u64),
+                header_offset: cond(settings.needs_header_offset, le_u64),
+            }}
+            .parse_next(i)
+        }
     }
 }
 
@@ -138,12 +131,13 @@ pub struct ExtraTimestampField {
 impl ExtraTimestampField {
     const TAG: u16 = 0x5455;
 
-    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
+    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         preceded(
             // 1 byte of flags, if bit 0 is set, modification time is present
-            verify(le_u8, |x| x & 0b1 != 0),
-            map(le_u32, |mtime| Self { mtime }),
-        )(i)
+            le_u8.verify(|x| x & 0b1 != 0),
+            seq! {Self { mtime: le_u32 }},
+        )
+        .parse_next(i)
     }
 }
 
@@ -166,16 +160,16 @@ impl ExtraUnixField {
     const TAG: u16 = 0x000d;
     const TAG_INFOZIP: u16 = 0x5855;
 
-    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        let (i, t_size) = le_u16(i)?;
-        let t_size = t_size - 12;
-        fields!(Self {
+    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        let t_size = le_u16.parse_next(i)? - 12;
+        seq! {Self {
             atime: le_u32,
             mtime: le_u32,
             uid: le_u16,
             gid: le_u16,
             data: ZipBytes::parser(t_size),
-        })(i)
+        }}
+        .parse_next(i)
     }
 }
 
@@ -205,31 +199,27 @@ pub struct ExtraNewUnixField {
 impl ExtraNewUnixField {
     const TAG: u16 = 0x7875;
 
-    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            tag("\x01"),
-            map(
-                tuple((
-                    Self::parse_variable_length_integer,
-                    Self::parse_variable_length_integer,
-                )),
-                |(uid, gid)| Self { uid, gid },
-            ),
-        )(i)
+    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        let _ = tag("\x01").parse_next(i)?;
+        seq! {Self {
+            uid: Self::parse_variable_length_integer,
+            gid: Self::parse_variable_length_integer,
+        }}
+        .parse_next(i)
     }
 
-    fn parse_variable_length_integer(i: &[u8]) -> parse::Result<'_, u64> {
-        let (i, slice) = length_data(le_u8)(i)?;
+    fn parse_variable_length_integer(i: &mut Partial<&'_ [u8]>) -> PResult<u64> {
+        let slice = length_take(le_u8).parse_next(i)?;
         if let Some(u) = match slice.len() {
-            1 => Some(le_u8(slice)?.1 as u64),
-            2 => Some(le_u16(slice)?.1 as u64),
-            4 => Some(le_u32(slice)?.1 as u64),
-            8 => Some(le_u64(slice)?.1),
+            1 => Some(le_u8.parse_peek(slice)?.1 as u64),
+            2 => Some(le_u16.parse_peek(slice)?.1 as u64),
+            4 => Some(le_u32.parse_peek(slice)?.1 as u64),
+            8 => Some(le_u64.parse_peek(slice)?.1),
             _ => None,
         } {
-            Ok((i, u))
+            Ok(u)
         } else {
-            Err(nom::Err::Failure((i, nom::error::ErrorKind::OneOf)))
+            Err(ErrMode::from_error_kind(i, ErrorKind::Alt))
         }
     }
 }
@@ -243,11 +233,17 @@ pub struct ExtraNtfsField {
 impl ExtraNtfsField {
     const TAG: u16 = 0x000a;
 
-    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            take(4usize), /* reserved (unused) */
-            map(many0(NtfsAttr::parse), |attrs| Self { attrs }),
-        )(i)
+    fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        let _ = take(4_usize).parse_next(i)?; // reserved (unused)
+        seq! {Self {
+            // from the winnow docs:
+            //   Parsers like repeat do not know when an eof is from insufficient
+            //   data or the end of the stream, causing them to always report
+            //   Incomplete.
+            // using repeat_till with eof combinator to work around this:
+            attrs: repeat_till(0.., NtfsAttr::parse, winnow::combinator::eof).map(|x| x.0),
+        }}
+        .parse_next(i)
     }
 }
 
@@ -259,11 +255,16 @@ pub enum NtfsAttr {
 }
 
 impl NtfsAttr {
-    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        let (i, (tag, payload)) = tuple((le_u16, length_data(le_u16)))(i)?;
+    fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        let tag = le_u16.parse_next(i)?;
+        trace!("parsing NTFS attribute, tag {:04x}", tag);
+        let payload = length_take(le_u16).parse_next(i)?;
+
         match tag {
-            0x0001 => NtfsAttr1::parse(payload).map(|(i, x)| (i, NtfsAttr::Attr1(x))),
-            _ => Ok((i, NtfsAttr::Unknown { tag })),
+            0x0001 => NtfsAttr1::parser
+                .parse_peek(Partial::new(payload))
+                .map(|(_, attr)| NtfsAttr::Attr1(attr)),
+            _ => Ok(NtfsAttr::Unknown { tag }),
         }
     }
 }
@@ -276,11 +277,13 @@ pub struct NtfsAttr1 {
 }
 
 impl NtfsAttr1 {
-    fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        fields!(Self {
-            mtime: NtfsTimestamp::parse,
-            atime: NtfsTimestamp::parse,
-            ctime: NtfsTimestamp::parse,
-        })(i)
+    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        trace!("parsing NTFS attr 1, input len is {}", i.len());
+        seq! {Self {
+            mtime: NtfsTimestamp::parser,
+            atime: NtfsTimestamp::parser,
+            ctime: NtfsTimestamp::parser,
+        }}
+        .parse_next(i)
     }
 }

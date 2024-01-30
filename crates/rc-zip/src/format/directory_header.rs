@@ -1,11 +1,12 @@
-use crate::{encoding, error::*, fields, format::*};
+use crate::{encoding, error::*, format::*};
 use chrono::offset::TimeZone;
-use nom::{
-    bytes::streaming::tag,
-    number::streaming::{le_u16, le_u32},
-    sequence::preceded,
-};
 use tracing::trace;
+use winnow::{
+    binary::{le_u16, le_u32},
+    prelude::PResult,
+    token::tag,
+    Parser, Partial,
+};
 
 /// 4.3.12 Central directory structure: File header
 pub struct DirectoryHeader {
@@ -44,49 +45,45 @@ pub struct DirectoryHeader {
 impl DirectoryHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            tag(Self::SIGNATURE),
-            fields!({
-                creator_version: Version::parse,
-                reader_version: Version::parse,
-                flags: le_u16,
-                method: le_u16,
-                modified: MsdosTimestamp::parse,
-                crc32: le_u32,
-                compressed_size: le_u32,
-                uncompressed_size: le_u32,
-                name_len: le_u16,
-                extra_len: le_u16,
-                comment_len: le_u16,
-                disk_nbr_start: le_u16,
-                internal_attrs: le_u16,
-                external_attrs: le_u32,
-                header_offset: le_u32,
-            } chain {
-                fields!({
-                    name: ZipString::parser(name_len),
-                    extra: ZipBytes::parser(extra_len),
-                    comment: ZipString::parser(comment_len),
-                } map Self {
-                    creator_version,
-                    reader_version,
-                    flags,
-                    method,
-                    modified,
-                    crc32,
-                    compressed_size,
-                    uncompressed_size,
-                    disk_nbr_start,
-                    internal_attrs,
-                    external_attrs,
-                    header_offset,
-                    name,
-                    extra,
-                    comment,
-                })
-            }),
-        )(i)
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        _ = tag(Self::SIGNATURE).parse_next(i)?;
+        let creator_version = Version::parser.parse_next(i)?;
+        let reader_version = Version::parser.parse_next(i)?;
+        let flags = le_u16.parse_next(i)?;
+        let method = le_u16.parse_next(i)?;
+        let modified = MsdosTimestamp::parser.parse_next(i)?;
+        let crc32 = le_u32.parse_next(i)?;
+        let compressed_size = le_u32.parse_next(i)?;
+        let uncompressed_size = le_u32.parse_next(i)?;
+        let name_len = le_u16.parse_next(i)?;
+        let extra_len = le_u16.parse_next(i)?;
+        let comment_len = le_u16.parse_next(i)?;
+        let disk_nbr_start = le_u16.parse_next(i)?;
+        let internal_attrs = le_u16.parse_next(i)?;
+        let external_attrs = le_u32.parse_next(i)?;
+        let header_offset = le_u32.parse_next(i)?;
+
+        let name = ZipString::parser(name_len).parse_next(i)?;
+        let extra = ZipBytes::parser(extra_len).parse_next(i)?;
+        let comment = ZipString::parser(comment_len).parse_next(i)?;
+
+        Ok(Self {
+            creator_version,
+            reader_version,
+            flags,
+            method,
+            modified,
+            crc32,
+            compressed_size,
+            uncompressed_size,
+            disk_nbr_start,
+            internal_attrs,
+            external_attrs,
+            header_offset,
+            name,
+            extra,
+            comment,
+        })
     }
 }
 
@@ -143,10 +140,10 @@ impl DirectoryHeader {
             needs_header_offset: self.header_offset == !0u32,
         };
 
-        let mut slice = &self.extra.0[..];
+        let mut slice = Partial::new(&self.extra.0[..]);
         while !slice.is_empty() {
-            match ExtraField::parse(slice, &settings) {
-                Ok((remaining, ef)) => {
+            match ExtraField::mk_parser(settings).parse_next(&mut slice) {
+                Ok(ef) => {
                     match &ef {
                         ExtraField::Zip64(z64) => {
                             if let Some(n) = z64.uncompressed_size {
@@ -188,7 +185,6 @@ impl DirectoryHeader {
                         _ => {}
                     };
                     extra_fields.push(ef);
-                    slice = remaining;
                 }
                 Err(e) => {
                     trace!("extra field error: {:#?}", e);

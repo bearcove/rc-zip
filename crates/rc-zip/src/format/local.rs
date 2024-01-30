@@ -1,9 +1,10 @@
-use crate::{fields, format::*};
-use nom::{
-    bytes::streaming::tag,
+use crate::format::*;
+use winnow::{
+    binary::{le_u16, le_u32, le_u64},
     combinator::opt,
-    number::streaming::{le_u16, le_u32, le_u64},
-    sequence::preceded,
+    seq,
+    token::tag,
+    PResult, Parser, Partial,
 };
 
 #[derive(Debug)]
@@ -32,34 +33,34 @@ pub struct LocalFileHeaderRecord {
 impl LocalFileHeaderRecord {
     pub const SIGNATURE: &'static str = "PK\x03\x04";
 
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            tag(Self::SIGNATURE),
-            fields!({
-                reader_version: Version::parse,
-                flags: le_u16,
-                method: le_u16,
-                modified: MsdosTimestamp::parse,
-                crc32: le_u32,
-                compressed_size: le_u32,
-                uncompressed_size: le_u32,
-                name_len: le_u16,
-                extra_len: le_u16,
-            } chain fields!({
-                name: ZipString::parser(name_len),
-                extra: ZipBytes::parser(extra_len),
-            } map Self {
-                reader_version,
-                flags,
-                method,
-                modified,
-                crc32,
-                compressed_size,
-                uncompressed_size,
-                name,
-                extra,
-            })),
-        )(i)
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        let _ = tag(Self::SIGNATURE).parse_next(i)?;
+
+        let reader_version = Version::parser.parse_next(i)?;
+        let flags = le_u16.parse_next(i)?;
+        let method = le_u16.parse_next(i)?;
+        let modified = MsdosTimestamp::parser.parse_next(i)?;
+        let crc32 = le_u32.parse_next(i)?;
+        let compressed_size = le_u32.parse_next(i)?;
+        let uncompressed_size = le_u32.parse_next(i)?;
+
+        let name_len = le_u16.parse_next(i)?;
+        let extra_len = le_u16.parse_next(i)?;
+
+        let name = ZipString::parser(name_len).parse_next(i)?;
+        let extra = ZipBytes::parser(extra_len).parse_next(i)?;
+
+        Ok(Self {
+            reader_version,
+            flags,
+            method,
+            modified,
+            crc32,
+            compressed_size,
+            uncompressed_size,
+            name,
+            extra,
+        })
     }
 
     pub fn has_data_descriptor(&self) -> bool {
@@ -83,29 +84,33 @@ pub struct DataDescriptorRecord {
 impl DataDescriptorRecord {
     const SIGNATURE: &'static str = "PK\x07\x08";
 
-    pub fn parse(i: &[u8], is_zip64: bool) -> parse::Result<'_, Self> {
-        if is_zip64 {
-            preceded(
-                opt(tag(Self::SIGNATURE)),
-                fields!(Self {
+    pub fn mk_parser(is_zip64: bool) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
+        move |i| {
+            // From appnote.txt:
+            //
+            // 4.3.9.3 Although not originally assigned a signature, the value
+            // 0x08074b50 has commonly been adopted as a signature value for the
+            // data descriptor record.  Implementers SHOULD be aware that ZIP files
+            // MAY be encountered with or without this signature marking data
+            // descriptors and SHOULD account for either case when reading ZIP files
+            // to ensure compatibility.
+            let _ = opt(tag(Self::SIGNATURE)).parse_next(i)?;
+
+            if is_zip64 {
+                seq! {Self {
                     crc32: le_u32,
                     compressed_size: le_u64,
                     uncompressed_size: le_u64,
-                }),
-            )(i)
-        } else {
-            preceded(
-                opt(tag(Self::SIGNATURE)),
-                fields!({
+                }}
+                .parse_next(i)
+            } else {
+                seq! {Self {
                     crc32: le_u32,
-                    compressed_size: le_u32,
-                    uncompressed_size: le_u32,
-                } map Self {
-                    crc32,
-                    compressed_size: compressed_size as u64,
-                    uncompressed_size: uncompressed_size as u64,
-                }),
-            )(i)
+                    compressed_size: le_u32.map(|x| x as u64),
+                    uncompressed_size: le_u32.map(|x| x as u64),
+                }}
+                .parse_next(i)
+            }
         }
     }
 }

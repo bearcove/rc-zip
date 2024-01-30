@@ -267,7 +267,7 @@ fn test_cases() -> Vec<ZipTest> {
             files: vec![ZipTestFile {
                 name: "世界",
                 content: FileContent::Bytes(vec![]),
-                modified: Some(date((2017, 11, 6), (13, 9, 26), 0, time_zone(0)).unwrap()),
+                modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0)).unwrap()),
                 ..Default::default()
             }],
             ..Default::default()
@@ -279,7 +279,7 @@ fn test_cases() -> Vec<ZipTest> {
             files: vec![ZipTestFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 26), (17, 14, 36), 0, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
             }],
             ..Default::default()
@@ -291,7 +291,7 @@ fn test_cases() -> Vec<ZipTest> {
             files: vec![ZipTestFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 26), (17, 14, 36), 0, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
             }],
             ..Default::default()
@@ -304,7 +304,7 @@ fn test_cases() -> Vec<ZipTest> {
             files: vec![ZipTestFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 26), (17, 14, 36), 0, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
             }],
             ..Default::default()
@@ -333,6 +333,7 @@ fn read_from_file() {
 #[traced_test]
 fn real_world_files() {
     for case in test_cases() {
+        eprintln!("============ testing {}", case.name());
         case.check(case.bytes().read_zip());
     }
 }

@@ -1,8 +1,12 @@
 use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*, transition};
 
-use nom::Offset;
 use std::io::Read;
 use tracing::trace;
+use winnow::{
+    error::ErrMode,
+    stream::{AsBytes, Offset},
+    Parser, Partial,
+};
 
 /// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
@@ -209,12 +213,13 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64Locator { ref mut buffer, .. } => {
-                match EndOfCentralDirectory64Locator::parse(buffer.data()) {
-                    Err(nom::Err::Incomplete(_)) => {
+                let input = Partial::new(buffer.data());
+                match EndOfCentralDirectory64Locator::parser.parse_peek(input) {
+                    Err(ErrMode::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
+                    Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
                         trace!("ReadEocd64Locator | no zip64 end of central directory locator");
                         trace!("ReadEocd64Locator | data we got: {:02x?}", buffer.data());
@@ -246,12 +251,13 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64 { ref mut buffer, .. } => {
-                match EndOfCentralDirectory64Record::parse(buffer.data()) {
-                    Err(nom::Err::Incomplete(_)) => {
+                let input = Partial::new(buffer.data());
+                match EndOfCentralDirectory64Record::parser.parse_peek(input) {
+                    Err(ErrMode::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
+                    Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // at this point, we really expected to have a zip64 end
                         // of central directory record, so, we want to propagate
                         // that error.
@@ -282,13 +288,29 @@ impl ArchiveReader {
                     "ReadCentralDirectory | process(), available: {}",
                     buffer.available_data()
                 );
-                'read_headers: while buffer.available_data() > 0 {
-                    match DirectoryHeader::parse(buffer.data()) {
-                        Err(nom::Err::Incomplete(_needed)) => {
-                            // need more data
+                let mut input = Partial::new(buffer.data());
+                trace!(
+                    initial_offset = input.as_bytes().offset_from(&buffer.data()),
+                    initial_len = input.len(),
+                    "initial offset & len"
+                );
+                'read_headers: while !input.is_empty() {
+                    match DirectoryHeader::parser.parse_next(&mut input) {
+                        Ok(dh) => {
+                            trace!(
+                                input_empty_now = input.is_empty(),
+                                offset = input.as_bytes().offset_from(&buffer.data()),
+                                len = input.len(),
+                                "ReadCentralDirectory | parsed directory header"
+                            );
+                            directory_headers.push(dh);
+                        }
+                        Err(ErrMode::Incomplete(_needed)) => {
+                            // need more data to read the full header
+                            trace!("ReadCentralDirectory | incomplete!");
                             break 'read_headers;
                         }
-                        Err(nom::Err::Error(_err)) | Err(nom::Err::Failure(_err)) => {
+                        Err(ErrMode::Backtrack(_err)) | Err(ErrMode::Cut(_err)) => {
                             // this is the normal end condition when reading
                             // the central directory (due to 65536-entries non-zip64 files)
                             // let's just check a few numbers first.
@@ -381,13 +403,11 @@ impl ArchiveReader {
                                 .into());
                             }
                         }
-                        Ok((remaining, dh)) => {
-                            let consumed = buffer.data().offset(remaining);
-                            buffer.consume(consumed);
-                            directory_headers.push(dh);
-                        }
                     }
                 }
+                let consumed = input.as_bytes().offset_from(&buffer.data());
+                tracing::trace!(%consumed, "ReadCentralDirectory total consumed");
+                buffer.consume(consumed);
 
                 // need more data
                 Ok(R::Continue)

@@ -20,10 +20,14 @@ mod deflate64_dec;
 mod bzip2_dec;
 
 use cfg_if::cfg_if;
-use nom::Offset;
 use oval::Buffer;
 use std::io;
 use tracing::trace;
+use winnow::{
+    error::ErrMode,
+    stream::{AsBytes, Offset},
+    Parser, Partial,
+};
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -77,10 +81,10 @@ where
                 let read_bytes = self.rd.read(buffer.space())?;
                 buffer.fill(read_bytes);
 
-                match LocalFileHeaderRecord::parse(buffer.data()) {
-                    Ok((remaining, header)) => {
-                        let consumed = buffer.data().offset(remaining);
-                        buffer.consume(consumed);
+                let mut input = Partial::new(buffer.data());
+                match LocalFileHeaderRecord::parser.parse_next(&mut input) {
+                    Ok(header) => {
+                        buffer.consume(input.as_bytes().offset_from(&buffer.data()));
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
@@ -96,6 +100,10 @@ where
                                 header,
                             }
                         });
+                        self.read(buf)
+                    }
+                    Err(ErrMode::Incomplete(_)) => {
+                        buffer.shift();
                         self.read(buf)
                     }
                     Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
@@ -168,26 +176,18 @@ where
                     buffer.available_space()
                 );
 
-                match DataDescriptorRecord::parse(buffer.data(), self.inner.is_zip64) {
-                    Ok((_remaining, descriptor)) => {
+                let mut input = Partial::new(buffer.data());
+                match DataDescriptorRecord::mk_parser(self.inner.is_zip64).parse_next(&mut input) {
+                    Ok(descriptor) => {
+                        buffer.consume(input.as_bytes().offset_from(&buffer.data()));
                         trace!("data descriptor = {:#?}", descriptor);
                         transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
                             S::Validate { metrics, header, descriptor: Some(descriptor) }
                         });
                         self.read(buf)
                     }
-                    Err(nom::Err::Incomplete(_)) => {
-                        trace!(
-                            "incomplete! before shift, data {} / space {}",
-                            buffer.available_data(),
-                            buffer.available_space()
-                        );
+                    Err(ErrMode::Incomplete(_)) => {
                         buffer.shift();
-                        trace!(
-                            "             after shift, data {} / space {}",
-                            buffer.available_data(),
-                            buffer.available_space()
-                        );
                         let n = self.rd.read(buffer.space())?;
                         if n == 0 {
                             return Err(io::ErrorKind::UnexpectedEof.into());

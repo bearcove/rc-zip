@@ -1,6 +1,5 @@
-use crate::format::*;
-use nom::{combinator::map, number::streaming::le_u16};
 use std::fmt;
+use winnow::{binary::le_u16, PResult, Parser, Partial};
 
 /// A zip version (either created by, or required when reading an archive).
 ///
@@ -25,8 +24,8 @@ impl fmt::Debug for Version {
 
 impl Version {
     /// Parse a version from a byte slice
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        map(le_u16, Self)(i)
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        le_u16.map(Self).parse_next(i)
     }
 
     /// Identifies the host system on which the zip attributes are compatible.

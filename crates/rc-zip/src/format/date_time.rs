@@ -1,14 +1,12 @@
-use crate::{fields, format::parse};
-
 use chrono::{
     offset::{LocalResult, TimeZone, Utc},
     DateTime, Timelike,
 };
-use nom::{
-    combinator::map,
-    number::streaming::{le_u16, le_u64},
-};
 use std::fmt;
+use winnow::{
+    binary::{le_u16, le_u64},
+    seq, PResult, Parser, Partial,
+};
 
 /// A timestamp in MS-DOS format
 ///
@@ -29,12 +27,12 @@ impl fmt::Debug for MsdosTimestamp {
 }
 
 impl MsdosTimestamp {
-    /// Parse an MS-DOS timestamp from a byte slice
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        fields!(Self {
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        seq! {Self {
             time: le_u16,
             date: le_u16,
-        })(i)
+        }}
+        .parse_next(i)
     }
 
     /// Attempts to convert to a chrono UTC date time
@@ -80,8 +78,8 @@ impl fmt::Debug for NtfsTimestamp {
 
 impl NtfsTimestamp {
     /// Parse an MS-DOS timestamp from a byte slice
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        map(le_u64, |timestamp| Self { timestamp })(i)
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        le_u64.map(|timestamp| Self { timestamp }).parse_next(i)
     }
 
     /// Attempts to convert to a chrono UTC date time
@@ -89,9 +87,9 @@ impl NtfsTimestamp {
         // windows timestamp resolution
         let ticks_per_second = 10_000_000;
         let secs = (self.timestamp / ticks_per_second) as i64;
-        let nsecs = (1_000_000_000 / ticks_per_second) * (self.timestamp * ticks_per_second);
+        let nsecs = ((self.timestamp % ticks_per_second) * 100) as u32;
         let epoch = Utc.with_ymd_and_hms(1601, 1, 1, 0, 0, 0).single()?;
-        match Utc.timestamp_opt(epoch.timestamp() + secs, nsecs as u32) {
+        match Utc.timestamp_opt(epoch.timestamp() + secs, nsecs) {
             LocalResult::Single(date) => Some(date),
             _ => None,
         }

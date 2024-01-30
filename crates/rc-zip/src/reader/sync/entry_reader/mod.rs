@@ -16,6 +16,9 @@ mod deflate_dec;
 #[cfg(feature = "deflate64")]
 mod deflate64_dec;
 
+#[cfg(feature = "bzip2")]
+mod bzip2_dec;
+
 use cfg_if::cfg_if;
 use nom::Offset;
 use oval::Buffer;
@@ -292,6 +295,15 @@ where
                 cfg_if! {
                     if #[cfg(feature = "lzma")] {
                         Box::new(lzma_dec::mk_decoder(limited_reader,self.inner.uncompressed_size)?)
+                    } else {
+                        return Err(Error::method_not_enabled(self.method));
+                    }
+                }
+            }
+            Method::Bzip2 => {
+                cfg_if! {
+                    if #[cfg(feature = "bzip2")] {
+                        Box::new(bzip2_dec::mk_decoder(limited_reader))
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }

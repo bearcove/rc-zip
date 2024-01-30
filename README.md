@@ -5,15 +5,26 @@
 
 ### Motivation
 
-Have a pure rust, highly compatible, I/O-model independent, zip reading and
+Have a pure rust, highly compatible, I/O-model-independent, zip reading and
 writing library.
+
+(Note: as of now, rc-zip does reading only)
+
+### Funding
+
+Thanks to these companies for contracting work on rc-zip:
+
+[![Row Zero](./static/row-zero.svg)](https://rowzero.io)
+
+And thanks to all my [individual sponsors](https://fasterthanli.me/donate).
 
 ### Design decisions
 
-This crate does not perform I/O directly. Instead, it uses a state machine, and asks
-for reads at specific offsets. This allows it to work under different I/O models:
-blocking, non-blocking, and async. It has no expectations of the zip archive being
-present on disk (ie. it doesn't assume `std::fs`), just that random access is possible.
+The core of this crate does not perform I/O directly. Instead, it uses a state
+machine, and asks for reads at specific offsets. This allows it to work under
+different I/O models: blocking, non-blocking, and async. It has no expectations
+of the zip archive being present on disk (ie. it doesn't assume `std::fs`), just
+that random access is possible.
 
 This crate relies fully on the central directory, not on local headers:
 

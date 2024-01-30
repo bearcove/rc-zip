@@ -14,7 +14,7 @@ pub(crate) struct ExtraFieldRecord<'a> {
 }
 
 impl<'a> ExtraFieldRecord<'a> {
-    pub(crate) fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    pub(crate) fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         seq! {Self {
             tag: le_u16,
             payload: length_take(le_u16),

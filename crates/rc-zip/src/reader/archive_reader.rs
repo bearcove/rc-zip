@@ -213,7 +213,7 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64Locator { ref mut buffer, .. } => {
-                let mut input = Partial::new(buffer.data());
+                let input = Partial::new(buffer.data());
                 match EndOfCentralDirectory64Locator::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data

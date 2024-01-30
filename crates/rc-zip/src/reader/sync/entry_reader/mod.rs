@@ -20,10 +20,10 @@ mod deflate64_dec;
 mod bzip2_dec;
 
 use cfg_if::cfg_if;
-use nom::Offset;
 use oval::Buffer;
 use std::io;
 use tracing::trace;
+use winnow::Offset;
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -176,7 +176,7 @@ where
                         });
                         self.read(buf)
                     }
-                    Err(nom::Err::Incomplete(_)) => {
+                    Err(winnow::Err::Incomplete(_)) => {
                         trace!(
                             "incomplete! before shift, data {} / space {}",
                             buffer.available_data(),

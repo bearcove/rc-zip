@@ -1,10 +1,6 @@
-use crate::{fields, format::*};
-use nom::{
-    bytes::streaming::{tag, take},
-    combinator::{cond, map, verify},
-    multi::{length_data, many0},
-    number::streaming::{le_u16, le_u32, le_u64, le_u8},
-    sequence::{preceded, tuple},
+use crate::format::*;
+use winnow::{
+    binary::{le_u16, le_u32, le_u64, le_u8, length_take}, combinator::{cond, preceded, repeat}, error::{ErrMode, ErrorKind}, seq, token::{tag, take}, PResult
 };
 /// 4.4.28 extra field: (Variable)
 pub(crate) struct ExtraFieldRecord<'a> {
@@ -14,9 +10,9 @@ pub(crate) struct ExtraFieldRecord<'a> {
 
 impl<'a> ExtraFieldRecord<'a> {
     pub(crate) fn parse(i: &'a [u8]) -> parse::Result<'a, Self> {
-        fields!(Self {
+        seq!(Self {
             tag: le_u16,
-            payload: length_data(le_u16),
+            payload: length_take(le_u16),
         })(i)
     }
 }
@@ -141,8 +137,8 @@ impl ExtraTimestampField {
     fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             // 1 byte of flags, if bit 0 is set, modification time is present
-            verify(le_u8, |x| x & 0b1 != 0),
-            map(le_u32, |mtime| Self { mtime }),
+            le_u8.verify(|x| x & 0b1 != 0),
+            seq!(Self { mtime: le_u32 }),
         )(i)
     }
 }
@@ -177,6 +173,17 @@ impl ExtraUnixField {
             data: ZipBytes::parser(t_size),
         })(i)
     }
+
+    fn parser(i: &mut [u8]) -> PResult<Self {
+        let t_size = le_u16.parse_next(i)? - 12;
+        seq!{Self {
+            atime: le_u32,
+            mtime: le_u32,
+            uid: le_u16,
+            gid: le_u16,
+            data: ZipBytes::parser(t_size),
+        }}
+    }
 }
 
 /// Info-ZIP New Unix Extra Field:
@@ -208,18 +215,15 @@ impl ExtraNewUnixField {
     fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             tag("\x01"),
-            map(
-                tuple((
-                    Self::parse_variable_length_integer,
-                    Self::parse_variable_length_integer,
-                )),
-                |(uid, gid)| Self { uid, gid },
-            ),
+            seq! {Self {
+                uid: Self::parse_variable_length_integer,
+                gid: Self::parse_variable_length_integer,
+            }},
         )(i)
     }
 
     fn parse_variable_length_integer(i: &[u8]) -> parse::Result<'_, u64> {
-        let (i, slice) = length_data(le_u8)(i)?;
+        let (i, slice) = length_take(le_u8)(i)?;
         if let Some(u) = match slice.len() {
             1 => Some(le_u8(slice)?.1 as u64),
             2 => Some(le_u16(slice)?.1 as u64),
@@ -229,7 +233,7 @@ impl ExtraNewUnixField {
         } {
             Ok((i, u))
         } else {
-            Err(nom::Err::Failure((i, nom::error::ErrorKind::OneOf)))
+            Err(ErrMode::from_error_kind(i, ErrorKind::Alt))
         }
     }
 }
@@ -246,7 +250,7 @@ impl ExtraNtfsField {
     fn parse(i: &[u8]) -> parse::Result<'_, Self> {
         preceded(
             take(4usize), /* reserved (unused) */
-            map(many0(NtfsAttr::parse), |attrs| Self { attrs }),
+            repeat(0.., NtfsAttr::parse).map(|attrs| Self { attrs }),
         )(i)
     }
 }
@@ -260,7 +264,7 @@ pub enum NtfsAttr {
 
 impl NtfsAttr {
     fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        let (i, (tag, payload)) = tuple((le_u16, length_data(le_u16)))(i)?;
+        let (tag, payload) = seq!(le_u16, length_take(le_u16))(i)?;
         match tag {
             0x0001 => NtfsAttr1::parse(payload).map(|(i, x)| (i, NtfsAttr::Attr1(x))),
             _ => Ok((i, NtfsAttr::Unknown { tag })),

@@ -1,5 +1,5 @@
 use crate::{fields, format::*};
-use nom::{
+use winnow::{
     bytes::streaming::tag,
     combinator::opt,
     number::streaming::{le_u16, le_u32, le_u64},

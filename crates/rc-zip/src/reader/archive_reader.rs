@@ -1,8 +1,8 @@
 use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*, transition};
 
-use nom::Offset;
 use std::io::Read;
 use tracing::trace;
+use winnow::Offset;
 
 /// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
@@ -209,12 +209,12 @@ impl ArchiveReader {
                 }
             }
             S::ReadEocd64Locator { ref mut buffer, .. } => {
-                match EndOfCentralDirectory64Locator::parse(buffer.data()) {
-                    Err(nom::Err::Incomplete(_)) => {
+                match EndOfCentralDirectory64Locator::parser(buffer.data()) {
+                    Err(winnow::Err::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
+                    Err(winnow::Err::Error(_)) | Err(winnow::Err::Failure(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
                         trace!("ReadEocd64Locator | no zip64 end of central directory locator");
                         trace!("ReadEocd64Locator | data we got: {:02x?}", buffer.data());
@@ -247,11 +247,11 @@ impl ArchiveReader {
             }
             S::ReadEocd64 { ref mut buffer, .. } => {
                 match EndOfCentralDirectory64Record::parse(buffer.data()) {
-                    Err(nom::Err::Incomplete(_)) => {
+                    Err(winnow::Err::Incomplete(_)) => {
                         // need more data
                         Ok(R::Continue)
                     }
-                    Err(nom::Err::Error(_)) | Err(nom::Err::Failure(_)) => {
+                    Err(winnow::Err::Error(_)) | Err(winnow::Err::Failure(_)) => {
                         // at this point, we really expected to have a zip64 end
                         // of central directory record, so, we want to propagate
                         // that error.
@@ -283,12 +283,12 @@ impl ArchiveReader {
                     buffer.available_data()
                 );
                 'read_headers: while buffer.available_data() > 0 {
-                    match DirectoryHeader::parse(buffer.data()) {
-                        Err(nom::Err::Incomplete(_needed)) => {
+                    match DirectoryHeader::parser(buffer.data()) {
+                        Err(winnow::Err::Incomplete(_needed)) => {
                             // need more data
                             break 'read_headers;
                         }
-                        Err(nom::Err::Error(_err)) | Err(nom::Err::Failure(_err)) => {
+                        Err(winnow::Err::Error(_err)) | Err(winnow::Err::Failure(_err)) => {
                             // this is the normal end condition when reading
                             // the central directory (due to 65536-entries non-zip64 files)
                             // let's just check a few numbers first.

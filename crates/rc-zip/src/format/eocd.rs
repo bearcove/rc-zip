@@ -1,12 +1,11 @@
-use crate::{error::*, fields, format::*};
-use nom::{
-    bytes::streaming::tag,
-    combinator::map,
-    multi::length_data,
-    number::streaming::{le_u16, le_u32, le_u64},
-    sequence::{preceded, tuple},
-};
+use crate::{error::*, format::*};
 use tracing::trace;
+use winnow::{
+    binary::{le_u16, le_u32, le_u64, length_take},
+    seq,
+    token::tag,
+    PResult, Parser, Partial,
+};
 
 /// 4.3.16  End of central directory record:
 #[derive(Debug)]
@@ -34,9 +33,8 @@ impl EndOfCentralDirectoryRecord {
 
     pub fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
         for i in (0..(b.len() - Self::MIN_LENGTH + 1)).rev() {
-            let slice = &b[i..];
-
-            if let Ok((_, directory)) = Self::parse(slice) {
+            let mut input = Partial::new(&b[i..]);
+            if let Ok(directory) = Self::parse.parse_next(&mut input) {
                 return Some(Located {
                     offset: i as u64,
                     inner: directory,
@@ -46,38 +44,18 @@ impl EndOfCentralDirectoryRecord {
         None
     }
 
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            tag(Self::SIGNATURE),
-            map(
-                tuple((
-                    le_u16::<&[u8], _>,
-                    le_u16,
-                    le_u16,
-                    le_u16,
-                    le_u32,
-                    le_u32,
-                    length_data(le_u16),
-                )),
-                |(
-                    disk_nbr,
-                    dir_disk_nbr,
-                    dir_records_this_disk,
-                    directory_records,
-                    directory_size,
-                    directory_offset,
-                    comment,
-                )| Self {
-                    disk_nbr,
-                    dir_disk_nbr,
-                    dir_records_this_disk,
-                    directory_records,
-                    directory_size,
-                    directory_offset,
-                    comment: comment.into(),
-                },
-            ),
-        )(i)
+    pub fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        let _ = tag(Self::SIGNATURE).parse_next(i)?;
+        seq! {Self {
+            disk_nbr: le_u16,
+            dir_disk_nbr: le_u16,
+            dir_records_this_disk: le_u16,
+            directory_records: le_u16,
+            directory_size: le_u32,
+            directory_offset: le_u32,
+            comment: length_take(le_u16).map(ZipString::from),
+        }}
+        .parse_next(i)
     }
 }
 
@@ -96,15 +74,14 @@ impl EndOfCentralDirectory64Locator {
     pub const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x06\x07";
 
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            tag(Self::SIGNATURE),
-            fields!(Self {
-                dir_disk_number: le_u32,
-                directory_offset: le_u64,
-                total_disks: le_u32,
-            }),
-        )(i)
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        _ = tag(Self::SIGNATURE).parse_next(i)?;
+        seq!(Self {
+            dir_disk_number: le_u32,
+            directory_offset: le_u64,
+            total_disks: le_u32,
+        })
+        .parse_next(i)
     }
 }
 
@@ -135,21 +112,20 @@ pub struct EndOfCentralDirectory64Record {
 impl EndOfCentralDirectory64Record {
     const SIGNATURE: &'static str = "PK\x06\x06";
 
-    pub fn parse(i: &[u8]) -> parse::Result<'_, Self> {
-        preceded(
-            tag(Self::SIGNATURE),
-            fields!(Self {
-                record_size: le_u64,
-                creator_version: le_u16,
-                reader_version: le_u16,
-                disk_nbr: le_u32,
-                dir_disk_nbr: le_u32,
-                dir_records_this_disk: le_u64,
-                directory_records: le_u64,
-                directory_size: le_u64,
-                directory_offset: le_u64,
-            }),
-        )(i)
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        _ = tag(Self::SIGNATURE).parse_next(i)?;
+        seq!(Self {
+            record_size: le_u64,
+            creator_version: le_u16,
+            reader_version: le_u16,
+            disk_nbr: le_u32,
+            dir_disk_nbr: le_u32,
+            dir_records_this_disk: le_u64,
+            directory_records: le_u64,
+            directory_size: le_u64,
+            directory_offset: le_u64,
+        })
+        .parse_next(i)
     }
 }
 

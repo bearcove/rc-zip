@@ -71,7 +71,7 @@ expected: for example, for archives with only MSDOS timestamps, the results
 might be in the wrong timezone. For archive with very few files and non-UTF8
 names, the encoding might not be detected properly, and thus decoding may fail.
 
-As much as possible, [nom](https://crates.io/crates/nom) is used to parse the
+As much as possible, [winnow](https://crates.io/crates/winnow) is used to parse the
 various data structures used in the zip archive format. This allows a
 semi-declarative style that is easier to write, read, and amend if needed.
 Some (hygienic) macros are used to avoid repetition.

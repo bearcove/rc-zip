@@ -1,7 +1,5 @@
 pub use crate::encoding::Encoding;
 
-pub(crate) mod parse;
-
 mod archive;
 mod extra_field;
 mod mode;

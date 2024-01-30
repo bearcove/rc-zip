@@ -53,7 +53,7 @@ impl From<std::str::Utf8Error> for DecodingError {
 }
 
 impl Encoding {
-    pub(crate) fn decode(&self, i: &mut Partial<&'_ [u8]>) -> Result<String, DecodingError> {
+    pub(crate) fn decode(&self, i: &[u8]) -> Result<String, DecodingError> {
         match self {
             Encoding::Utf8 => {
                 let s = std::str::from_utf8(i)?;
@@ -69,7 +69,7 @@ impl Encoding {
 
     fn decode_as(
         &self,
-        i: &mut Partial<&'_ [u8]>,
+        i: &[u8],
         encoding: &'static encoding_rs::Encoding,
     ) -> Result<String, DecodingError> {
         let mut decoder = encoding.new_decoder();

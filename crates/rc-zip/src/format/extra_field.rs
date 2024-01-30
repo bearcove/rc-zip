@@ -15,10 +15,10 @@ pub(crate) struct ExtraFieldRecord<'a> {
 
 impl<'a> ExtraFieldRecord<'a> {
     pub(crate) fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        seq!(Self {
+        seq! {Self {
             tag: le_u16,
             payload: length_take(le_u16),
-        })
+        }}
         .parse_next(i)
     }
 }
@@ -70,17 +70,19 @@ impl ExtraField {
 
             let variant = match rec.tag {
                 ExtraZip64Field::TAG => {
-                    opt(ExtraZip64Field::mk_parser(settings).map(EF::Zip64)).parse_next(payload)
+                    opt(ExtraZip64Field::mk_parser(settings).map(EF::Zip64)).parse_next(payload)?
                 }
                 ExtraTimestampField::TAG => {
-                    opt(ExtraTimestampField::parser.map(EF::Timestamp)).parse_next(payload)
+                    opt(ExtraTimestampField::parser.map(EF::Timestamp)).parse_next(payload)?
                 }
-                ExtraNtfsField::TAG => opt(ExtraNtfsField::parse.map(EF::Ntfs)).parse_next(payload),
+                ExtraNtfsField::TAG => {
+                    opt(ExtraNtfsField::parse.map(EF::Ntfs)).parse_next(payload)?
+                }
                 ExtraUnixField::TAG | ExtraUnixField::TAG_INFOZIP => {
-                    opt(ExtraUnixField::parser.map(EF::Unix)).parse_next(payload)
+                    opt(ExtraUnixField::parser.map(EF::Unix)).parse_next(payload)?
                 }
                 ExtraNewUnixField::TAG => {
-                    opt(ExtraNewUnixField::parser.map(EF::NewUnix)).parse_next(payload)
+                    opt(ExtraNewUnixField::parser.map(EF::NewUnix)).parse_next(payload)?
                 }
                 _ => None,
             }
@@ -107,11 +109,11 @@ impl ExtraZip64Field {
     ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
         move |i| {
             // N.B: we ignore "disk start number"
-            seq!(Self {
+            seq! {Self {
                 uncompressed_size: cond(settings.needs_uncompressed_size, le_u64),
                 compressed_size: cond(settings.needs_compressed_size, le_u64),
                 header_offset: cond(settings.needs_header_offset, le_u64),
-            })
+            }}
             .parse_next(i)
         }
     }
@@ -131,7 +133,7 @@ impl ExtraTimestampField {
         preceded(
             // 1 byte of flags, if bit 0 is set, modification time is present
             le_u8.verify(|x| x & 0b1 != 0),
-            seq!(Self { mtime: le_u32 }),
+            seq! {Self { mtime: le_u32 }},
         )
         .parse_next(i)
     }
@@ -268,11 +270,11 @@ pub struct NtfsAttr1 {
 
 impl NtfsAttr1 {
     fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        seq!(Self {
+        seq! {Self {
             mtime: NtfsTimestamp::parser,
             atime: NtfsTimestamp::parser,
             ctime: NtfsTimestamp::parser,
-        })
+        }}
         .parse_next(i)
     }
 }

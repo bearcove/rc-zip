@@ -76,11 +76,11 @@ impl EndOfCentralDirectory64Locator {
 
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         _ = tag(Self::SIGNATURE).parse_next(i)?;
-        seq!(Self {
+        seq! {Self {
             dir_disk_number: le_u32,
             directory_offset: le_u64,
             total_disks: le_u32,
-        })
+        }}
         .parse_next(i)
     }
 }
@@ -114,7 +114,7 @@ impl EndOfCentralDirectory64Record {
 
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         _ = tag(Self::SIGNATURE).parse_next(i)?;
-        seq!(Self {
+        seq! {Self {
             record_size: le_u64,
             creator_version: le_u16,
             reader_version: le_u16,
@@ -124,7 +124,7 @@ impl EndOfCentralDirectory64Record {
             directory_records: le_u64,
             directory_size: le_u64,
             directory_offset: le_u64,
-        })
+        }}
         .parse_next(i)
     }
 }

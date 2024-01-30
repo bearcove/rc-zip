@@ -23,7 +23,7 @@ use cfg_if::cfg_if;
 use oval::Buffer;
 use std::io;
 use tracing::trace;
-use winnow::Offset;
+use winnow::stream::Offset;
 
 struct EntryReadMetrics {
     uncompressed_size: u64,
@@ -77,7 +77,7 @@ where
                 let read_bytes = self.rd.read(buffer.space())?;
                 buffer.fill(read_bytes);
 
-                match LocalFileHeaderRecord::parse(buffer.data()) {
+                match LocalFileHeaderRecord::parser(buffer.data()) {
                     Ok((remaining, header)) => {
                         let consumed = buffer.data().offset(remaining);
                         buffer.consume(consumed);
@@ -168,7 +168,7 @@ where
                     buffer.available_space()
                 );
 
-                match DataDescriptorRecord::parse(buffer.data(), self.inner.is_zip64) {
+                match DataDescriptorRecord::parser(buffer.data(), self.inner.is_zip64) {
                     Ok((_remaining, descriptor)) => {
                         trace!("data descriptor = {:#?}", descriptor);
                         transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {

@@ -140,10 +140,10 @@ impl DirectoryHeader {
             needs_header_offset: self.header_offset == !0u32,
         };
 
-        let mut slice = &self.extra.0[..];
+        let mut slice = Partial::new(&self.extra.0[..]);
         while !slice.is_empty() {
-            match ExtraField::parse(slice, &settings) {
-                Ok((remaining, ef)) => {
+            match ExtraField::mk_parser(settings).parse_next(&mut slice) {
+                Ok(ef) => {
                     match &ef {
                         ExtraField::Zip64(z64) => {
                             if let Some(n) = z64.uncompressed_size {
@@ -185,7 +185,6 @@ impl DirectoryHeader {
                         _ => {}
                     };
                     extra_fields.push(ef);
-                    slice = remaining;
                 }
                 Err(e) => {
                     trace!("extra field error: {:#?}", e);

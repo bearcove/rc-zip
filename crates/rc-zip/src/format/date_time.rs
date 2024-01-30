@@ -28,10 +28,10 @@ impl fmt::Debug for MsdosTimestamp {
 
 impl MsdosTimestamp {
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        seq!(Self {
+        seq! {Self {
             time: le_u16,
             date: le_u16,
-        })
+        }}
         .parse_next(i)
     }
 

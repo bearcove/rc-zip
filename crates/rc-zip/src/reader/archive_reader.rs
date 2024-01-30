@@ -2,7 +2,7 @@ use crate::{encoding::Encoding, error::*, format::*, reader::buffer::*, transiti
 
 use std::io::Read;
 use tracing::trace;
-use winnow::Offset;
+use winnow::stream::Offset;
 
 /// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,

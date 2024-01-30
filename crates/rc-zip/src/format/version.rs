@@ -1,6 +1,5 @@
-use crate::format::*;
 use std::fmt;
-use winnow::{combinator::map, number::streaming::le_u16, PResult, Partial};
+use winnow::{binary::le_u16, PResult, Parser, Partial};
 
 /// A zip version (either created by, or required when reading an archive).
 ///

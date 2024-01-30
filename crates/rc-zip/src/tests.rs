@@ -296,6 +296,19 @@ fn test_cases() -> Vec<ZipTest> {
             }],
             ..Default::default()
         },
+        // same with bzip2
+        #[cfg(feature = "bzip2")]
+        ZipTest {
+            source: ZipSource::File("found-me-bzip2.zip"),
+            expected_encoding: Some(Encoding::Utf8),
+            files: vec![ZipTestFile {
+                name: "found-me.txt",
+                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
+                modified: Some(date((2024, 1, 26), (17, 14, 36), 0, time_zone(0)).unwrap()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
     ]
 }
 

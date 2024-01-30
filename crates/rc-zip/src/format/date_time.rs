@@ -87,9 +87,9 @@ impl NtfsTimestamp {
         // windows timestamp resolution
         let ticks_per_second = 10_000_000;
         let secs = (self.timestamp / ticks_per_second) as i64;
-        let nsecs = (1_000_000_000 / ticks_per_second) * (self.timestamp * ticks_per_second);
+        let nsecs = ((self.timestamp % ticks_per_second) * 100) as u32;
         let epoch = Utc.with_ymd_and_hms(1601, 1, 1, 0, 0, 0).single()?;
-        match Utc.timestamp_opt(epoch.timestamp() + secs, nsecs as u32) {
+        match Utc.timestamp_opt(epoch.timestamp() + secs, nsecs) {
             LocalResult::Single(date) => Some(date),
             _ => None,
         }

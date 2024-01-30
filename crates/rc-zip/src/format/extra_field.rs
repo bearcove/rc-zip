@@ -1,8 +1,9 @@
 use crate::format::*;
+use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8, length_take},
-    combinator::{cond, opt, preceded, repeat},
-    error::{ErrMode, ErrorKind, ParserError},
+    combinator::{cond, opt, preceded, repeat_till},
+    error::{ErrMode, ErrorKind, ParserError, StrContext},
     seq,
     token::{tag, take},
     PResult, Parser, Partial,
@@ -66,15 +67,16 @@ impl ExtraField {
         move |i| {
             use ExtraField as EF;
             let rec = ExtraFieldRecord::parser.parse_next(i)?;
+            trace!("parsing extra field record, tag {:04x}", rec.tag);
             let payload = &mut Partial::new(rec.payload);
 
             let variant = match rec.tag {
-                ExtraZip64Field::TAG => {
-                    opt(ExtraZip64Field::mk_parser(settings).map(EF::Zip64)).parse_next(payload)?
-                }
-                ExtraTimestampField::TAG => {
-                    opt(ExtraTimestampField::parser.map(EF::Timestamp)).parse_next(payload)?
-                }
+                ExtraZip64Field::TAG => opt(ExtraZip64Field::mk_parser(settings).map(EF::Zip64))
+                    .context(StrContext::Label("zip64"))
+                    .parse_next(payload)?,
+                ExtraTimestampField::TAG => opt(ExtraTimestampField::parser.map(EF::Timestamp))
+                    .context(StrContext::Label("timestamp"))
+                    .parse_next(payload)?,
                 ExtraNtfsField::TAG => {
                     opt(ExtraNtfsField::parse.map(EF::Ntfs)).parse_next(payload)?
                 }
@@ -234,7 +236,12 @@ impl ExtraNtfsField {
     fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let _ = take(4_usize).parse_next(i)?; // reserved (unused)
         seq! {Self {
-            attrs: repeat(0.., NtfsAttr::parse),
+            // from the winnow docs:
+            //   Parsers like repeat do not know when an eof is from insufficient
+            //   data or the end of the stream, causing them to always report
+            //   Incomplete.
+            // using repeat_till with eof combinator to work around this:
+            attrs: repeat_till(0.., NtfsAttr::parse, winnow::combinator::eof).map(|x| x.0),
         }}
         .parse_next(i)
     }
@@ -250,6 +257,7 @@ pub enum NtfsAttr {
 impl NtfsAttr {
     fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let tag = le_u16.parse_next(i)?;
+        trace!("parsing NTFS attribute, tag {:04x}", tag);
         let payload = length_take(le_u16).parse_next(i)?;
 
         match tag {
@@ -270,6 +278,7 @@ pub struct NtfsAttr1 {
 
 impl NtfsAttr1 {
     fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        trace!("parsing NTFS attr 1, input len is {}", i.len());
         seq! {Self {
             mtime: NtfsTimestamp::parser,
             atime: NtfsTimestamp::parser,

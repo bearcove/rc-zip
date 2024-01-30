@@ -289,13 +289,25 @@ impl ArchiveReader {
                     buffer.available_data()
                 );
                 let mut input = Partial::new(buffer.data());
+                trace!(
+                    initial_offset = input.as_bytes().offset_from(&buffer.data()),
+                    initial_len = input.len(),
+                    "initial offset & len"
+                );
                 'read_headers: while !input.is_empty() {
                     match DirectoryHeader::parser.parse_next(&mut input) {
                         Ok(dh) => {
+                            trace!(
+                                input_empty_now = input.is_empty(),
+                                offset = input.as_bytes().offset_from(&buffer.data()),
+                                len = input.len(),
+                                "ReadCentralDirectory | parsed directory header"
+                            );
                             directory_headers.push(dh);
                         }
                         Err(ErrMode::Incomplete(_needed)) => {
                             // need more data to read the full header
+                            trace!("ReadCentralDirectory | incomplete!");
                             break 'read_headers;
                         }
                         Err(ErrMode::Backtrack(_err)) | Err(ErrMode::Cut(_err)) => {
@@ -394,7 +406,7 @@ impl ArchiveReader {
                     }
                 }
                 let consumed = input.as_bytes().offset_from(&buffer.data());
-                tracing::trace!(%consumed, "ReadCentralDirectory done");
+                tracing::trace!(%consumed, "ReadCentralDirectory total consumed");
                 buffer.consume(consumed);
 
                 // need more data

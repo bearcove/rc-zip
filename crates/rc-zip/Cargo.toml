@@ -35,8 +35,8 @@ default = ["sync", "file", "deflate"]
 sync = []
 file = ["positioned-io"]
 deflate = ["dep:flate2"]
-lzma = ["dep:lzma-rs"]
 deflate64 = ["dep:deflate64"]
+lzma = ["dep:lzma-rs"]
 
 [dev-dependencies]
 tracing-test = "0.2.4"

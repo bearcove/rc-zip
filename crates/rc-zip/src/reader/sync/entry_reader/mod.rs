@@ -18,6 +18,7 @@ mod deflate64_dec;
 
 use cfg_if::cfg_if;
 use nom::Offset;
+use oval::Buffer;
 use std::io;
 use tracing::trace;
 
@@ -28,7 +29,7 @@ struct EntryReadMetrics {
 
 enum State {
     ReadLocalHeader {
-        buffer: circular::Buffer,
+        buffer: Buffer,
     },
     ReadData {
         hasher: crc32fast::Hasher,
@@ -39,7 +40,7 @@ enum State {
     ReadDataDescriptor {
         metrics: EntryReadMetrics,
         header: LocalFileHeaderRecord,
-        buffer: circular::Buffer,
+        buffer: Buffer,
     },
     Validate {
         metrics: EntryReadMetrics,
@@ -256,7 +257,7 @@ where
             rd: EOFNormalizer::new(get_reader(entry.header_offset)),
             eof: false,
             state: State::ReadLocalHeader {
-                buffer: circular::Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
+                buffer: Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
             },
             method: entry.method(),
             inner: entry.inner,

@@ -139,12 +139,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "circular"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
-
-[[package]]
 name = "clap"
 version = "4.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -513,6 +507,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
+name = "oval"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a3d5e98a4755181412036942c50378249d94aca605a3b024cda24c67cc1a1b8"
+
+[[package]]
 name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -635,7 +635,6 @@ dependencies = [
  "cfg-if",
  "chardetng",
  "chrono",
- "circular",
  "crc32fast",
  "deflate64",
  "encoding_rs",
@@ -644,6 +643,7 @@ dependencies = [
  "nom",
  "num_enum",
  "oem_cp",
+ "oval",
  "positioned-io",
  "pretty-hex",
  "thiserror",

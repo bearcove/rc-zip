@@ -1,5 +1,7 @@
 use std::{cmp, io};
 
+use oval::Buffer;
+
 pub trait Decoder<R>: io::Read
 where
     R: io::Read,
@@ -50,23 +52,23 @@ where
     }
 }
 
-/// Only allows reading a fixed number of bytes from a [circular::Buffer],
+/// Only allows reading a fixed number of bytes from a [oval::Buffer],
 /// allowing to move the inner reader out afterwards.
 pub struct LimitedReader {
     remaining: u64,
-    inner: circular::Buffer,
+    inner: Buffer,
 }
 
 impl LimitedReader {
-    pub fn new(inner: circular::Buffer, remaining: u64) -> Self {
+    pub fn new(inner: Buffer, remaining: u64) -> Self {
         Self { inner, remaining }
     }
 
-    pub fn into_inner(self) -> circular::Buffer {
+    pub fn into_inner(self) -> Buffer {
         self.inner
     }
 
-    pub fn get_mut(&mut self) -> &mut circular::Buffer {
+    pub fn get_mut(&mut self) -> &mut Buffer {
         &mut self.inner
     }
 }

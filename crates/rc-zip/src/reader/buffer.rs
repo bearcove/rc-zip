@@ -2,10 +2,10 @@ use std::io::Read;
 
 use tracing::trace;
 
-/// A wrapper around [circular::Buffer] that keeps track of how many bytes we've read since
+/// A wrapper around [oval::Buffer] that keeps track of how many bytes we've read since
 /// initialization or the last reset.
 pub(crate) struct Buffer {
-    pub(crate) buffer: circular::Buffer,
+    pub(crate) buffer: oval::Buffer,
     pub(crate) read_bytes: u64,
 }
 
@@ -13,7 +13,7 @@ impl Buffer {
     /// creates a new buffer with the specified capacity
     pub(crate) fn with_capacity(size: usize) -> Self {
         Self {
-            buffer: circular::Buffer::with_capacity(size),
+            buffer: oval::Buffer::with_capacity(size),
             read_bytes: 0,
         }
     }

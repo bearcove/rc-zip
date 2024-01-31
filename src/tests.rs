@@ -180,8 +180,8 @@ impl ZipTest {
 
 fn zips_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("testdata")
-        .join("test-zips")
+        .join("tests")
+        .join("data")
 }
 
 fn time_zone(hours: i32) -> FixedOffset {

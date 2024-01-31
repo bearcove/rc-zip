@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7079075b41f533b8c61d2a4d073c4676e1f8b249ff94a393b0595db304e0dd87"
+checksum = "2faccea4cc4ab4a667ce676a30e8ec13922a692c99bb8f5b11f1502c72e04220"
 
 [[package]]
 name = "anstyle-parse"
@@ -368,19 +368,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 
 [[package]]
-name = "jean"
-version = "2.0.1"
-dependencies = [
- "cfg-if",
- "clap",
- "humansize",
- "indicatif",
- "positioned-io",
- "rc-zip",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -647,10 +634,13 @@ dependencies = [
  "cfg-if",
  "chardetng",
  "chrono",
+ "clap",
  "crc32fast",
  "deflate64",
  "encoding_rs",
  "flate2",
+ "humansize",
+ "indicatif",
  "lzma-rs",
  "num_enum",
  "oem_cp",
@@ -659,6 +649,7 @@ dependencies = [
  "pretty-hex",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
  "tracing-test",
  "winnow",
 ]

@@ -34,8 +34,7 @@ jobs:
           cargo doc --all-features --no-deps
       - name: Run cargo clippy
         run: |
-          cargo check --all-features -p jean
-          cargo hack clippy --feature-powerset --group-features deflate,deflate64,lzma,bzip2 -p rc-zip
+          cargo hack clippy --feature-powerset --group-features deflate,deflate64,lzma,bzip2
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information

@@ -24,6 +24,3 @@ pub mod prelude;
 pub mod reader;
 
 pub use self::{error::*, format::*};
-
-#[cfg(test)]
-mod tests;

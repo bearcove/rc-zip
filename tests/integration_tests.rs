@@ -1,14 +1,13 @@
 use tracing_test::traced_test;
 
-use crate::{
-    reader::sync::{HasCursor, SyncArchive, SyncStoredEntry},
-    Archive,
-};
-
-use super::{encoding::Encoding, prelude::*};
 use chrono::{
     offset::{FixedOffset, Utc},
     DateTime, TimeZone, Timelike,
+};
+use rc_zip::{
+    prelude::*,
+    reader::sync::{HasCursor, SyncArchive, SyncStoredEntry},
+    Archive, Encoding,
 };
 use std::{fs::File, path::PathBuf};
 
@@ -22,7 +21,7 @@ struct ZipTest {
     expected_encoding: Option<Encoding>,
     comment: Option<&'static str>,
     files: Vec<ZipTestFile>,
-    error: Option<super::Error>,
+    error: Option<rc_zip::Error>,
 }
 
 impl Default for ZipTest {
@@ -38,7 +37,7 @@ impl Default for ZipTest {
 }
 
 impl ZipTest {
-    fn check<F: HasCursor>(&self, archive: Result<SyncArchive<'_, F>, crate::Error>) {
+    fn check<F: HasCursor>(&self, archive: Result<SyncArchive<'_, F>, rc_zip::Error>) {
         let case_bytes = self.bytes();
 
         if let Some(expected) = &self.error {
@@ -117,7 +116,7 @@ impl ZipTestFile {
         assert!(entry.comment().is_none());
 
         match entry.contents() {
-            crate::EntryContents::File => {
+            rc_zip::EntryContents::File => {
                 let actual_bytes = entry.bytes().unwrap();
 
                 match &self.content {
@@ -137,7 +136,7 @@ impl ZipTestFile {
                     }
                 }
             }
-            crate::EntryContents::Symlink | crate::EntryContents::Directory => {
+            rc_zip::EntryContents::Symlink | rc_zip::EntryContents::Directory => {
                 assert!(matches!(self.content, FileContent::Unchecked));
             }
         }
@@ -340,8 +339,8 @@ fn real_world_files() {
 
 #[test]
 #[traced_test]
-fn test_fsm() {
-    use super::reader::{ArchiveReader, ArchiveReaderResult};
+fn state_machine() {
+    use rc_zip::reader::{ArchiveReader, ArchiveReaderResult};
 
     let cases = test_cases();
     let case = cases.iter().find(|x| x.name() == "zip64.zip").unwrap();

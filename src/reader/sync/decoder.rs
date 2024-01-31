@@ -54,12 +54,12 @@ where
 
 /// Only allows reading a fixed number of bytes from a [oval::Buffer],
 /// allowing to move the inner reader out afterwards.
-pub struct LimitedReader {
+pub struct RawEntryReader {
     remaining: u64,
     inner: Buffer,
 }
 
-impl LimitedReader {
+impl RawEntryReader {
     pub fn new(inner: Buffer, remaining: u64) -> Self {
         Self { inner, remaining }
     }
@@ -73,7 +73,24 @@ impl LimitedReader {
     }
 }
 
-impl io::Read for LimitedReader {
+impl io::BufRead for RawEntryReader {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        tracing::trace!(
+            remaining = self.remaining,
+            available_data = self.inner.available_data(),
+            available_space = self.inner.available_space(),
+            "fill_buf"
+        );
+        Ok(self.inner.data())
+    }
+
+    fn consume(&mut self, amt: usize) {
+        tracing::trace!(amt, "consume");
+        Buffer::consume(&mut self.inner, amt);
+    }
+}
+
+impl io::Read for RawEntryReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let len = cmp::min(buf.len() as u64, self.remaining) as usize;
         tracing::trace!(%len, buf_len = buf.len(), remaining = self.remaining, available_data = self.inner.available_data(), available_space = self.inner.available_space(), "computing len");

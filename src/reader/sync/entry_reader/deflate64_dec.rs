@@ -2,7 +2,7 @@ use std::io::{BufReader, Read};
 
 use deflate64::Deflate64Decoder;
 
-use crate::reader::sync::{Decoder, LimitedReader};
+use crate::reader::sync::{Decoder, RawEntryReader};
 
 impl<R> Decoder<R> for Deflate64Decoder<BufReader<R>>
 where
@@ -17,6 +17,6 @@ where
     }
 }
 
-pub(crate) fn mk_decoder(r: LimitedReader) -> impl Decoder<LimitedReader> {
+pub(crate) fn mk_decoder(r: RawEntryReader) -> impl Decoder<RawEntryReader> {
     Deflate64Decoder::new(r)
 }

@@ -2,7 +2,7 @@ use std::io::Read;
 
 use flate2::read::DeflateDecoder;
 
-use crate::reader::sync::{Decoder, LimitedReader};
+use crate::reader::sync::{Decoder, RawEntryReader};
 
 impl<R> Decoder<R> for DeflateDecoder<R>
 where
@@ -17,6 +17,6 @@ where
     }
 }
 
-pub(crate) fn mk_decoder(r: LimitedReader) -> impl Decoder<LimitedReader> {
+pub(crate) fn mk_decoder(r: RawEntryReader) -> impl Decoder<RawEntryReader> {
     DeflateDecoder::new(r)
 }

@@ -73,8 +73,7 @@ impl ArchiveReaderState {
 impl ArchiveReader {
     /// This should be > 65KiB, because the section at the end of the
     /// file that we check for end of central directory record is 65KiB.
-    /// 128 is the next power of two.
-    const DEFAULT_BUFFER_SIZE: usize = 128 * 1024;
+    const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
     /// Create a new archive reader with a specified file size.
     ///

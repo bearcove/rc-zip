@@ -1,5 +1,3 @@
-use tracing_test::traced_test;
-
 use chrono::{
     offset::{FixedOffset, Utc},
     DateTime, TimeZone, Timelike,
@@ -324,8 +322,7 @@ fn test_cases() -> Vec<ZipTest> {
     ]
 }
 
-#[test]
-#[traced_test]
+#[test_log::test]
 fn read_from_slice() {
     let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
     let slice = &bytes[..];
@@ -333,25 +330,22 @@ fn read_from_slice() {
     assert_eq!(archive.entries().count(), 2);
 }
 
-#[test]
-#[traced_test]
+#[test_log::test]
 fn read_from_file() {
     let f = File::open(zips_dir().join("test.zip")).unwrap();
     let archive = f.read_zip().unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
-#[test]
-#[traced_test]
+#[test_log::test]
 fn real_world_files() {
     for case in test_cases() {
-        eprintln!("============ testing {}", case.name());
+        tracing::trace!("============ testing {}", case.name());
         case.check(case.bytes().read_zip());
     }
 }
 
-#[test]
-#[traced_test]
+#[test_log::test]
 fn state_machine() {
     use rc_zip::reader::{ArchiveReader, ArchiveReaderResult};
 

@@ -3,7 +3,7 @@
 use crate::{
     error::*,
     format::*,
-    reader::sync::decoder::{Decoder, EOFNormalizer, LimitedReader, StoreDecoder},
+    reader::sync::decoder::{Decoder, EOFNormalizer, RawEntryReader, StoreDecoder},
     transition,
 };
 
@@ -45,7 +45,7 @@ enum State {
         hasher: crc32fast::Hasher,
         uncompressed_size: u64,
         header: LocalFileHeaderRecord,
-        decoder: Box<dyn Decoder<LimitedReader>>,
+        decoder: Box<dyn Decoder<RawEntryReader>>,
     },
     ReadDataDescriptor {
         metrics: EntryReadMetrics,
@@ -93,8 +93,8 @@ where
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
                             // allow unnecessary mut for some feature combinations
                             #[allow(unused_mut)]
-                            let mut limited_reader = LimitedReader::new(buffer, self.inner.compressed_size);
-                            let decoder: Box<dyn Decoder<LimitedReader>> = self.get_decoder(limited_reader)?;
+                            let mut limited_reader = RawEntryReader::new(buffer, self.inner.compressed_size);
+                            let decoder: Box<dyn Decoder<RawEntryReader>> = self.get_decoder(limited_reader)?;
 
                             S::ReadData {
                                 hasher: crc32fast::Hasher::new(),
@@ -253,7 +253,7 @@ impl<R> EntryReader<R>
 where
     R: io::Read,
 {
-    const DEFAULT_BUFFER_SIZE: usize = 8 * 1024;
+    const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
     pub fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
     where
@@ -272,14 +272,14 @@ where
 
     fn get_decoder(
         &self,
-        #[allow(unused_mut)] mut limited_reader: LimitedReader,
-    ) -> Result<Box<dyn Decoder<LimitedReader>>, Error> {
-        let decoder: Box<dyn Decoder<LimitedReader>> = match self.method {
-            Method::Store => Box::new(StoreDecoder::new(limited_reader)),
+        #[allow(unused_mut)] mut raw_r: RawEntryReader,
+    ) -> Result<Box<dyn Decoder<RawEntryReader>>, Error> {
+        let decoder: Box<dyn Decoder<RawEntryReader>> = match self.method {
+            Method::Store => Box::new(StoreDecoder::new(raw_r)),
             Method::Deflate => {
                 cfg_if! {
                     if #[cfg(feature = "deflate")] {
-                        Box::new(deflate_dec::mk_decoder(limited_reader))
+                        Box::new(deflate_dec::mk_decoder(raw_r))
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }
@@ -288,7 +288,7 @@ where
             Method::Deflate64 => {
                 cfg_if! {
                     if #[cfg(feature = "deflate64")] {
-                        Box::new(deflate64_dec::mk_decoder(limited_reader))
+                        Box::new(deflate64_dec::mk_decoder(raw_r))
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }
@@ -297,7 +297,7 @@ where
             Method::Lzma => {
                 cfg_if! {
                     if #[cfg(feature = "lzma")] {
-                        Box::new(lzma_dec::mk_decoder(limited_reader,self.inner.uncompressed_size)?)
+                        Box::new(lzma_dec::mk_decoder(raw_r,self.inner.uncompressed_size)?)
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }
@@ -306,7 +306,7 @@ where
             Method::Bzip2 => {
                 cfg_if! {
                     if #[cfg(feature = "bzip2")] {
-                        Box::new(bzip2_dec::mk_decoder(limited_reader))
+                        Box::new(bzip2_dec::mk_decoder(raw_r))
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }
@@ -315,7 +315,7 @@ where
             Method::Zstd => {
                 cfg_if! {
                     if #[cfg(feature = "zstd")] {
-                        Box::new(zstd_dec::mk_decoder(limited_reader)?)
+                        Box::new(zstd_dec::mk_decoder(raw_r)?)
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }

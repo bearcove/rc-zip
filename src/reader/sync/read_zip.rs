@@ -144,6 +144,7 @@ where
 {
     /// Returns a reader for the entry.
     pub fn reader(&self) -> EntryReader<<F as HasCursor>::Cursor<'a>> {
+        tracing::trace!("Creating EntryReader");
         EntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
     }
 

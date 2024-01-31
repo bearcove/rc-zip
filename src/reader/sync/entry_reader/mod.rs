@@ -19,6 +19,9 @@ mod deflate64_dec;
 #[cfg(feature = "bzip2")]
 mod bzip2_dec;
 
+#[cfg(feature = "zstd")]
+mod zstd_dec;
+
 use cfg_if::cfg_if;
 use oval::Buffer;
 use std::io;
@@ -304,6 +307,15 @@ where
                 cfg_if! {
                     if #[cfg(feature = "bzip2")] {
                         Box::new(bzip2_dec::mk_decoder(limited_reader))
+                    } else {
+                        return Err(Error::method_not_enabled(self.method));
+                    }
+                }
+            }
+            Method::Zstd => {
+                cfg_if! {
+                    if #[cfg(feature = "zstd")] {
+                        Box::new(zstd_dec::mk_decoder(limited_reader)?)
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }

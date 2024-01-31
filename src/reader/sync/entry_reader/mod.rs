@@ -3,7 +3,7 @@
 use crate::{
     error::*,
     format::*,
-    reader::sync::decoder::{Decoder, EOFNormalizer, RawEntryReader, StoreDecoder},
+    reader::sync::decoder::{Decoder, RawEntryReader, StoreDecoder},
     transition,
 };
 
@@ -65,7 +65,7 @@ pub struct EntryReader<R>
 where
     R: io::Read,
 {
-    rd: EOFNormalizer<R>,
+    rd: R,
     eof: bool,
     state: State,
     inner: StoredEntryInner,
@@ -260,7 +260,7 @@ where
         F: Fn(u64) -> R,
     {
         Self {
-            rd: EOFNormalizer::new(get_reader(entry.header_offset)),
+            rd: get_reader(entry.header_offset),
             eof: false,
             state: State::ReadLocalHeader {
                 buffer: Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),

@@ -308,6 +308,19 @@ fn test_cases() -> Vec<ZipTest> {
             }],
             ..Default::default()
         },
+        // same with zstd
+        #[cfg(feature = "zstd")]
+        ZipTest {
+            source: ZipSource::File("found-me-zstd.zip"),
+            expected_encoding: Some(Encoding::Utf8),
+            files: vec![ZipTestFile {
+                name: "found-me.txt",
+                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
+                modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0)).unwrap()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
     ]
 }
 

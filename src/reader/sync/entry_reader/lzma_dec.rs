@@ -2,7 +2,7 @@ use lzma_rs::decompress::Stream;
 use std::io::{Read, Write};
 
 use crate::{
-    reader::sync::{Decoder, LimitedReader},
+    reader::sync::{Decoder, RawEntryReader},
     Error, UnsupportedError,
 };
 
@@ -102,9 +102,9 @@ where
 }
 
 pub(crate) fn mk_decoder(
-    mut r: LimitedReader,
+    mut r: RawEntryReader,
     uncompressed_size: u64,
-) -> std::io::Result<impl Decoder<LimitedReader>> {
+) -> std::io::Result<impl Decoder<RawEntryReader>> {
     use byteorder::{LittleEndian, ReadBytesExt};
 
     // see `appnote.txt` section 5.8

@@ -1,23 +1,22 @@
-use std::io::{BufReader, Read};
+use std::io::{BufRead, Read};
 
 use zstd::stream::Decoder as ZstdDecoder;
 
-use crate::reader::sync::{Decoder, LimitedReader};
+use crate::reader::sync::{Decoder, RawEntryReader};
 
-impl<R> Decoder<R> for ZstdDecoder<'static, BufReader<R>>
+impl<R> Decoder<R> for ZstdDecoder<'static, R>
 where
-    R: Read,
+    R: Read + BufRead,
 {
     fn into_inner(self: Box<Self>) -> R {
-        Self::finish(*self).into_inner()
+        Self::finish(*self)
     }
 
     fn get_mut(&mut self) -> &mut R {
-        Self::get_mut(self).get_mut()
+        Self::get_mut(self)
     }
 }
 
-pub(crate) fn mk_decoder(r: LimitedReader) -> std::io::Result<impl Decoder<LimitedReader>> {
-    // TODO: have LimitedReader (and Buffer) implement BufRead, cf. https://github.com/fasterthanlime/rc-zip/issues/55
-    ZstdDecoder::with_buffer(BufReader::new(r))
+pub(crate) fn mk_decoder(r: RawEntryReader) -> std::io::Result<impl Decoder<RawEntryReader>> {
+    ZstdDecoder::with_buffer(r)
 }

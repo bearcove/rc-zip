@@ -75,17 +75,12 @@ impl RawEntryReader {
 
 impl io::BufRead for RawEntryReader {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        tracing::trace!(
-            remaining = self.remaining,
-            available_data = self.inner.available_data(),
-            available_space = self.inner.available_space(),
-            "fill_buf"
-        );
-        Ok(self.inner.data())
+        let max_avail = cmp::min(self.remaining, self.inner.available_data() as u64);
+        Ok(&self.inner.data()[..max_avail as usize])
     }
 
     fn consume(&mut self, amt: usize) {
-        tracing::trace!(amt, "consume");
+        self.remaining -= amt as u64;
         Buffer::consume(&mut self.inner, amt);
     }
 }

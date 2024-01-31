@@ -18,6 +18,5 @@ where
 }
 
 pub(crate) fn mk_decoder(r: RawEntryReader) -> std::io::Result<impl Decoder<RawEntryReader>> {
-    tracing::trace!("Creating ZstdDecoder");
     ZstdDecoder::with_buffer(r)
 }

@@ -105,10 +105,7 @@ where
                         });
                         self.read(buf)
                     }
-                    Err(ErrMode::Incomplete(_)) => {
-                        buffer.shift();
-                        self.read(buf)
-                    }
+                    Err(ErrMode::Incomplete(_)) => self.read(buf),
                     Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
                 }
             }
@@ -190,7 +187,6 @@ where
                         self.read(buf)
                     }
                     Err(ErrMode::Incomplete(_)) => {
-                        buffer.shift();
                         let n = self.rd.read(buffer.space())?;
                         if n == 0 {
                             return Err(io::ErrorKind::UnexpectedEof.into());

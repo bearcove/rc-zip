@@ -57,6 +57,12 @@ enum ArchiveReaderState {
     Done,
 }
 
+impl Default for ArchiveReaderState {
+    fn default() -> Self {
+        Self::Transitioning
+    }
+}
+
 impl ArchiveReaderState {
     fn buffer_as_mut(&mut self) -> Option<&mut Buffer> {
         use ArchiveReaderState as S;

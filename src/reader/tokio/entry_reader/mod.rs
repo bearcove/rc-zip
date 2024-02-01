@@ -5,7 +5,7 @@ use crate::{
         tokio::decoder::{AsyncDecoder, StoreAsyncDecoder},
         RawEntryReader,
     },
-    transition,
+    transition_async,
 };
 
 use cfg_if::cfg_if;
@@ -52,8 +52,14 @@ pin_project_lite::pin_project! {
     }
 }
 
+impl Default for State {
+    fn default() -> Self {
+        State::Transitioning
+    }
+}
+
 pin_project_lite::pin_project! {
-    pub struct EntryReader<R>
+    pub struct AsyncEntryReader<R>
     where
         R: AsyncRead,
     {
@@ -67,7 +73,7 @@ pin_project_lite::pin_project! {
     }
 }
 
-impl<R> AsyncRead for EntryReader<R>
+impl<R> AsyncRead for AsyncEntryReader<R>
 where
     R: AsyncRead,
 {
@@ -76,10 +82,10 @@ where
         cx: &mut task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> task::Poll<io::Result<()>> {
-        let this = self.project();
+        let mut this = self.project();
 
         use StateProj as S;
-        match this.state.project() {
+        match this.state.as_mut().project() {
             S::ReadLocalHeader { ref mut buffer } => {
                 let mut read_buf = tokio::io::ReadBuf::new(buffer.space());
                 futures::ready!(this.rd.poll_read(cx, &mut read_buf))?;
@@ -95,9 +101,8 @@ where
                         buffer.consume(input.as_bytes().offset_from(&buffer.data()));
 
                         trace!("local file header: {:#?}", header);
-                        transition!(self.state => (State::ReadLocalHeader { buffer }) {
-                            let mut limited_reader = RawEntryReader::new(buffer, self.inner.compressed_size);
-                            let decoder = self.get_decoder(limited_reader)?;
+                        transition_async!(this.state => (State::ReadLocalHeader { buffer }) {
+                            let decoder = self.get_decoder(RawEntryReader::new(buffer, self.inner.compressed_size))?;
 
                             State::ReadData {
                                 hasher: crc32fast::Hasher::new(),
@@ -148,7 +153,7 @@ where
 
                 match read_bytes {
                     0 => {
-                        transition!(self.state => (State::ReadData { decoder, header, hasher, uncompressed_size, .. }) {
+                        transition_async!(this.state => (State::ReadData { decoder, header, hasher, uncompressed_size, .. }) {
                             let limited_reader = decoder.into_inner();
                             let buffer = limited_reader.into_inner();
                             let metrics = EntryReadMetrics {
@@ -168,7 +173,7 @@ where
                     n => {
                         **uncompressed_size = **uncompressed_size + n as u64;
                         let read_slice = &buf.filled()[filled_before..filled_after];
-                        hasher.update(&buf.filled()[..n]);
+                        hasher.update(read_slice);
                         Ok(()).into()
                     }
                 }
@@ -185,7 +190,7 @@ where
                     Ok(descriptor) => {
                         buffer.consume(input.as_bytes().offset_from(&buffer.data()));
                         trace!("data descriptor = {:#?}", descriptor);
-                        transition!(self.state => (State::ReadDataDescriptor { metrics, header, .. }) {
+                        transition_async!(this.state => (State::ReadDataDescriptor { metrics, header, .. }) {
                             State::Validate { metrics, header, descriptor: Some(descriptor) }
                         });
                         self.poll_read(cx, buf)
@@ -251,7 +256,7 @@ where
     }
 }
 
-impl<R> EntryReader<R>
+impl<R> AsyncEntryReader<R>
 where
     R: AsyncRead,
 {
@@ -274,7 +279,7 @@ where
 
     fn get_decoder(
         &self,
-        mut raw_r: RawEntryReader,
+        raw_r: RawEntryReader,
     ) -> Result<Box<dyn AsyncDecoder<RawEntryReader> + Unpin>, Error> {
         let decoder: Box<dyn AsyncDecoder<RawEntryReader> + Unpin> = match self.method {
             Method::Store => Box::new(StoreAsyncDecoder::new(raw_r)),

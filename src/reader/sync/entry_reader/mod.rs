@@ -64,6 +64,12 @@ enum State {
     Transitioning,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        State::Transitioning
+    }
+}
+
 pub struct EntryReader<R>
 where
     R: io::Read,
@@ -97,8 +103,7 @@ where
 
                         trace!("local file header: {:#?}", header);
                         transition!(self.state => (S::ReadLocalHeader { buffer }) {
-                            let mut limited_reader = RawEntryReader::new(buffer, self.inner.compressed_size);
-                            let decoder = self.get_decoder(limited_reader)?;
+                            let decoder = self.get_decoder(RawEntryReader::new(buffer, self.inner.compressed_size))?;
 
                             S::ReadData {
                                 hasher: crc32fast::Hasher::new(),

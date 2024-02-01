@@ -40,6 +40,7 @@ struct EntryReadMetrics {
     crc32: u32,
 }
 
+#[derive(Default)]
 enum State {
     ReadLocalHeader {
         buffer: Buffer,
@@ -61,13 +62,8 @@ enum State {
         descriptor: Option<DataDescriptorRecord>,
     },
     Done,
+    #[default]
     Transitioning,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State::Transitioning
-    }
 }
 
 pub struct EntryReader<R>
@@ -266,7 +262,7 @@ where
 
     fn get_decoder(
         &self,
-        mut raw_r: RawEntryReader,
+        raw_r: RawEntryReader,
     ) -> Result<Box<dyn Decoder<RawEntryReader>>, Error> {
         let decoder: Box<dyn Decoder<RawEntryReader>> = match self.method {
             Method::Store => Box::new(StoreDecoder::new(raw_r)),

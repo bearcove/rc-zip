@@ -2,7 +2,7 @@ use std::io::Read;
 
 use flate2::read::DeflateDecoder;
 
-use crate::reader::{sync::Decoder, RawEntryReader};
+use crate::reader::{sync::decoder::Decoder, RawEntryReader};
 
 impl<R> Decoder<R> for DeflateDecoder<R>
 where

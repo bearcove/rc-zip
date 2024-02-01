@@ -25,6 +25,7 @@ struct EntryReadMetrics {
 
 pin_project_lite::pin_project! {
     #[project = StateProj]
+    #[derive(Default)]
     enum State {
         ReadLocalHeader {
             buffer: Buffer,
@@ -47,13 +48,8 @@ pin_project_lite::pin_project! {
             descriptor: Option<DataDescriptorRecord>,
         },
         Done,
+        #[default]
         Transitioning,
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State::Transitioning
     }
 }
 
@@ -170,7 +166,7 @@ where
                         self.poll_read(cx, buf)
                     }
                     n => {
-                        **uncompressed_size = **uncompressed_size + n as u64;
+                        **uncompressed_size += n as u64;
                         let read_slice = &buf.filled()[filled_before..filled_after];
                         hasher.update(read_slice);
                         Ok(()).into()

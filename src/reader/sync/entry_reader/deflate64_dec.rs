@@ -2,7 +2,7 @@ use std::io::{BufReader, Read};
 
 use deflate64::Deflate64Decoder;
 
-use crate::reader::{sync::Decoder, RawEntryReader};
+use crate::reader::{sync::decoder::Decoder, RawEntryReader};
 
 impl<R> Decoder<R> for Deflate64Decoder<BufReader<R>>
 where

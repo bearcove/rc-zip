@@ -2,7 +2,7 @@ use std::io::Read;
 
 use bzip2::read::BzDecoder;
 
-use crate::reader::sync::{Decoder, RawEntryReader};
+use crate::reader::{sync::Decoder, RawEntryReader};
 
 impl<R> Decoder<R> for BzDecoder<R>
 where

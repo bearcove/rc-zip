@@ -2,6 +2,8 @@ use std::{cmp, io};
 
 use oval::Buffer;
 
+use crate::reader::RawEntryReader;
+
 pub trait Decoder<R>: io::Read
 where
     R: io::Read,
@@ -48,27 +50,6 @@ where
     }
 
     fn get_mut(&mut self) -> &mut R {
-        &mut self.inner
-    }
-}
-
-/// Only allows reading a fixed number of bytes from a [oval::Buffer],
-/// allowing to move the inner reader out afterwards.
-pub struct RawEntryReader {
-    remaining: u64,
-    inner: Buffer,
-}
-
-impl RawEntryReader {
-    pub fn new(inner: Buffer, remaining: u64) -> Self {
-        Self { inner, remaining }
-    }
-
-    pub fn into_inner(self) -> Buffer {
-        self.inner
-    }
-
-    pub fn get_mut(&mut self) -> &mut Buffer {
         &mut self.inner
     }
 }

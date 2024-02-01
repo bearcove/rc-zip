@@ -2,7 +2,7 @@ use std::io::{BufRead, Read};
 
 use zstd::stream::Decoder as ZstdDecoder;
 
-use crate::reader::sync::{Decoder, RawEntryReader};
+use crate::reader::{sync::Decoder, RawEntryReader};
 
 impl<R> Decoder<R> for ZstdDecoder<'static, R>
 where

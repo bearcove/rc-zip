@@ -3,6 +3,8 @@ use std::{cmp, io, pin::Pin, task};
 use oval::Buffer;
 use tokio::io::{AsyncBufRead, AsyncRead};
 
+use crate::reader::RawEntryReader;
+
 pub trait AsyncDecoder<R>: AsyncRead
 where
     R: AsyncRead,
@@ -61,30 +63,7 @@ where
     }
 }
 
-// TODO: dedup between tokio & sync
-
-/// Only allows reading a fixed number of bytes from a [oval::Buffer],
-/// allowing to move the inner reader out afterwards.
-pub struct RawEntryAsyncReader {
-    remaining: u64,
-    inner: Buffer,
-}
-
-impl RawEntryAsyncReader {
-    pub fn new(inner: Buffer, remaining: u64) -> Self {
-        Self { inner, remaining }
-    }
-
-    pub fn into_inner(self) -> Buffer {
-        self.inner
-    }
-
-    pub fn get_mut(&mut self) -> &mut Buffer {
-        &mut self.inner
-    }
-}
-
-impl AsyncBufRead for RawEntryAsyncReader {
+impl AsyncBufRead for RawEntryReader {
     fn consume(mut self: Pin<&mut Self>, amt: usize) {
         self.as_mut().remaining -= amt as u64;
         Buffer::consume(&mut self.inner, amt);
@@ -99,7 +78,7 @@ impl AsyncBufRead for RawEntryAsyncReader {
     }
 }
 
-impl AsyncRead for RawEntryAsyncReader {
+impl AsyncRead for RawEntryReader {
     fn poll_read(
         mut self: Pin<&mut Self>,
         _cx: &mut task::Context<'_>,

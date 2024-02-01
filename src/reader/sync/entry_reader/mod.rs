@@ -3,7 +3,10 @@
 use crate::{
     error::*,
     format::*,
-    reader::sync::decoder::{Decoder, RawEntryReader, StoreDecoder},
+    reader::{
+        sync::decoder::{Decoder, StoreDecoder},
+        RawEntryReader,
+    },
     transition,
 };
 

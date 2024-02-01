@@ -2,7 +2,7 @@ use lzma_rs::decompress::Stream;
 use std::io::{Read, Write};
 
 use crate::{
-    reader::sync::{Decoder, RawEntryReader},
+    reader::{sync::Decoder, RawEntryReader},
     Error, UnsupportedError,
 };
 

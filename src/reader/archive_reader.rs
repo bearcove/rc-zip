@@ -154,6 +154,25 @@ impl ArchiveReader {
         }
     }
 
+    /// Reads some data from `rd` (which implements AsyncRead) into the
+    /// reader's internal buffer.
+    ///
+    /// Any I/O errors will be returned.
+    ///
+    /// If successful, this returns the number of bytes read. On success,
+    /// [process()](ArchiveReader::process()) should be called next.
+    #[cfg(feature = "tokio")]
+    pub async fn read_async<R: tokio::io::AsyncRead + Unpin>(
+        &mut self,
+        rd: &mut R,
+    ) -> Result<usize, std::io::Error> {
+        if let Some(buffer) = self.state.buffer_as_mut() {
+            buffer.read_async(rd).await
+        } else {
+            Ok(0)
+        }
+    }
+
     /// Process buffered data
     ///
     /// Errors returned from process() are caused by invalid zip archives,

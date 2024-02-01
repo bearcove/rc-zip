@@ -66,6 +66,26 @@ impl Buffer {
         }
     }
 
+    /// fill that buffer from the given AsyncRead
+    #[cfg(feature = "tokio")]
+    pub(crate) async fn read_async(
+        &mut self,
+        rd: &mut (impl tokio::io::AsyncRead + Unpin),
+    ) -> Result<usize, std::io::Error> {
+        if self.buffer.available_space() == 0 {
+            trace!("uh oh, buffer has no available space!")
+        }
+
+        match tokio::io::AsyncReadExt::read(rd, self.buffer.space()).await {
+            Ok(written) => {
+                self.read_bytes += written as u64;
+                self.buffer.fill(written);
+                Ok(written)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub(crate) fn read_offset(&self, offset: u64) -> u64 {
         self.read_bytes + offset
     }

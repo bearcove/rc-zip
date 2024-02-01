@@ -1,0 +1,113 @@
+use std::{cmp, io, pin::Pin, task};
+
+use oval::Buffer;
+use tokio::io::{AsyncBufRead, AsyncRead};
+
+pub trait AsyncDecoder<R>: AsyncRead
+where
+    R: AsyncRead,
+{
+    /// Moves the inner reader out of this decoder.
+    /// self is boxed because decoders are typically used as trait objects.
+    fn into_inner(self: Box<Self>) -> R;
+
+    /// Returns a mutable reference to the inner reader.
+    fn get_mut(&mut self) -> &mut R;
+}
+
+pub struct StoreAsyncDecoder<R>
+where
+    R: AsyncRead,
+{
+    inner: R,
+}
+
+impl<R> StoreAsyncDecoder<R>
+where
+    R: AsyncRead,
+{
+    pub fn new(inner: R) -> Self {
+        Self { inner }
+    }
+}
+
+impl<R> AsyncRead for StoreAsyncDecoder<R>
+where
+    R: AsyncRead,
+{
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> task::Poll<io::Result<()>> {
+        // pin-project inner
+        let inner = unsafe { self.map_unchecked_mut(|s| &mut s.inner) };
+        inner.poll_read(cx, buf)
+    }
+}
+
+impl<R> AsyncDecoder<R> for StoreAsyncDecoder<R>
+where
+    R: AsyncRead,
+{
+    fn into_inner(self: Box<Self>) -> R {
+        self.inner
+    }
+
+    fn get_mut(&mut self) -> &mut R {
+        &mut self.inner
+    }
+}
+
+// TODO: dedup between tokio & sync
+
+/// Only allows reading a fixed number of bytes from a [oval::Buffer],
+/// allowing to move the inner reader out afterwards.
+pub struct RawEntryAsyncReader {
+    remaining: u64,
+    inner: Buffer,
+}
+
+impl RawEntryAsyncReader {
+    pub fn new(inner: Buffer, remaining: u64) -> Self {
+        Self { inner, remaining }
+    }
+
+    pub fn into_inner(self) -> Buffer {
+        self.inner
+    }
+
+    pub fn get_mut(&mut self) -> &mut Buffer {
+        &mut self.inner
+    }
+}
+
+impl AsyncBufRead for RawEntryAsyncReader {
+    fn consume(mut self: Pin<&mut Self>, amt: usize) {
+        self.as_mut().remaining -= amt as u64;
+        Buffer::consume(&mut self.inner, amt);
+    }
+
+    fn poll_fill_buf(
+        self: Pin<&mut Self>,
+        _cx: &mut task::Context<'_>,
+    ) -> task::Poll<io::Result<&[u8]>> {
+        let max_avail = cmp::min(self.remaining, self.inner.available_data() as u64);
+        Ok(self.get_mut().inner.data()[..max_avail as _].as_ref()).into()
+    }
+}
+
+impl AsyncRead for RawEntryAsyncReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> task::Poll<io::Result<()>> {
+        let len = cmp::min(buf.remaining() as u64, self.remaining) as usize;
+        tracing::trace!(%len, buf_remaining = buf.remaining(), remaining = self.remaining, available_data = self.inner.available_data(), available_space = self.inner.available_space(), "computing len");
+
+        buf.put_slice(&self.inner.data()[..len]);
+        self.as_mut().inner.consume(len);
+        Ok(()).into()
+    }
+}

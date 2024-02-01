@@ -20,7 +20,7 @@ name = "jean"
 path = "examples/jean/src/main.rs"
 
 [dependencies]
-winnow = "0.5.35"
+winnow = "0.5.36"
 pretty-hex = "0.4.1"
 oval = "2.0.0"
 chrono = "0.4.33"

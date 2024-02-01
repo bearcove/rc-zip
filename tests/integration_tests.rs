@@ -7,6 +7,10 @@ use rc_zip::{
     reader::sync::{HasCursor, SyncArchive, SyncStoredEntry},
     Archive, Encoding,
 };
+
+#[cfg(feature = "tokio")]
+use rc_zip::reader::tokio::{AsyncArchive, AsyncReadZip, AsyncStoredEntry, HasAsyncCursor};
+
 use std::{fs::File, path::PathBuf};
 
 enum ZipSource {
@@ -73,6 +77,49 @@ impl ZipTest {
             f.check(&archive);
         }
     }
+
+    #[cfg(feature = "tokio")]
+    async fn check_async<F: rc_zip::reader::tokio::HasAsyncCursor>(
+        &self,
+        archive: Result<AsyncArchive<'_, F>, rc_zip::Error>,
+    ) {
+        let case_bytes = self.bytes();
+
+        if let Some(expected) = &self.error {
+            let actual = match archive {
+                Err(e) => e,
+                Ok(_) => panic!("should have failed"),
+            };
+            let expected = format!("{:#?}", expected);
+            let actual = format!("{:#?}", actual);
+            assert_eq!(expected, actual);
+            return;
+        }
+        let archive = archive.unwrap();
+
+        assert_eq!(case_bytes.len() as u64, archive.size());
+
+        if let Some(expected) = self.comment {
+            assert_eq!(expected, archive.comment().expect("should have comment"))
+        }
+
+        if let Some(exp_encoding) = self.expected_encoding {
+            println!("{}: should be {}", self.name(), exp_encoding);
+            assert_eq!(archive.encoding(), exp_encoding);
+        }
+
+        assert_eq!(
+            self.files.len(),
+            archive.entries().count(),
+            "{} should have {} entries files",
+            self.name(),
+            self.files.len()
+        );
+
+        for f in &self.files {
+            f.check_async(&archive).await;
+        }
+    }
 }
 
 struct ZipTestFile {
@@ -116,6 +163,65 @@ impl ZipTestFile {
         match entry.contents() {
             rc_zip::EntryContents::File => {
                 let actual_bytes = entry.bytes().unwrap();
+
+                match &self.content {
+                    FileContent::Unchecked => {
+                        // ah well
+                    }
+                    FileContent::Bytes(expected_bytes) => {
+                        // first check length
+                        assert_eq!(actual_bytes.len(), expected_bytes.len());
+                        assert_eq!(&actual_bytes[..], &expected_bytes[..])
+                    }
+                    FileContent::File(file_path) => {
+                        let expected_bytes = std::fs::read(zips_dir().join(file_path)).unwrap();
+                        // first check length
+                        assert_eq!(actual_bytes.len(), expected_bytes.len());
+                        assert_eq!(&actual_bytes[..], &expected_bytes[..])
+                    }
+                }
+            }
+            rc_zip::EntryContents::Symlink | rc_zip::EntryContents::Directory => {
+                assert!(matches!(self.content, FileContent::Unchecked));
+            }
+        }
+    }
+}
+#[cfg(feature = "tokio")]
+impl ZipTestFile {
+    async fn check_async<F: HasAsyncCursor>(&self, archive: &AsyncArchive<'_, F>) {
+        let entry = archive
+            .by_name(self.name)
+            .unwrap_or_else(|| panic!("entry {} should exist", self.name));
+
+        let archive_inner: &Archive = archive;
+        let entry_inner = archive_inner.by_name(self.name).unwrap();
+        assert_eq!(entry.name(), entry_inner.name());
+
+        self.check_against_async(entry).await;
+    }
+
+    async fn check_against_async<F: HasAsyncCursor>(&self, entry: AsyncStoredEntry<'_, F>) {
+        if let Some(expected) = self.modified {
+            assert_eq!(
+                expected,
+                entry.modified(),
+                "entry {} should have modified = {:?}",
+                entry.name(),
+                expected
+            )
+        }
+
+        if let Some(mode) = self.mode {
+            assert_eq!(entry.mode.0 & 0o777, mode);
+        }
+
+        // I have honestly yet to see a zip file _entry_ with a comment.
+        assert!(entry.comment().is_none());
+
+        match entry.contents() {
+            rc_zip::EntryContents::File => {
+                let actual_bytes = entry.bytes().await.unwrap();
 
                 match &self.content {
                     FileContent::Unchecked => {
@@ -342,6 +448,15 @@ fn real_world_files() {
     for case in test_cases() {
         tracing::trace!("============ testing {}", case.name());
         case.check(case.bytes().read_zip());
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test_log::test(tokio::test)]
+async fn real_world_files_async() {
+    for case in test_cases() {
+        tracing::trace!("============ testing {}", case.name());
+        case.check_async(case.bytes().read_zip_async().await).await;
     }
 }
 

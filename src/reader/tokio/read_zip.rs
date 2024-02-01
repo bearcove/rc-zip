@@ -19,7 +19,11 @@ pub trait AsyncReadZipWithSize {
     ///
     /// This functions blocks until the entire archive has been read.
     /// It is not compatible with non-blocking or async I/O.
-    async fn read_zip_with_size(&self, size: u64) -> Result<AsyncArchive<'_, Self::File>, Error>;
+    #[allow(async_fn_in_trait)]
+    async fn read_zip_with_size_async(
+        &self,
+        size: u64,
+    ) -> Result<AsyncArchive<'_, Self::File>, Error>;
 }
 
 /// A trait for reading something as a zip archive (blocking I/O model),
@@ -33,7 +37,8 @@ pub trait AsyncReadZip {
     ///
     /// This functions blocks until the entire archive has been read.
     /// It is not compatible with non-blocking or async I/O.
-    async fn read_zip(&self) -> Result<AsyncArchive<'_, Self::File>, Error>;
+    #[allow(async_fn_in_trait)]
+    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error>;
 }
 
 impl<F> AsyncReadZipWithSize for F
@@ -42,7 +47,7 @@ where
 {
     type File = F;
 
-    async fn read_zip_with_size(&self, size: u64) -> Result<AsyncArchive<'_, F>, Error> {
+    async fn read_zip_with_size_async(&self, size: u64) -> Result<AsyncArchive<'_, F>, Error> {
         let mut ar = ArchiveReader::new(size);
         loop {
             if let Some(offset) = ar.wants_read() {
@@ -72,16 +77,16 @@ where
 impl AsyncReadZip for &[u8] {
     type File = Self;
 
-    async fn read_zip(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
-        self.read_zip_with_size(self.len() as u64).await
+    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
+        self.read_zip_with_size_async(self.len() as u64).await
     }
 }
 
 impl AsyncReadZip for Vec<u8> {
     type File = Self;
 
-    async fn read_zip(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
-        self.read_zip_with_size(self.len() as u64).await
+    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
+        self.read_zip_with_size_async(self.len() as u64).await
     }
 }
 

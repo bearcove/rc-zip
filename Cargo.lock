@@ -95,11 +95,16 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a116f46a969224200a0a97f29cfd4c50e7534e4b4826bd23ea2c3c533039c82c"
 dependencies = [
+ "bzip2",
+ "deflate64",
  "flate2",
  "futures-core",
  "memchr",
  "pin-project-lite",
  "tokio",
+ "xz2",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -565,6 +570,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-sys"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fda04ab3764e6cde78b9974eec4f779acaba7c4e84b36eca3cf77c581b85d27"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -808,34 +824,61 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 name = "rc-zip"
 version = "2.0.1"
 dependencies = [
- "async-compression",
+ "byteorder",
+ "cfg-if",
+ "chardetng",
+ "chrono",
+ "crc32fast",
+ "encoding_rs",
+ "num_enum",
+ "oem_cp",
+ "oval",
+ "pretty-hex",
+ "thiserror",
+ "tracing",
+ "winnow",
+]
+
+[[package]]
+name = "rc-zip-sync"
+version = "2.0.1"
+dependencies = [
  "byteorder",
  "bzip2",
  "cfg-if",
- "chardetng",
  "chrono",
  "clap",
  "crc32fast",
  "deflate64",
- "encoding_rs",
  "flate2",
- "futures",
  "humansize",
  "indicatif",
  "lzma-rs",
- "num_enum",
- "oem_cp",
  "oval",
- "pin-project-lite",
  "positioned-io",
- "pretty-hex",
+ "rc-zip",
  "test-log",
- "thiserror",
- "tokio",
  "tracing",
  "tracing-subscriber",
  "winnow",
  "zstd",
+]
+
+[[package]]
+name = "rc-zip-tokio"
+version = "2.0.1"
+dependencies = [
+ "async-compression",
+ "cfg-if",
+ "crc32fast",
+ "futures",
+ "oval",
+ "pin-project-lite",
+ "positioned-io",
+ "rc-zip",
+ "tokio",
+ "tracing",
+ "winnow",
 ]
 
 [[package]]
@@ -1033,18 +1076,6 @@ dependencies = [
  "bytes",
  "num_cpus",
  "pin-project-lite",
- "tokio-macros",
-]
-
-[[package]]
-name = "tokio-macros"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -1307,6 +1338,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "818ce546a11a9986bc24f93d0cdf38a8a1a400f1473ea8c82e59f6e0ffab9249"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "xz2"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "388c44dc09d76f1536602ead6d325eb532f5c122f17782bd57fb47baeeb767e2"
+dependencies = [
+ "lzma-sys",
 ]
 
 [[package]]

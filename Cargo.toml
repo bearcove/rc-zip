@@ -1,67 +1,7 @@
-[package]
-name = "rc-zip"
-version = "2.0.1"
-description = "zip reading"
-repository = "https://github.com/fasterthanlime/rc-zip"
-license = "Apache-2.0 OR MIT"
-authors = ["Amos Wenger <amoswenger@gmail.com>"]
-edition = "2021"
-readme = "README.md"
-
-keywords = ["zip", "unzip"]
-categories = ["compression"]
-
-[lib]
-name = "rc_zip"
-path = "src/lib.rs"
-
-[[example]]
-name = "jean"
-path = "examples/jean/src/main.rs"
-
-[dependencies]
-winnow = "0.5.36"
-pretty-hex = "0.4.1"
-oval = "2.0.0"
-chrono = "0.4.33"
-encoding_rs = "0.8.33"
-crc32fast = "1.3.2"
-positioned-io = { version = "0.3.3", optional = true }
-tracing = "0.1.40"
-oem_cp = "2.0.0"
-thiserror = "1.0.56"
-chardetng = "0.1.17"
-flate2 = { version = "1.0.28", optional = true }
-num_enum = "0.7.2"
-byteorder = "1.5.0"
-cfg-if = "1.0.0"
-lzma-rs = { version = "0.3.0", features = ["stream"], optional = true }
-deflate64 = { version = "0.1.7", optional = true }
-bzip2 = { version = "0.4.4", optional = true }
-zstd = { version = "0.13.0", optional = true }
-tokio = { version = "1.35.1", optional = true, features = ["fs", "io-util", "rt-multi-thread"] }
-futures = { version = "0.3.30", optional = true }
-pin-project-lite = { version = "0.2.13", optional = true }
-async-compression = { version = "0.4.6", optional = true, features = ["tokio", "deflate"] }
-
-[features]
-default = ["sync", "file", "deflate"]
-sync = []
-file = ["positioned-io"]
-deflate = ["dep:flate2"]
-deflate64 = ["dep:deflate64"]
-lzma = ["dep:lzma-rs"]
-bzip2 = ["dep:bzip2"]
-zstd = ["dep:zstd"]
-tokio = ["dep:tokio", "dep:futures", "dep:pin-project-lite", "async-compression"]
-
-[dev-dependencies]
-clap = { version = "4.4.18", features = ["derive"] }
-humansize = "2.1.3"
-indicatif = "0.17.7"
-test-log = { version = "0.2.14", default-features = false, features = ["tracing-subscriber", "trace"] }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-tokio = { version = "1.35.1", features = ["macros"] }
-
-[profile.release]
-debug = 1
+[workspace]
+resolver = "2"
+members = [
+	"rc-zip",
+	"rc-zip-sync",
+	"rc-zip-tokio",
+]

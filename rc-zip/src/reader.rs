@@ -453,8 +453,6 @@ impl ArchiveReader {
     }
 }
 
-/// FIXME: get rid of this wrapper entirely, we can just use `.available_data` from oval::Buffer ?
-
 /// A wrapper around [oval::Buffer] that keeps track of how many bytes we've read since
 /// initialization or the last reset.
 pub(crate) struct Buffer {

@@ -8,7 +8,6 @@ use crate::{
     transition_async,
 };
 
-use cfg_if::cfg_if;
 use oval::Buffer;
 use std::{io, pin::Pin, task};
 use tokio::io::AsyncRead;
@@ -78,11 +77,11 @@ where
     R: AsyncRead,
 {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> task::Poll<io::Result<()>> {
-        let mut this = self.project();
+        let mut this = self.as_mut().project();
 
         use StateProj as S;
         match this.state.as_mut().project() {
@@ -102,7 +101,7 @@ where
 
                         trace!("local file header: {:#?}", header);
                         transition_async!(this.state => (State::ReadLocalHeader { buffer }) {
-                            let decoder = self.get_decoder(RawEntryReader::new(buffer, self.inner.compressed_size))?;
+                            let decoder = method_to_decoder(*this.method, RawEntryReader::new(buffer, this.inner.compressed_size))?;
 
                             State::ReadData {
                                 hasher: crc32fast::Hasher::new(),
@@ -127,7 +126,7 @@ where
                 ..
             } => {
                 {
-                    let buffer = decoder.get_mut().get_mut().get_mut();
+                    let buffer = decoder.as_mut().get_mut().get_mut().get_mut();
                     if !*this.eof && buffer.available_data() == 0 {
                         if buffer.available_space() == 0 {
                             buffer.shift();
@@ -147,7 +146,7 @@ where
                 }
 
                 let filled_before = buf.filled().len();
-                futures::ready!(decoder.poll_read(cx, buf))?;
+                futures::ready!(decoder.as_mut().poll_read(cx, buf))?;
                 let filled_after = buf.filled().len();
                 let read_bytes = filled_after - filled_before;
 
@@ -186,7 +185,7 @@ where
                 );
 
                 let mut input = Partial::new(buffer.data());
-                match DataDescriptorRecord::mk_parser(self.inner.is_zip64).parse_next(&mut input) {
+                match DataDescriptorRecord::mk_parser(this.inner.is_zip64).parse_next(&mut input) {
                     Ok(descriptor) => {
                         buffer.consume(input.as_bytes().offset_from(&buffer.data()));
                         trace!("data descriptor = {:#?}", descriptor);
@@ -213,16 +212,16 @@ where
                 ref header,
                 ref descriptor,
             } => {
-                let expected_crc32 = if self.inner.crc32 != 0 {
-                    self.inner.crc32
+                let expected_crc32 = if this.inner.crc32 != 0 {
+                    this.inner.crc32
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.crc32
                 } else {
                     header.crc32
                 };
 
-                let expected_size = if self.inner.uncompressed_size != 0 {
-                    self.inner.uncompressed_size
+                let expected_size = if this.inner.uncompressed_size != 0 {
+                    this.inner.uncompressed_size
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.uncompressed_size
                 } else {
@@ -247,7 +246,7 @@ where
                     .into();
                 }
 
-                self.state = State::Done;
+                *this.state.as_mut().get_mut() = State::Done;
                 self.poll_read(cx, buf)
             }
             S::Done => Ok(()).into(),
@@ -276,18 +275,18 @@ where
             inner: entry.inner,
         }
     }
+}
 
-    fn get_decoder(
-        &self,
-        raw_r: RawEntryReader,
-    ) -> Result<Box<dyn AsyncDecoder<RawEntryReader> + Unpin>, Error> {
-        let decoder: Box<dyn AsyncDecoder<RawEntryReader> + Unpin> = match self.method {
-            Method::Store => Box::new(StoreAsyncDecoder::new(raw_r)),
-            method => {
-                return Err(Error::method_not_supported(method));
-            }
-        };
+fn method_to_decoder(
+    method: Method,
+    raw_r: RawEntryReader,
+) -> Result<Box<dyn AsyncDecoder<RawEntryReader> + Unpin>, Error> {
+    let decoder: Box<dyn AsyncDecoder<RawEntryReader> + Unpin> = match method {
+        Method::Store => Box::new(StoreAsyncDecoder::new(raw_r)),
+        method => {
+            return Err(Error::method_not_supported(method));
+        }
+    };
 
-        Ok(decoder)
-    }
+    Ok(decoder)
 }

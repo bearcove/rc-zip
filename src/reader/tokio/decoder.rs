@@ -15,11 +15,14 @@ where
     fn get_mut(&mut self) -> &mut R;
 }
 
-pub struct StoreAsyncDecoder<R>
-where
-    R: AsyncRead,
-{
-    inner: R,
+pin_project_lite::pin_project! {
+    pub struct StoreAsyncDecoder<R>
+    where
+        R: AsyncRead,
+    {
+        #[pin]
+        inner: R,
+    }
 }
 
 impl<R> StoreAsyncDecoder<R>
@@ -40,9 +43,8 @@ where
         cx: &mut task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> task::Poll<io::Result<()>> {
-        // pin-project inner
-        let inner = unsafe { self.map_unchecked_mut(|s| &mut s.inner) };
-        inner.poll_read(cx, buf)
+        let this = self.project();
+        this.inner.poll_read(cx, buf)
     }
 }
 

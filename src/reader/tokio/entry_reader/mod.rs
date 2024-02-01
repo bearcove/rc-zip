@@ -8,6 +8,10 @@ use crate::{
     transition_async,
 };
 
+#[cfg(feature = "deflate")]
+mod deflate_dec;
+
+use cfg_if::cfg_if;
 use oval::Buffer;
 use std::{io, pin::Pin, task};
 use tokio::io::AsyncRead;
@@ -279,6 +283,15 @@ fn method_to_decoder(
 ) -> Result<Box<dyn AsyncDecoder<RawEntryReader> + Unpin>, Error> {
     let decoder: Box<dyn AsyncDecoder<RawEntryReader> + Unpin> = match method {
         Method::Store => Box::new(StoreAsyncDecoder::new(raw_r)),
+        Method::Deflate => {
+            cfg_if! {
+                if #[cfg(feature = "deflate")] {
+                    Box::new(deflate_dec::mk_decoder(raw_r))
+                } else {
+                    return Err(Error::method_not_enabled(self.method));
+                }
+            }
+        }
         method => {
             return Err(Error::method_not_supported(method));
         }

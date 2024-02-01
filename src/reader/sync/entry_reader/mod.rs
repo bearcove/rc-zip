@@ -1,5 +1,3 @@
-//! This part of the API is still being designed - no guarantees are made
-//! whatsoever.
 use crate::{
     error::*,
     format::*,
@@ -10,9 +8,6 @@ use crate::{
     transition,
 };
 
-#[cfg(feature = "lzma")]
-mod lzma_dec;
-
 #[cfg(feature = "deflate")]
 mod deflate_dec;
 
@@ -21,6 +16,9 @@ mod deflate64_dec;
 
 #[cfg(feature = "bzip2")]
 mod bzip2_dec;
+
+#[cfg(feature = "lzma")]
+mod lzma_dec;
 
 #[cfg(feature = "zstd")]
 mod zstd_dec;

@@ -84,11 +84,16 @@ impl AsyncRead for RawEntryReader {
         _cx: &mut task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> task::Poll<io::Result<()>> {
-        let len = cmp::min(buf.remaining() as u64, self.remaining) as usize;
+        let len = cmp::min(
+            buf.remaining() as u64,
+            cmp::min(self.remaining, self.inner.available_data() as _),
+        ) as usize;
         tracing::trace!(%len, buf_remaining = buf.remaining(), remaining = self.remaining, available_data = self.inner.available_data(), available_space = self.inner.available_space(), "computing len");
 
         buf.put_slice(&self.inner.data()[..len]);
         self.as_mut().inner.consume(len);
+        self.remaining -= len as u64;
+
         Ok(()).into()
     }
 }

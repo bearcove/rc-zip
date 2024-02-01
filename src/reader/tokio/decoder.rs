@@ -5,7 +5,7 @@ use tokio::io::{AsyncBufRead, AsyncRead};
 
 use crate::reader::RawEntryReader;
 
-pub trait AsyncDecoder<R>: AsyncRead
+pub(crate) trait AsyncDecoder<R>: AsyncRead
 where
     R: AsyncRead,
 {
@@ -18,7 +18,7 @@ where
 }
 
 pin_project_lite::pin_project! {
-    pub struct StoreAsyncDecoder<R>
+    pub(crate) struct StoreAsyncDecoder<R>
     where
         R: AsyncRead,
     {
@@ -31,7 +31,7 @@ impl<R> StoreAsyncDecoder<R>
 where
     R: AsyncRead,
 {
-    pub fn new(inner: R) -> Self {
+    pub(crate) fn new(inner: R) -> Self {
         Self { inner }
     }
 }

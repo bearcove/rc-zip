@@ -1,8 +1,10 @@
 mod decoder;
-pub use decoder::*;
+use decoder::*;
 
 mod entry_reader;
-pub use entry_reader::*;
+use entry_reader::*;
 
 mod read_zip;
-pub use read_zip::*;
+
+// re-exports
+pub use read_zip::{ReadZip, ReadZipWithSize};

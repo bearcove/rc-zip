@@ -1,33 +1,17 @@
-//! This part of the API is still being designed - no guarantees are made
-//! whatsoever.
 use crate::{
     error::*,
     format::*,
     reader::{
-        sync::decoder::{Decoder, StoreDecoder},
+        tokio::decoder::{AsyncDecoder, StoreAsyncDecoder},
         RawEntryReader,
     },
     transition,
 };
 
-#[cfg(feature = "lzma")]
-mod lzma_dec;
-
-#[cfg(feature = "deflate")]
-mod deflate_dec;
-
-#[cfg(feature = "deflate64")]
-mod deflate64_dec;
-
-#[cfg(feature = "bzip2")]
-mod bzip2_dec;
-
-#[cfg(feature = "zstd")]
-mod zstd_dec;
-
 use cfg_if::cfg_if;
 use oval::Buffer;
-use std::io;
+use std::{io, pin::Pin, task};
+use tokio::io::AsyncRead;
 use tracing::trace;
 use winnow::{
     error::ErrMode,
@@ -40,53 +24,68 @@ struct EntryReadMetrics {
     crc32: u32,
 }
 
-enum State {
-    ReadLocalHeader {
-        buffer: Buffer,
-    },
-    ReadData {
-        hasher: crc32fast::Hasher,
-        uncompressed_size: u64,
-        header: LocalFileHeaderRecord,
-        decoder: Box<dyn Decoder<RawEntryReader>>,
-    },
-    ReadDataDescriptor {
-        metrics: EntryReadMetrics,
-        header: LocalFileHeaderRecord,
-        buffer: Buffer,
-    },
-    Validate {
-        metrics: EntryReadMetrics,
-        header: LocalFileHeaderRecord,
-        descriptor: Option<DataDescriptorRecord>,
-    },
-    Done,
-    Transitioning,
+pin_project_lite::pin_project! {
+    #[project = StateProj]
+    enum State {
+        ReadLocalHeader {
+            buffer: Buffer,
+        },
+        ReadData {
+            hasher: crc32fast::Hasher,
+            uncompressed_size: u64,
+            header: LocalFileHeaderRecord,
+            #[pin]
+            decoder: Box<dyn AsyncDecoder<RawEntryReader> + Unpin>,
+        },
+        ReadDataDescriptor {
+            metrics: EntryReadMetrics,
+            header: LocalFileHeaderRecord,
+            buffer: Buffer,
+        },
+        Validate {
+            metrics: EntryReadMetrics,
+            header: LocalFileHeaderRecord,
+            descriptor: Option<DataDescriptorRecord>,
+        },
+        Done,
+        Transitioning,
+    }
 }
 
-pub struct EntryReader<R>
-where
-    R: io::Read,
-{
-    rd: R,
-    eof: bool,
-    state: State,
-    inner: StoredEntryInner,
-    method: Method,
+pin_project_lite::pin_project! {
+    pub struct EntryReader<R>
+    where
+        R: AsyncRead,
+    {
+        #[pin]
+        rd: R,
+        eof: bool,
+        #[pin]
+        state: State,
+        inner: StoredEntryInner,
+        method: Method,
+    }
 }
 
-impl<R> io::Read for EntryReader<R>
+impl<R> AsyncRead for EntryReader<R>
 where
-    R: io::Read,
+    R: AsyncRead,
 {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        use State as S;
-        match self.state {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> task::Poll<io::Result<()>> {
+        let this = self.project();
+
+        use StateProj as S;
+        match this.state.project() {
             S::ReadLocalHeader { ref mut buffer } => {
-                let read_bytes = self.rd.read(buffer.space())?;
+                let mut read_buf = tokio::io::ReadBuf::new(buffer.space());
+                futures::ready!(this.rd.poll_read(cx, &mut read_buf))?;
+                let read_bytes = read_buf.filled().len();
                 if read_bytes == 0 {
-                    // we should have read the local header by now
-                    return Err(io::ErrorKind::UnexpectedEof.into());
+                    return Err(io::ErrorKind::UnexpectedEof.into()).into();
                 }
                 buffer.fill(read_bytes);
 
@@ -96,21 +95,24 @@ where
                         buffer.consume(input.as_bytes().offset_from(&buffer.data()));
 
                         trace!("local file header: {:#?}", header);
-                        transition!(self.state => (S::ReadLocalHeader { buffer }) {
+                        transition!(self.state => (State::ReadLocalHeader { buffer }) {
                             let mut limited_reader = RawEntryReader::new(buffer, self.inner.compressed_size);
                             let decoder = self.get_decoder(limited_reader)?;
 
-                            S::ReadData {
+                            State::ReadData {
                                 hasher: crc32fast::Hasher::new(),
                                 uncompressed_size: 0,
                                 decoder,
                                 header,
                             }
                         });
-                        self.read(buf)
+                        self.poll_read(cx, buf)
                     }
-                    Err(ErrMode::Incomplete(_)) => self.read(buf),
-                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
+                    Err(ErrMode::Incomplete(_)) => {
+                        // try another read - if it returns pending, it'll be propagated
+                        self.poll_read(cx, buf)
+                    }
+                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()).into(),
                 }
             }
             S::ReadData {
@@ -120,15 +122,17 @@ where
                 ..
             } => {
                 {
-                    let buffer = decoder.get_mut().get_mut();
-                    if !self.eof && buffer.available_data() == 0 {
+                    let buffer = decoder.get_mut().get_mut().get_mut();
+                    if !*this.eof && buffer.available_data() == 0 {
                         if buffer.available_space() == 0 {
                             buffer.shift();
                         }
 
-                        match self.rd.read(buffer.space())? {
+                        let mut read_buf = tokio::io::ReadBuf::new(buffer.space());
+                        futures::ready!(this.rd.poll_read(cx, &mut read_buf))?;
+                        match read_buf.filled().len() {
                             0 => {
-                                self.eof = true;
+                                *this.eof = true;
                             }
                             n => {
                                 buffer.fill(n);
@@ -136,9 +140,15 @@ where
                         }
                     }
                 }
-                match decoder.read(buf)? {
+
+                let filled_before = buf.filled().len();
+                futures::ready!(decoder.poll_read(cx, buf))?;
+                let filled_after = buf.filled().len();
+                let read_bytes = filled_after - filled_before;
+
+                match read_bytes {
                     0 => {
-                        transition!(self.state => (S::ReadData { decoder, header, hasher, uncompressed_size, .. }) {
+                        transition!(self.state => (State::ReadData { decoder, header, hasher, uncompressed_size, .. }) {
                             let limited_reader = decoder.into_inner();
                             let buffer = limited_reader.into_inner();
                             let metrics = EntryReadMetrics {
@@ -147,18 +157,19 @@ where
                             };
                             if header.has_data_descriptor() {
                                 trace!("will read data descriptor (flags = {:x})", header.flags);
-                                S::ReadDataDescriptor { metrics, buffer, header }
+                                State::ReadDataDescriptor { metrics, buffer, header }
                             } else {
                                 trace!("no data descriptor to read");
-                                S::Validate { metrics, header, descriptor: None }
+                                State::Validate { metrics, header, descriptor: None }
                             }
                         });
-                        self.read(buf)
+                        self.poll_read(cx, buf)
                     }
                     n => {
-                        *uncompressed_size += n as u64;
-                        hasher.update(&buf[..n]);
-                        Ok(n)
+                        **uncompressed_size = **uncompressed_size + n as u64;
+                        let read_slice = &buf.filled()[filled_before..filled_after];
+                        hasher.update(&buf.filled()[..n]);
+                        Ok(()).into()
                     }
                 }
             }
@@ -174,22 +185,22 @@ where
                     Ok(descriptor) => {
                         buffer.consume(input.as_bytes().offset_from(&buffer.data()));
                         trace!("data descriptor = {:#?}", descriptor);
-                        transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
-                            S::Validate { metrics, header, descriptor: Some(descriptor) }
+                        transition!(self.state => (State::ReadDataDescriptor { metrics, header, .. }) {
+                            State::Validate { metrics, header, descriptor: Some(descriptor) }
                         });
-                        self.read(buf)
+                        self.poll_read(cx, buf)
                     }
                     Err(ErrMode::Incomplete(_)) => {
-                        let n = self.rd.read(buffer.space())?;
-                        if n == 0 {
-                            return Err(io::ErrorKind::UnexpectedEof.into());
+                        let mut read_buf = tokio::io::ReadBuf::new(buffer.space());
+                        futures::ready!(this.rd.poll_read(cx, &mut read_buf))?;
+                        let read_bytes = read_buf.filled().len();
+                        if read_bytes == 0 {
+                            return Err(io::ErrorKind::UnexpectedEof.into()).into();
                         }
-                        buffer.fill(n);
-                        trace!("filled {}", n);
-
-                        self.read(buf)
+                        buffer.fill(read_bytes);
+                        self.poll_read(cx, buf)
                     }
-                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()),
+                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader).into()).into(),
                 }
             }
             S::Validate {
@@ -218,7 +229,8 @@ where
                         expected: expected_size,
                         actual: metrics.uncompressed_size,
                     })
-                    .into());
+                    .into())
+                    .into();
                 }
 
                 if expected_crc32 != 0 && expected_crc32 != metrics.crc32 {
@@ -226,13 +238,14 @@ where
                         expected: expected_crc32,
                         actual: metrics.crc32,
                     })
-                    .into());
+                    .into())
+                    .into();
                 }
 
-                self.state = S::Done;
-                self.read(buf)
+                self.state = State::Done;
+                self.poll_read(cx, buf)
             }
-            S::Done => Ok(0),
+            S::Done => Ok(()).into(),
             S::Transitioning => unreachable!(),
         }
     }
@@ -240,7 +253,7 @@ where
 
 impl<R> EntryReader<R>
 where
-    R: io::Read,
+    R: AsyncRead,
 {
     const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
@@ -262,54 +275,9 @@ where
     fn get_decoder(
         &self,
         mut raw_r: RawEntryReader,
-    ) -> Result<Box<dyn Decoder<RawEntryReader>>, Error> {
-        let decoder: Box<dyn Decoder<RawEntryReader>> = match self.method {
-            Method::Store => Box::new(StoreDecoder::new(raw_r)),
-            Method::Deflate => {
-                cfg_if! {
-                    if #[cfg(feature = "deflate")] {
-                        Box::new(deflate_dec::mk_decoder(raw_r))
-                    } else {
-                        return Err(Error::method_not_enabled(self.method));
-                    }
-                }
-            }
-            Method::Deflate64 => {
-                cfg_if! {
-                    if #[cfg(feature = "deflate64")] {
-                        Box::new(deflate64_dec::mk_decoder(raw_r))
-                    } else {
-                        return Err(Error::method_not_enabled(self.method));
-                    }
-                }
-            }
-            Method::Lzma => {
-                cfg_if! {
-                    if #[cfg(feature = "lzma")] {
-                        Box::new(lzma_dec::mk_decoder(raw_r,self.inner.uncompressed_size)?)
-                    } else {
-                        return Err(Error::method_not_enabled(self.method));
-                    }
-                }
-            }
-            Method::Bzip2 => {
-                cfg_if! {
-                    if #[cfg(feature = "bzip2")] {
-                        Box::new(bzip2_dec::mk_decoder(raw_r))
-                    } else {
-                        return Err(Error::method_not_enabled(self.method));
-                    }
-                }
-            }
-            Method::Zstd => {
-                cfg_if! {
-                    if #[cfg(feature = "zstd")] {
-                        Box::new(zstd_dec::mk_decoder(raw_r)?)
-                    } else {
-                        return Err(Error::method_not_enabled(self.method));
-                    }
-                }
-            }
+    ) -> Result<Box<dyn AsyncDecoder<RawEntryReader> + Unpin>, Error> {
+        let decoder: Box<dyn AsyncDecoder<RawEntryReader> + Unpin> = match self.method {
+            Method::Store => Box::new(StoreAsyncDecoder::new(raw_r)),
             method => {
                 return Err(Error::method_not_supported(method));
             }

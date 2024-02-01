@@ -4,7 +4,7 @@ use oval::Buffer;
 
 use crate::reader::RawEntryReader;
 
-pub trait Decoder<R>: io::Read
+pub(crate) trait Decoder<R>: io::Read
 where
     R: io::Read,
 {
@@ -16,7 +16,7 @@ where
     fn get_mut(&mut self) -> &mut R;
 }
 
-pub struct StoreDecoder<R>
+pub(crate) struct StoreDecoder<R>
 where
     R: io::Read,
 {
@@ -27,7 +27,7 @@ impl<R> StoreDecoder<R>
 where
     R: io::Read,
 {
-    pub fn new(inner: R) -> Self {
+    pub(crate) fn new(inner: R) -> Self {
         Self { inner }
     }
 }

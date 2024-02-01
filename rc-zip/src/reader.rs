@@ -157,7 +157,15 @@ impl ArchiveReader {
     /// write to
     #[inline]
     pub fn space(&mut self) -> &mut [u8] {
-        self.state.expect_buffer_mut().space()
+        let buf = self.state.expect_buffer_mut();
+        trace!(
+            available_space = buf.available_space(),
+            "space() | available_space"
+        );
+        if buf.available_space() == 0 {
+            buf.shift();
+        }
+        buf.space()
     }
 
     /// after having written data to the buffer, use this function
@@ -190,6 +198,11 @@ impl ArchiveReader {
                 haystack_size,
             } => {
                 if buffer.read_bytes() < haystack_size {
+                    trace!(
+                        read_bytes = buffer.read_bytes(),
+                        haystack_size,
+                        "ReadEocd | need more data"
+                    );
                     return Ok(R::Continue);
                 }
 
@@ -440,6 +453,8 @@ impl ArchiveReader {
     }
 }
 
+/// FIXME: get rid of this wrapper entirely, we can just use `.available_data` from oval::Buffer ?
+
 /// A wrapper around [oval::Buffer] that keeps track of how many bytes we've read since
 /// initialization or the last reset.
 pub(crate) struct Buffer {
@@ -482,11 +497,25 @@ impl Buffer {
         self.buffer.available_data()
     }
 
+    /// returns how much free space is available to write to
+    #[inline]
+    pub fn available_space(&self) -> usize {
+        self.buffer.available_space()
+    }
+
     /// returns a mutable slice with all the available space to
     /// write to
     #[inline]
     pub(crate) fn space(&mut self) -> &mut [u8] {
         self.buffer.space()
+    }
+
+    /// moves the data at the beginning of the buffer
+    ///
+    /// if the position was more than 0, it is now 0
+    #[inline]
+    pub fn shift(&mut self) {
+        self.buffer.shift()
     }
 
     /// after having written data to the buffer, use this function
@@ -497,7 +526,9 @@ impl Buffer {
     /// buffer
     #[inline]
     pub(crate) fn fill(&mut self, count: usize) -> usize {
-        self.buffer.fill(count)
+        let n = self.buffer.fill(count);
+        self.read_bytes += n as u64;
+        n
     }
 
     /// advances the position tracker
@@ -508,7 +539,6 @@ impl Buffer {
     #[inline]
     pub(crate) fn consume(&mut self, size: usize) {
         self.buffer.consume(size);
-        self.read_bytes += size as u64;
     }
 
     /// computes an absolute offset, given an offset relative

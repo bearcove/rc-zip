@@ -40,11 +40,14 @@ where
     type File = F;
 
     fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, F>, Error> {
+        tracing::trace!(%size, "read_zip_with_size");
         let mut ar = ArchiveReader::new(size);
         loop {
             if let Some(offset) = ar.wants_read() {
+                tracing::trace!(%offset, "read_zip_with_size: wants_read, space len = {}", ar.space().len());
                 match self.cursor_at(offset).read(ar.space()) {
                     Ok(read_bytes) => {
+                        tracing::trace!(%read_bytes, "read_zip_with_size: read");
                         if read_bytes == 0 {
                             return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
                         }
@@ -56,12 +59,15 @@ where
 
             match ar.process()? {
                 ArchiveReaderResult::Done(archive) => {
+                    tracing::trace!("read_zip_with_size: done");
                     return Ok(SyncArchive {
                         file: self,
                         archive,
-                    })
+                    });
                 }
-                ArchiveReaderResult::Continue => {}
+                ArchiveReaderResult::Continue => {
+                    tracing::trace!("read_zip_with_size: continue");
+                }
             }
         }
     }

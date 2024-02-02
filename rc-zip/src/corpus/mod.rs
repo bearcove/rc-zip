@@ -9,7 +9,7 @@ use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 use crate::{
     encoding::Encoding,
     error::Error,
-    parse::{EntryContents, StoredEntry},
+    parse::{Archive, EntryContents, StoredEntry},
 };
 
 pub enum ZipSource {
@@ -224,6 +224,42 @@ pub fn test_cases() -> Vec<ZipTest> {
             ..Default::default()
         },
     ]
+}
+
+pub fn check_case(test: &ZipTest, archive: Result<&Archive, &Error>) {
+    let case_bytes = test.bytes();
+
+    if let Some(expected) = &test.error {
+        let actual = match archive {
+            Err(e) => e,
+            Ok(_) => panic!("should have failed"),
+        };
+        let expected = format!("{:#?}", expected);
+        let actual = format!("{:#?}", actual);
+        assert_eq!(expected, actual);
+        return;
+    }
+    let archive = archive.unwrap();
+
+    assert_eq!(case_bytes.len() as u64, archive.size());
+
+    if let Some(expected) = test.comment {
+        assert_eq!(expected, archive.comment().expect("should have comment"))
+    }
+
+    if let Some(exp_encoding) = test.expected_encoding {
+        assert_eq!(archive.encoding(), exp_encoding);
+    }
+
+    assert_eq!(
+        test.files.len(),
+        archive.entries().count(),
+        "{} should have {} entries files",
+        test.name(),
+        test.files.len()
+    );
+
+    // then each implementation should check individual files
 }
 
 pub fn check_file_against(file: &ZipTestFile, entry: &StoredEntry, actual_bytes: &[u8]) {

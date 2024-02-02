@@ -21,11 +21,11 @@ use winnow::{
 ///
 /// The loop is as follows:
 ///
-///   * Call [ArchiveFsm::wants_read] to check if more data is needed.
+///   * Call [Self::wants_read] to check if more data is needed.
 ///   * If it returns `Some(offset)`, read the file at that offset
-///     into [ArchiveFsm::space] and then call [ArchiveFsm::fill] with
+///     into [Self::space] and then call [Self::fill] with
 ///     the number of bytes read.
-///   * Call [ArchiveFsm::process] to process the data.
+///   * Call [Self::process] to process the data.
 ///   * If it returns [FsmResult::Continue], loop back to the first step.
 ///
 /// Look at the integration tests or
@@ -95,8 +95,8 @@ impl ArchiveFsm {
     }
 
     /// If this returns `Some(offset)`, the caller should read data from
-    /// `offset` into [ArchiveFsm::space] — without forgetting to call
-    /// [ArchiveFsm::fill] with the number of bytes written.
+    /// `offset` into [Self::space] — without forgetting to call
+    /// [Self::fill] with the number of bytes written.
     pub fn wants_read(&self) -> Option<u64> {
         use State as S;
         match self.state {
@@ -115,28 +115,6 @@ impl ArchiveFsm {
         }
     }
 
-    /// Returns a mutable slice with all the available space to write to
-    ///
-    /// After writing to this, call [Self::fill] with the number of bytes written.
-    #[inline]
-    pub fn space(&mut self) -> &mut [u8] {
-        trace!(
-            available_space = self.buffer.available_space(),
-            "space() | available_space"
-        );
-        if self.buffer.available_space() == 0 {
-            self.buffer.shift();
-        }
-        self.buffer.space()
-    }
-
-    /// After having written data to [Self::space], call this to indicate how
-    /// many bytes were written.
-    #[inline]
-    pub fn fill(&mut self, count: usize) -> usize {
-        self.buffer.fill(count)
-    }
-
     /// Process buffered data
     ///
     /// Errors returned from this function are caused by invalid zip archives,
@@ -144,7 +122,7 @@ impl ArchiveFsm {
     ///
     /// A result of [FsmResult::Continue] gives back ownership of the state
     /// machine and indicates the I/O loop should continue, starting with
-    /// [ArchiveFsm::wants_read].
+    /// [Self::wants_read].
     ///
     /// A result of [FsmResult::Done] consumes the state machine and returns
     /// a fully-parsed [Archive].
@@ -396,6 +374,24 @@ impl ArchiveFsm {
             }
             S::Transitioning => unreachable!(),
         }
+    }
+
+    /// Returns a mutable slice with all the available space to write to.
+    ///
+    /// After writing to this, call [Self::fill] with the number of bytes written.
+    #[inline]
+    pub fn space(&mut self) -> &mut [u8] {
+        if self.buffer.available_space() == 0 {
+            self.buffer.shift();
+        }
+        self.buffer.space()
+    }
+
+    /// After having written data to [Self::space], call this to indicate how
+    /// many bytes were written.
+    #[inline]
+    pub fn fill(&mut self, count: usize) -> usize {
+        self.buffer.fill(count)
     }
 }
 

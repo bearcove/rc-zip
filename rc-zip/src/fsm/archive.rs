@@ -1,8 +1,11 @@
 use super::FsmResult;
 use crate::{
-    encoding::Encoding, Archive, DirectoryHeader, EndOfCentralDirectory,
-    EndOfCentralDirectory64Locator, EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord,
-    Error, FormatError, Located, StoredEntry,
+    encoding::Encoding,
+    error::{Error, FormatError},
+    parse::{
+        Archive, DirectoryHeader, EndOfCentralDirectory, EndOfCentralDirectory64Locator,
+        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Located, StoredEntry,
+    },
 };
 
 use tracing::trace;

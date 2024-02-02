@@ -16,8 +16,8 @@ mod zstd_dec;
 use cfg_if::cfg_if;
 use oval::Buffer;
 use rc_zip::{
-    DataDescriptorRecord, Error, FormatError, LocalFileHeaderRecord, Method, StoredEntry,
-    StoredEntryInner,
+    error::{Error, FormatError},
+    parse::{DataDescriptorRecord, LocalFileHeaderRecord, Method, StoredEntry, StoredEntryInner},
 };
 use std::io;
 use tracing::trace;

@@ -1,6 +1,7 @@
-//! zip entry paths may be encoded in a variety of character encodings.
+//! Character encodings used in ZIP files.
 //!
-//! Historically, CP-437 was used, but many modern zip files use UTF-8 with an
+//! ZIP entry paths may be encoded in a variety of character encodings:
+//! historically, CP-437 was used, but many modern zip files use UTF-8 with an
 //! optional UTF-8 flag.
 //!
 //! Others use the system's local character encoding, and we have no choice but
@@ -11,7 +12,7 @@ use std::fmt;
 /// Encodings supported by this crate
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Encoding {
-    /// UTF-8
+    /// [UTF-8](https://en.wikipedia.org/wiki/UTF-8), opt-in for ZIP files.
     Utf8,
 
     /// [Codepage 437](https://en.wikipedia.org/wiki/Code_page_437), also known as
@@ -52,6 +53,7 @@ pub enum DecodingError {
     #[error("text too large to be converted")]
     StringTooLarge,
 
+    /// Text is not valid in the given encoding.
     #[error("encoding error: {0}")]
     EncodingError(&'static str),
 }

@@ -3,7 +3,7 @@
 
 use oval::Buffer;
 
-use crate::{DataDescriptorRecord, LocalFileHeaderRecord};
+use crate::parse::{DataDescriptorRecord, LocalFileHeaderRecord};
 
 struct EntryReadMetrics {
     uncompressed_size: u64,

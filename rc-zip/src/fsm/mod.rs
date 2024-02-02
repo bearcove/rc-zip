@@ -1,3 +1,5 @@
+//! State machines built atop parsers, ready to bring your own I/O with.
+//!
 //! Parsers are just part of the puzzle when it comes to zip files: finding the
 //! central directory is non-trivial and involves seeking around the input:
 //! [ArchiveFsm] provides a state machine to handle this.

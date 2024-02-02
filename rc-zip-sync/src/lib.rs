@@ -18,4 +18,5 @@ mod entry_reader;
 mod read_zip;
 
 // re-exports
+pub use rc_zip;
 pub use read_zip::{HasCursor, ReadZip, ReadZipWithSize, SyncArchive, SyncStoredEntry};

@@ -1,6 +1,6 @@
 //! All error types used in this crate
 
-use crate::Method;
+use crate::parse::Method;
 
 use super::encoding;
 

@@ -11,12 +11,7 @@
 //! to provide a higher-level API for reading zip files, from sync and async
 //! code respectively.
 
-mod encoding;
-
-mod error;
-pub use error::*;
-
-mod parse;
-pub use parse::*;
-
+pub mod encoding;
+pub mod error;
 pub mod fsm;
+pub mod parse;

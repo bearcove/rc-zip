@@ -8,7 +8,7 @@ use winnow::{
     PResult, Parser, Partial,
 };
 
-use crate::{NtfsTimestamp, ZipBytes};
+use crate::parse::{NtfsTimestamp, ZipBytes};
 
 /// 4.4.28 extra field: (Variable)
 pub(crate) struct ExtraFieldRecord<'a> {

@@ -1,11 +1,11 @@
+//! Parsers and types for the various elements that make up a ZIP file.
+//!
 //! Contain winnow parsers for most elements that make up a ZIP file, like the
 //! end-of-central-directory record, local file headers, and central directory
 //! headers.
 //!
 //! All parsers here are based off of the PKWARE appnote.txt, which you can find
 //! in the source repository.
-
-pub use crate::encoding::Encoding;
 
 mod archive;
 pub use archive::*;

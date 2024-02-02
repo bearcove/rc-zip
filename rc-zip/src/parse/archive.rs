@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-use crate::{Encoding, ExtraField, Mode, Version};
+use crate::{
+    encoding::Encoding,
+    parse::{ExtraField, Mode, Version},
+};
 
 /// An Archive contains general information about a zip files,
 /// along with a list of [entries][StoredEntry].

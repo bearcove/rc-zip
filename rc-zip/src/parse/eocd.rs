@@ -6,7 +6,10 @@ use winnow::{
     PResult, Parser, Partial,
 };
 
-use crate::{Error, FormatError, ZipString};
+use crate::{
+    error::{Error, FormatError},
+    parse::ZipString,
+};
 
 /// 4.3.16  End of central directory record:
 #[derive(Debug)]

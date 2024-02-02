@@ -1,6 +1,7 @@
 use rc_zip::{
+    error::Error,
     fsm::{ArchiveFsm, FsmResult},
-    Archive, Error, StoredEntry,
+    parse::{Archive, StoredEntry},
 };
 
 use crate::entry_reader::EntryReader;

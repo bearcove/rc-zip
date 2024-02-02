@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
-use rc_zip::EntryContents;
+use rc_zip::parse::{Archive, EntryContents, Method, Version};
 use rc_zip_sync::ReadZip;
 
 use std::{
@@ -75,7 +75,7 @@ fn main() {
 }
 
 fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    fn info(archive: &rc_zip::Archive) {
+    fn info(archive: &Archive) {
         if let Some(comment) = archive.comment() {
             println!("Comment:\n{}", comment);
         }
@@ -84,9 +84,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("Found Zip64 end of central directory locator")
         }
 
-        let mut creator_versions = HashSet::<rc_zip::Version>::new();
-        let mut reader_versions = HashSet::<rc_zip::Version>::new();
-        let mut methods = HashSet::<rc_zip::Method>::new();
+        let mut creator_versions = HashSet::<Version>::new();
+        let mut reader_versions = HashSet::<Version>::new();
+        let mut methods = HashSet::<Method>::new();
         let mut compressed_size: u64 = 0;
         let mut uncompressed_size: u64 = 0;
         let mut num_dirs = 0;
@@ -97,13 +97,13 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             creator_versions.insert(entry.creator_version);
             reader_versions.insert(entry.reader_version);
             match entry.contents() {
-                rc_zip::EntryContents::Symlink => {
+                EntryContents::Symlink => {
                     num_symlinks += 1;
                 }
-                rc_zip::EntryContents::Directory => {
+                EntryContents::Directory => {
                     num_dirs += 1;
                 }
-                rc_zip::EntryContents::File => {
+                EntryContents::File => {
                     methods.insert(entry.method());
                     num_files += 1;
                     compressed_size += entry.inner.compressed_size;
@@ -160,7 +160,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         gid = Optional(entry.gid),
                     );
 
-                    if let rc_zip::EntryContents::Symlink = entry.contents() {
+                    if let EntryContents::Symlink = entry.contents() {
                         let mut target = String::new();
                         entry.reader().read_to_string(&mut target).unwrap();
                         print!("\t{target}", target = target);

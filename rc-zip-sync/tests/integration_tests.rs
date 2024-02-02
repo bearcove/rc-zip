@@ -2,7 +2,11 @@ use chrono::{
     offset::{FixedOffset, Utc},
     DateTime, TimeZone, Timelike,
 };
-use rc_zip::{Archive, Encoding};
+use rc_zip::{
+    encoding::Encoding,
+    error::Error,
+    parse::{Archive, EntryContents},
+};
 use rc_zip_sync::{HasCursor, ReadZip, SyncArchive, SyncStoredEntry};
 
 use std::{cmp, fs::File, path::PathBuf};
@@ -17,7 +21,7 @@ struct ZipTest {
     expected_encoding: Option<Encoding>,
     comment: Option<&'static str>,
     files: Vec<ZipTestFile>,
-    error: Option<rc_zip::Error>,
+    error: Option<Error>,
 }
 
 impl Default for ZipTest {
@@ -33,7 +37,7 @@ impl Default for ZipTest {
 }
 
 impl ZipTest {
-    fn check<F: HasCursor>(&self, archive: Result<SyncArchive<'_, F>, rc_zip::Error>) {
+    fn check<F: HasCursor>(&self, archive: Result<SyncArchive<'_, F>, Error>) {
         let case_bytes = self.bytes();
 
         if let Some(expected) = &self.error {
@@ -111,7 +115,7 @@ impl ZipTestFile {
         assert!(entry.comment().is_none());
 
         match entry.contents() {
-            rc_zip::EntryContents::File => {
+            EntryContents::File => {
                 let actual_bytes = entry.bytes().unwrap();
 
                 match &self.content {
@@ -131,7 +135,7 @@ impl ZipTestFile {
                     }
                 }
             }
-            rc_zip::EntryContents::Symlink | rc_zip::EntryContents::Directory => {
+            EntryContents::Symlink | EntryContents::Directory => {
                 assert!(matches!(self.content, FileContent::Unchecked));
             }
         }

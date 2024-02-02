@@ -1,4 +1,7 @@
-use crate::{Error, Method, MsdosTimestamp, UnsupportedError, Version, ZipBytes, ZipString};
+use crate::{
+    error::{Error, UnsupportedError},
+    parse::{Method, MsdosTimestamp, Version, ZipBytes, ZipString},
+};
 
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8},

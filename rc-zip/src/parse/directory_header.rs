@@ -8,9 +8,14 @@ use winnow::{
 };
 
 use crate::{
-    encoding::detect_utf8, zero_datetime, Encoding, Entry, Error, ExtraField, ExtraFieldSettings,
-    FormatError, HostSystem, Mode, MsdosMode, MsdosTimestamp, NtfsAttr, StoredEntry,
-    StoredEntryInner, UnixMode, Version, ZipBytes, ZipString,
+    encoding::detect_utf8,
+    encoding::Encoding,
+    error::{Error, FormatError},
+    parse::{
+        zero_datetime, Entry, ExtraField, ExtraFieldSettings, HostSystem, Mode, MsdosMode,
+        MsdosTimestamp, NtfsAttr, StoredEntry, StoredEntryInner, UnixMode, Version, ZipBytes,
+        ZipString,
+    },
 };
 
 /// 4.3.12 Central directory structure: File header

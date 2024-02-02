@@ -85,18 +85,16 @@ enum State {
 pub struct EntryFsm {
     state: State,
     entry: StoredEntryInner,
-    method: Method,
     buffer: Buffer,
     eof: bool,
 }
 
 impl EntryFsm {
     /// Create a new state machine for decompressing a zip entry
-    pub fn new(method: Method, entry: StoredEntryInner) -> Self {
+    pub fn new(entry: StoredEntryInner) -> Self {
         Self {
             state: State::ReadLocalHeader,
             entry,
-            method,
             buffer: Buffer::with_capacity(256 * 1024),
             eof: false,
         }
@@ -131,7 +129,7 @@ impl EntryFsm {
     pub fn process(
         mut self,
         out: &mut [u8],
-    ) -> Result<FsmResult<(Self, DecompressOutcome), ()>, Error> {
+    ) -> Result<FsmResult<(Self, DecompressOutcome), Buffer>, Error> {
         tracing::trace!(
             state = match &self.state {
                 State::ReadLocalHeader => "ReadLocalHeader",
@@ -152,12 +150,13 @@ impl EntryFsm {
                         let consumed = input.as_bytes().offset_from(&self.buffer.data());
                         tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");
                         self.buffer.consume(consumed);
+                        let decompressor = AnyDecompressor::new(header.method, &self.entry)?;
                         self.state = S::ReadData {
                             header,
                             compressed_bytes: 0,
                             uncompressed_bytes: 0,
                             hasher: crc32fast::Hasher::new(),
-                            decompressor: AnyDecompressor::new(self.method, &self.entry)?,
+                            decompressor,
                         };
                         self.process(out)
                     }
@@ -284,7 +283,7 @@ impl EntryFsm {
                     }));
                 }
 
-                Ok(FsmResult::Done(()))
+                Ok(FsmResult::Done(self.buffer))
             }
             S::Transition => {
                 unreachable!("the state machine should never be in the transition state")

@@ -19,7 +19,7 @@ where
     pub(crate) fn new(entry: &StoredEntry, rd: R) -> Self {
         Self {
             rd,
-            fsm: Some(EntryFsm::new(entry.method(), entry.inner)),
+            fsm: Some(EntryFsm::new(entry.inner)),
         }
     }
 }
@@ -53,7 +53,7 @@ where
                     self.read(buf)
                 }
             }
-            FsmResult::Done(()) => {
+            FsmResult::Done(_) => {
                 // neat!
                 Ok(0)
             }

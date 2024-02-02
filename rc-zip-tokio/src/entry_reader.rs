@@ -28,7 +28,7 @@ where
     {
         Self {
             rd: get_reader(entry.header_offset),
-            fsm: Some(EntryFsm::new(entry.method(), entry.inner)),
+            fsm: Some(EntryFsm::new(entry.inner)),
         }
     }
 }
@@ -78,7 +78,7 @@ where
                     return self.poll_read(cx, buf);
                 }
             }
-            FsmResult::Done(()) => {
+            FsmResult::Done(_) => {
                 // neat!
             }
         }

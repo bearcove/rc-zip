@@ -31,8 +31,12 @@ crc32fast = "1.3.2"
 miniz_oxide = { version = "0.7.1", optional = true }
 
 [features]
-deflate = ["dep:miniz_oxide"]
 corpus = []
+deflate = ["dep:miniz_oxide"]
+deflate64 = []
+bzip2 = []
+lzma = []
+zstd = []
 
 [dev-dependencies]
 test-log = { version = "0.2.14", default-features = false, features = ["tracing-subscriber", "trace"] }

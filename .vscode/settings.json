@@ -1,7 +1,11 @@
 {
 	"rust-analyzer.cargo.features": [
-		"rc-zip/deflate",
-		"rc-zip/corpus"
+		"rc-zip/corpus",
+		"deflate",
+		"deflate64",
+		"bzip2",
+		"lzma",
+		"zstd",
 	],
 	"rust-analyzer.linkedProjects": [
 		"./Cargo.toml"

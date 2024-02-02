@@ -159,7 +159,7 @@ pub fn test_cases() -> Vec<Case> {
         },
         #[cfg(feature = "lzma")]
         Case {
-            source: "found-me-lzma.zip",
+            name: "found-me-lzma.zip",
             expected_encoding: Some(Encoding::Utf8),
             files: vec![CaseFile {
                 name: "found-me.txt",
@@ -171,7 +171,7 @@ pub fn test_cases() -> Vec<Case> {
         },
         #[cfg(feature = "deflate64")]
         Case {
-            source: "found-me-deflate64.zip",
+            name: "found-me-deflate64.zip",
             expected_encoding: Some(Encoding::Utf8),
             files: vec![CaseFile {
                 name: "found-me.txt",
@@ -184,7 +184,7 @@ pub fn test_cases() -> Vec<Case> {
         // same with bzip2
         #[cfg(feature = "bzip2")]
         Case {
-            source: "found-me-bzip2.zip",
+            name: "found-me-bzip2.zip",
             expected_encoding: Some(Encoding::Utf8),
             files: vec![CaseFile {
                 name: "found-me.txt",
@@ -197,7 +197,7 @@ pub fn test_cases() -> Vec<Case> {
         // same with zstd
         #[cfg(feature = "zstd")]
         Case {
-            source: "found-me-zstd.zip",
+            name: "found-me-zstd.zip",
             expected_encoding: Some(Encoding::Utf8),
             files: vec![CaseFile {
                 name: "found-me.txt",

@@ -4,7 +4,7 @@ use rc_zip::{
     parse::{Archive, StoredEntry},
 };
 
-use crate::entry_reader::{EntryReader, FsmEntryReader};
+use crate::entry_reader::EntryReader;
 use std::{io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive
@@ -153,19 +153,13 @@ where
 {
     /// Returns a reader for the entry.
     pub fn reader(&self) -> impl Read + 'a {
-        // FIXME: replace with `fsm_reader``
         EntryReader::new(self.entry, self.file.cursor_at(self.entry.header_offset))
-    }
-
-    /// Returns an fsm-based reader for the entry
-    pub fn fsm_reader(&self) -> impl Read + 'a {
-        FsmEntryReader::new(self.entry, self.file.cursor_at(self.entry.header_offset))
     }
 
     /// Reads the entire entry into a vector.
     pub fn bytes(&self) -> std::io::Result<Vec<u8>> {
         let mut v = Vec::new();
-        self.fsm_reader().read_to_end(&mut v)?;
+        self.reader().read_to_end(&mut v)?;
         Ok(v)
     }
 }

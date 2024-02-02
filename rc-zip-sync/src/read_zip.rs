@@ -3,13 +3,14 @@ use rc_zip::{
     Archive, Error, StoredEntry,
 };
 
-use crate::EntryReader;
+use crate::entry_reader::EntryReader;
 use std::{io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive (blocking I/O model)
 ///
 /// See also [ReadZip].
 pub trait ReadZipWithSize {
+    /// The type of the file to read from.
     type File: HasCursor;
 
     /// Reads self as a zip archive.
@@ -24,6 +25,7 @@ pub trait ReadZipWithSize {
 ///
 /// See also [ReadZipWithSize].
 pub trait ReadZip {
+    /// The type of the file to read from.
     type File: HasCursor;
 
     /// Reads self as a zip archive.
@@ -41,23 +43,23 @@ where
 
     fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, F>, Error> {
         tracing::trace!(%size, "read_zip_with_size");
-        let mut ar = ArchiveFsm::new(size);
+        let mut fsm = ArchiveFsm::new(size);
         loop {
-            if let Some(offset) = ar.wants_read() {
-                tracing::trace!(%offset, "read_zip_with_size: wants_read, space len = {}", ar.space().len());
-                match self.cursor_at(offset).read(ar.space()) {
+            if let Some(offset) = fsm.wants_read() {
+                tracing::trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
+                match self.cursor_at(offset).read(fsm.space()) {
                     Ok(read_bytes) => {
                         tracing::trace!(%read_bytes, "read_zip_with_size: read");
                         if read_bytes == 0 {
                             return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
                         }
-                        ar.fill(read_bytes);
+                        fsm.fill(read_bytes);
                     }
                     Err(err) => return Err(Error::IO(err)),
                 }
             }
 
-            match ar.process()? {
+            fsm = match fsm.process()? {
                 FsmResult::Done(archive) => {
                     tracing::trace!("read_zip_with_size: done");
                     return Ok(SyncArchive {
@@ -65,9 +67,7 @@ where
                         archive,
                     });
                 }
-                FsmResult::Continue => {
-                    tracing::trace!("read_zip_with_size: continue");
-                }
+                FsmResult::Continue(fsm) => fsm,
             }
         }
     }
@@ -89,6 +89,7 @@ impl ReadZip for Vec<u8> {
     }
 }
 
+/// A zip archive, read synchronously from a file or other I/O resource.
 pub struct SyncArchive<'a, F>
 where
     F: HasCursor,
@@ -133,6 +134,7 @@ where
     }
 }
 
+/// A zip entry, read synchronously from a file or other I/O resource.
 pub struct SyncStoredEntry<'a, F> {
     file: &'a F,
     entry: &'a StoredEntry,
@@ -151,8 +153,7 @@ where
     F: HasCursor,
 {
     /// Returns a reader for the entry.
-    pub fn reader(&self) -> EntryReader<<F as HasCursor>::Cursor<'a>> {
-        tracing::trace!("Creating EntryReader");
+    pub fn reader(&self) -> impl Read + 'a {
         EntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
     }
 
@@ -166,6 +167,7 @@ where
 
 /// A sliceable I/O resource: we can ask for a [Read] at a given offset.
 pub trait HasCursor {
+    /// The type of [Read] returned by [cursor_at].
     type Cursor<'a>: Read + 'a
     where
         Self: 'a;

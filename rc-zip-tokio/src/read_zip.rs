@@ -9,12 +9,13 @@ use rc_zip::{
     Archive, Error, StoredEntry,
 };
 
-use crate::AsyncEntryReader;
+use crate::entry_reader::AsyncEntryReader;
 
 /// A trait for reading something as a zip archive (blocking I/O model)
 ///
 /// See also [ReadZip].
 pub trait AsyncReadZipWithSize {
+    /// The type of the file to read from.
     type File: HasAsyncCursor;
 
     /// Reads self as a zip archive.
@@ -33,6 +34,7 @@ pub trait AsyncReadZipWithSize {
 ///
 /// See also [ReadZipWithSize].
 pub trait AsyncReadZip {
+    /// The type of the file to read from.
     type File: HasAsyncCursor;
 
     /// Reads self as a zip archive.
@@ -50,28 +52,28 @@ where
     type File = F;
 
     async fn read_zip_with_size_async(&self, size: u64) -> Result<AsyncArchive<'_, F>, Error> {
-        let mut ar = ArchiveFsm::new(size);
+        let mut fsm = ArchiveFsm::new(size);
         loop {
-            if let Some(offset) = ar.wants_read() {
-                match self.cursor_at(offset).read(ar.space()).await {
+            if let Some(offset) = fsm.wants_read() {
+                match self.cursor_at(offset).read(fsm.space()).await {
                     Ok(read_bytes) => {
                         if read_bytes == 0 {
                             return Err(Error::IO(io::ErrorKind::UnexpectedEof.into()));
                         }
-                        ar.fill(read_bytes);
+                        fsm.fill(read_bytes);
                     }
                     Err(err) => return Err(Error::IO(err)),
                 }
             }
 
-            match ar.process()? {
+            fsm = match fsm.process()? {
                 FsmResult::Done(archive) => {
                     return Ok(AsyncArchive {
                         file: self,
                         archive,
                     })
                 }
-                FsmResult::Continue => {}
+                FsmResult::Continue(fsm) => fsm,
             }
         }
     }
@@ -93,6 +95,7 @@ impl AsyncReadZip for Vec<u8> {
     }
 }
 
+/// A zip archive, read asynchronously from a file or other I/O resource.
 pub struct AsyncArchive<'a, F>
 where
     F: HasAsyncCursor,
@@ -137,6 +140,7 @@ where
     }
 }
 
+/// A single entry in a zip archive, read asynchronously from a file or other I/O resource.
 pub struct AsyncStoredEntry<'a, F> {
     file: &'a F,
     entry: &'a StoredEntry,
@@ -155,7 +159,7 @@ where
     F: HasAsyncCursor,
 {
     /// Returns a reader for the entry.
-    pub fn reader(&self) -> AsyncEntryReader<<F as HasAsyncCursor>::Cursor<'a>> {
+    pub fn reader(&self) -> impl AsyncRead + Unpin + '_ {
         tracing::trace!("Creating EntryReader");
         AsyncEntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
     }
@@ -170,6 +174,7 @@ where
 
 /// A sliceable I/O resource: we can ask for a [Read] at a given offset.
 pub trait HasAsyncCursor {
+    /// The type returned by [cursor_at].
     type Cursor<'a>: AsyncRead + Unpin + 'a
     where
         Self: 'a;

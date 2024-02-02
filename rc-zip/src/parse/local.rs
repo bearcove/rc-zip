@@ -14,37 +14,50 @@ use winnow::{
 pub struct LocalFileHeaderRecord {
     /// version needed to extract
     pub reader_version: Version,
+
     /// general purpose bit flag
     pub flags: u16,
+
     /// compression method
     pub method: Method,
+
     /// last mod file datetime
     pub modified: MsdosTimestamp,
+
     /// crc-32
     pub crc32: u32,
+
     /// compressed size
     pub compressed_size: u32,
+
     /// uncompressed size
     pub uncompressed_size: u32,
-    // file name
+
+    /// file name
     pub name: ZipString,
-    // extra field
+
+    /// extra field
     pub extra: ZipBytes,
 
-    // method-specific fields
+    /// method-specific fields
     pub method_specific: MethodSpecific,
 }
 
 #[derive(Debug)]
 /// Method-specific properties following the local file header
 pub enum MethodSpecific {
+    /// No method-specific properties
     None,
+
+    /// LZMA properties
     Lzma(LzmaProperties),
 }
 
 impl LocalFileHeaderRecord {
+    /// The signature for a local file header
     pub const SIGNATURE: &'static str = "PK\x03\x04";
 
+    /// Parser for the local file header
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let _ = tag(Self::SIGNATURE).parse_next(i)?;
 
@@ -91,6 +104,8 @@ impl LocalFileHeaderRecord {
         })
     }
 
+    /// Check for the presence of the bit flag that indicates a data descriptor
+    /// is present after the file data.
     pub fn has_data_descriptor(&self) -> bool {
         // 4.3.9.1 This descriptor MUST exist if bit 3 of the general
         // purpose bit flag is set (see below).
@@ -112,6 +127,7 @@ pub struct DataDescriptorRecord {
 impl DataDescriptorRecord {
     const SIGNATURE: &'static str = "PK\x07\x08";
 
+    /// Create a parser for the data descriptor record.
     pub fn mk_parser(is_zip64: bool) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
         move |i| {
             // From appnote.txt:
@@ -155,7 +171,12 @@ pub struct LzmaProperties {
 }
 
 impl LzmaProperties {
+    /// Parser for the LZMA properties header.
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        // Note: the actual properties (5 bytes, contains dictionary size,
+        // and various other settings) is not actually read, because lzma-rs
+        // reads those properties itself.
+
         seq! {Self {
             major: le_u8,
             minor: le_u8,
@@ -164,6 +185,7 @@ impl LzmaProperties {
         .parse_next(i)
     }
 
+    /// Check if the LZMA version is supported.
     pub fn error_if_unsupported(&self) -> Result<(), Error> {
         if (self.major, self.minor) != (2, 0) {
             return Err(Error::Unsupported(

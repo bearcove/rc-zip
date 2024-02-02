@@ -142,9 +142,13 @@ pub struct StoredEntry {
     /// but they are also made available here raw.
     pub extra_fields: Vec<ExtraField>,
 
+    /// These fields are cheap to clone and needed for entry readers,
+    /// hence them being in a separate struct
     pub inner: StoredEntryInner,
 }
 
+/// Fields required to read an entry properly, typically cloned into owned entry
+/// readers.
 #[derive(Clone, Copy, Debug)]
 pub struct StoredEntryInner {
     /// CRC-32 hash as found in the central directory.
@@ -259,12 +263,18 @@ impl StoredEntry {
 /// The contents of an entry: a directory, a file, or a symbolic link.
 #[derive(Debug)]
 pub enum EntryContents {
+    /// The entry is a directory
     Directory,
+
+    /// The entry is a file
     File,
+
+    /// The entry is a symbolic link
     Symlink,
 }
 
 impl StoredEntry {
+    /// Determine [EntryContents] of this entry based on its mode.
     pub fn contents(&self) -> EntryContents {
         if self.mode.has(Mode::SYMLINK) {
             EntryContents::Symlink

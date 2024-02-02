@@ -13,16 +13,22 @@ use crate::{Error, FormatError, ZipString};
 pub struct EndOfCentralDirectoryRecord {
     /// number of this disk
     pub disk_nbr: u16,
+
     /// number of the disk with the start of the central directory
     pub dir_disk_nbr: u16,
+
     /// total number of entries in the central directory on this disk
     pub dir_records_this_disk: u16,
+
     /// total number of entries in the central directory
     pub directory_records: u16,
-    // size of the central directory
+
+    /// size of the central directory
     pub directory_size: u32,
+
     /// offset of start of central directory with respect to the starting disk number
     pub directory_offset: u32,
+
     /// .ZIP file comment
     pub comment: ZipString,
 }
@@ -32,6 +38,7 @@ impl EndOfCentralDirectoryRecord {
     const MIN_LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
+    /// Find the end of central directory record in a block of data
     pub fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
         for i in (0..(b.len() - Self::MIN_LENGTH + 1)).rev() {
             let mut input = Partial::new(&b[i..]);
@@ -45,6 +52,7 @@ impl EndOfCentralDirectoryRecord {
         None
     }
 
+    /// Parser for the end of central directory record
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let _ = tag(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
@@ -72,9 +80,11 @@ pub struct EndOfCentralDirectory64Locator {
 }
 
 impl EndOfCentralDirectory64Locator {
+    /// Length of the locator
     pub const LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x06\x07";
 
+    /// Parser for the zip64 end of central directory locator
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         _ = tag(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
@@ -91,28 +101,37 @@ impl EndOfCentralDirectory64Locator {
 pub struct EndOfCentralDirectory64Record {
     /// size of zip64 end of central directory record
     pub record_size: u64,
+
     /// version made by
     pub creator_version: u16,
+
     /// version needed to extract
     pub reader_version: u16,
+
     /// number of this disk
     pub disk_nbr: u32,
+
     /// number of the disk with the start of the central directory
     pub dir_disk_nbr: u32,
-    // total number of entries in the central directory on this disk
+
+    /// total number of entries in the central directory on this disk
     pub dir_records_this_disk: u64,
-    // total number of entries in the central directory
+
+    /// total number of entries in the central directory
     pub directory_records: u64,
-    // size of the central directory
+
+    /// size of the central directory
     pub directory_size: u64,
-    // offset of the start of central directory with respect to the
-    // starting disk number
+
+    /// offset of the start of central directory with respect to the
+    /// starting disk number
     pub directory_offset: u64,
 }
 
 impl EndOfCentralDirectory64Record {
     const SIGNATURE: &'static str = "PK\x06\x06";
 
+    /// Parser for the zip64 end of central directory record
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         _ = tag(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
@@ -130,9 +149,13 @@ impl EndOfCentralDirectory64Record {
     }
 }
 
+/// A zip structure and its location in the input file
 #[derive(Debug)]
 pub struct Located<T> {
+    /// Absolute by offset from the start of the file
     pub offset: u64,
+
+    /// The structure itself
     pub inner: T,
 }
 
@@ -151,13 +174,19 @@ impl<T> std::ops::DerefMut for Located<T> {
 
 /// Coalesces zip and zip64 "end of central directory" record info
 pub struct EndOfCentralDirectory {
+    /// The end of central directory record
     pub dir: Located<EndOfCentralDirectoryRecord>,
+
+    /// The zip64 end of central directory record
     pub dir64: Option<Located<EndOfCentralDirectory64Record>>,
+
+    /// Zip files may be prepended by arbitrary data, this is how much
+    /// data is at the beginning of the file that isn't part of the zip
     pub global_offset: i64,
 }
 
 impl EndOfCentralDirectory {
-    pub fn new(
+    pub(crate) fn new(
         size: u64,
         dir: Located<EndOfCentralDirectoryRecord>,
         dir64: Option<Located<EndOfCentralDirectory64Record>>,
@@ -223,42 +252,48 @@ impl EndOfCentralDirectory {
         Ok(res)
     }
 
-    pub fn located_directory_offset(&self) -> u64 {
+    #[inline]
+    pub(crate) fn located_directory_offset(&self) -> u64 {
         match self.dir64.as_ref() {
             Some(d64) => d64.offset,
             None => self.dir.offset,
         }
     }
 
-    pub fn directory_offset(&self) -> u64 {
+    #[inline]
+    pub(crate) fn directory_offset(&self) -> u64 {
         match self.dir64.as_ref() {
             Some(d64) => d64.directory_offset,
             None => self.dir.directory_offset as u64,
         }
     }
 
-    pub fn directory_size(&self) -> u64 {
+    #[inline]
+    pub(crate) fn directory_size(&self) -> u64 {
         match self.dir64.as_ref() {
             Some(d64) => d64.directory_size,
             None => self.dir.directory_size as u64,
         }
     }
 
-    pub fn set_directory_offset(&mut self, offset: u64) {
+    #[inline]
+    pub(crate) fn set_directory_offset(&mut self, offset: u64) {
         match self.dir64.as_mut() {
             Some(d64) => d64.directory_offset = offset,
             None => self.dir.directory_offset = offset as u32,
         };
     }
 
-    pub fn directory_records(&self) -> u64 {
+    #[inline]
+    pub(crate) fn directory_records(&self) -> u64 {
         match self.dir64.as_ref() {
             Some(d64) => d64.directory_records,
             None => self.dir.directory_records as u64,
         }
     }
 
-    pub fn comment(&self) -> &ZipString {
+    #[inline]
+    pub(crate) fn comment(&self) -> &ZipString {
         &self.dir.comment
     }
 }

@@ -29,27 +29,45 @@ pub enum Error {
 }
 
 impl Error {
+    /// Create a new error indicating that the given method is not supported.
     pub fn method_not_supported(method: Method) -> Self {
         Self::Unsupported(UnsupportedError::MethodNotSupported(method))
     }
 
+    /// Create a new error indicating that the given method is not enabled.
     pub fn method_not_enabled(method: Method) -> Self {
         Self::Unsupported(UnsupportedError::MethodNotEnabled(method))
     }
 }
 
+/// Some part of the zip format is not supported by this crate.
 #[derive(Debug, thiserror::Error)]
 pub enum UnsupportedError {
+    /// The compression method is not supported.
     #[error("compression method not supported: {0:?}")]
     MethodNotSupported(Method),
 
+    /// The compression method is supported, but not enabled in this build.
     #[error("compression method supported, but not enabled in this build: {0:?}")]
     MethodNotEnabled(Method),
 
+    /// The zip file uses a version of LZMA that is not supported.
     #[error("only LZMA2.0 is supported, found LZMA{minor}.{major}")]
-    LzmaVersionUnsupported { minor: u8, major: u8 },
+    LzmaVersionUnsupported {
+        /// major version read from LZMA properties header, cf. appnote 5.8.8
+        major: u8,
+        /// minor version read from LZMA properties header, cf. appnote 5.8.8
+        minor: u8,
+    },
+
+    /// The LZMA properties header is not the expected size.
     #[error("LZMA properties header wrong size: expected {expected} bytes, got {actual} bytes")]
-    LzmaPropertiesHeaderWrongSize { expected: u16, actual: u16 },
+    LzmaPropertiesHeaderWrongSize {
+        /// expected size in bytes
+        expected: u16,
+        /// actual size in bytes, read from a u16, cf. appnote 5.8.8
+        actual: u16,
+    },
 }
 
 /// Specific zip format errors, mostly due to invalid zip archives but that could also stem from
@@ -80,7 +98,12 @@ pub enum FormatError {
     /// a certain number of files, but we weren't able to read the same number of central directory
     /// headers.
     #[error("invalid central record: expected to read {expected} files, got {actual}")]
-    InvalidCentralRecord { expected: u16, actual: u16 },
+    InvalidCentralRecord {
+        /// expected number of files
+        expected: u16,
+        /// actual number of files
+        actual: u16,
+    },
 
     /// An extra field (that we support) was not decoded correctly.
     ///
@@ -94,7 +117,9 @@ pub enum FormatError {
     /// claimed_records_count * minimum_entry_size, we know it's not a valid zip file.
     #[error("impossible number of files: claims to have {claimed_records_count}, but zip size is {zip_size}")]
     ImpossibleNumberOfFiles {
+        /// number of files claimed in the end of central directory record
         claimed_records_count: u64,
+        /// total size of the zip file
         zip_size: u64,
     },
 
@@ -108,14 +133,21 @@ pub enum FormatError {
 
     /// The uncompressed size didn't match
     #[error("uncompressed size didn't match: expected {expected}, got {actual}")]
-    WrongSize { expected: u64, actual: u64 },
+    WrongSize {
+        /// expected size in bytes (from the local header, data descriptor, etc.)
+        expected: u64,
+        /// actual size in bytes (from decompressing the entry)
+        actual: u64,
+    },
 
     /// The CRC-32 checksum didn't match.
     #[error("checksum didn't match: expected {expected:x?}, got {actual:x?}")]
-    WrongChecksum { expected: u32, actual: u32 },
-
-    #[error("lzma properties larger than max")]
-    LzmaPropertiesLargerThanMax,
+    WrongChecksum {
+        /// expected checksum (from the data descriptor, etc.)
+        expected: u32,
+        /// actual checksum (from decompressing the entry)
+        actual: u32,
+    },
 }
 
 impl From<Error> for std::io::Error {

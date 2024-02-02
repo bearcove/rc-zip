@@ -46,9 +46,6 @@ enum State {
         directory_headers: Vec<DirectoryHeader>,
     },
 
-    /// Done!
-    Done,
-
     #[default]
     Transitioning,
 }
@@ -130,7 +127,6 @@ impl ArchiveFsm {
                 ref eocd,
                 ..
             } => Some(buffer.read_offset(eocd.directory_offset())),
-            S::Done { .. } => panic!("Called wants_read() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
         }
     }
@@ -171,7 +167,7 @@ impl ArchiveFsm {
     ///
     /// A result of [FsmResult::Done] contains the [Archive], and indicates that no
     /// method should ever be called again on this reader.
-    pub fn process(&mut self) -> Result<FsmResult<Archive>, Error> {
+    pub fn process(mut self) -> Result<FsmResult<Self, Archive>, Error> {
         use State as S;
         match self.state {
             S::ReadEocd {
@@ -184,7 +180,7 @@ impl ArchiveFsm {
                         haystack_size,
                         "ReadEocd | need more data"
                     );
-                    return Ok(FsmResult::Continue);
+                    return Ok(FsmResult::Continue(self));
                 }
 
                 match {
@@ -216,14 +212,14 @@ impl ArchiveFsm {
                                     directory_headers: vec![],
                                 }
                             });
-                            Ok(FsmResult::Continue)
+                            Ok(FsmResult::Continue(self))
                         } else {
                             trace!("ReadEocd | transition to ReadEocd64Locator");
                             transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
                                 buffer.reset();
                                 S::ReadEocd64Locator { buffer, eocdr }
                             });
-                            Ok(FsmResult::Continue)
+                            Ok(FsmResult::Continue(self))
                         }
                     }
                 }
@@ -233,7 +229,7 @@ impl ArchiveFsm {
                 match EndOfCentralDirectory64Locator::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data
-                        Ok(FsmResult::Continue)
+                        Ok(FsmResult::Continue(self))
                     }
                     Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
@@ -247,7 +243,7 @@ impl ArchiveFsm {
                                 directory_headers: vec![],
                             }
                         });
-                        Ok(FsmResult::Continue)
+                        Ok(FsmResult::Continue(self))
                     }
                     Ok((_, locator)) => {
                         trace!(
@@ -262,7 +258,7 @@ impl ArchiveFsm {
                                 eocdr,
                             }
                         });
-                        Ok(FsmResult::Continue)
+                        Ok(FsmResult::Continue(self))
                     }
                 }
             }
@@ -271,7 +267,7 @@ impl ArchiveFsm {
                 match EndOfCentralDirectory64Record::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data
-                        Ok(FsmResult::Continue)
+                        Ok(FsmResult::Continue(self))
                     }
                     Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // at this point, we really expected to have a zip64 end
@@ -291,7 +287,7 @@ impl ArchiveFsm {
                                 directory_headers: vec![],
                             }
                         });
-                        Ok(FsmResult::Continue)
+                        Ok(FsmResult::Continue(self))
                     }
                 }
             }
@@ -402,7 +398,6 @@ impl ArchiveFsm {
                                     comment = Some(encoding.decode(&eocd.comment().0)?);
                                 }
 
-                                self.state = S::Done;
                                 return Ok(FsmResult::Done(Archive {
                                     size: self.size,
                                     comment,
@@ -426,9 +421,8 @@ impl ArchiveFsm {
                 buffer.consume(consumed);
 
                 // need more data
-                Ok(FsmResult::Continue)
+                Ok(FsmResult::Continue(self))
             }
-            S::Done { .. } => panic!("Called process() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),
         }
     }

@@ -24,11 +24,10 @@ mod entry;
 pub use entry::EntryFsm;
 
 /// Indicates whether or not the state machine has completed its work
-pub enum FsmResult<T> {
-    /// Indicates that the state machine still has work to do, and
-    /// needs either data or a call to process
-    Continue,
-    /// Indicates that the state machine has completed its work, and
-    /// the result is the value provided
-    Done(T),
+pub enum FsmResult<M, R> {
+    /// The I/O loop needs to continue, the state machine is given back.
+    Continue(M),
+
+    /// The state machine is done, and the result is returned.
+    Done(R),
 }

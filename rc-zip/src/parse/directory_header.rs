@@ -15,41 +15,56 @@ use crate::{
 
 /// 4.3.12 Central directory structure: File header
 pub struct DirectoryHeader {
-    // version made by
+    /// version made by
     pub creator_version: Version,
-    // version needed to extract
+
+    /// version needed to extract
     pub reader_version: Version,
-    // general purpose bit flag
+
+    /// general purpose bit flag
     pub flags: u16,
-    // compression method
+
+    /// compression method
     pub method: u16,
-    // last mod file datetime
+
+    /// last mod file datetime
     pub modified: MsdosTimestamp,
-    // crc32
+
+    /// crc32 hash
     pub crc32: u32,
-    // compressed size
+
+    /// compressed size
     pub compressed_size: u32,
-    // uncompressed size
+
+    /// uncompressed size
     pub uncompressed_size: u32,
-    // disk number start
+
+    /// disk number start
     pub disk_nbr_start: u16,
-    // internal file attributes
+
+    /// internal file attributes
     pub internal_attrs: u16,
-    // external file attributes
+
+    /// external file attributes
     pub external_attrs: u32,
-    // relative offset of local header
+
+    /// relative offset of local header
     pub header_offset: u32,
 
-    // name
-    pub name: ZipString,
-    // extra
-    pub extra: ZipBytes, // comment
+    /// name
+    pub name: ZipString, // FIXME: should this be Cow<str>?
+
+    /// extra
+    pub extra: ZipBytes, // FIXME: should this be Cow<[u8]>?
+
+    /// comment
     pub comment: ZipString,
 }
 
 impl DirectoryHeader {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
+    /// Parser for the central directory file header
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         _ = tag(Self::SIGNATURE).parse_next(i)?;
         let creator_version = Version::parser.parse_next(i)?;
@@ -93,6 +108,7 @@ impl DirectoryHeader {
 }
 
 impl DirectoryHeader {
+    /// Returns true if the name or comment is not valid UTF-8
     pub fn is_non_utf8(&self) -> bool {
         let (valid1, require1) = detect_utf8(&self.name.0[..]);
         let (valid2, require2) = detect_utf8(&self.comment.0[..]);
@@ -113,6 +129,8 @@ impl DirectoryHeader {
         self.flags & 0x800 == 0
     }
 
+    /// Converts the directory header into a stored entry: this involves
+    /// parsing the extra fields and converting the timestamps.
     pub fn as_stored_entry(
         &self,
         is_zip64: bool,

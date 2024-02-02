@@ -827,6 +827,7 @@ dependencies = [
  "cfg-if",
  "chardetng",
  "chrono",
+ "crc32fast",
  "encoding_rs",
  "num_enum",
  "oem_cp",

@@ -61,7 +61,7 @@ enum State {
     Transitioning,
 }
 
-pub struct EntryReader<R>
+pub(crate) struct EntryReader<R>
 where
     R: io::Read,
 {
@@ -240,7 +240,7 @@ where
 {
     const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
-    pub fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
+    pub(crate) fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
     where
         F: Fn(u64) -> R,
     {

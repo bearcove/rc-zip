@@ -54,7 +54,7 @@ pin_project_lite::pin_project! {
 }
 
 pin_project_lite::pin_project! {
-    pub struct AsyncEntryReader<R>
+    pub(crate) struct AsyncEntryReader<R>
     where
         R: AsyncRead,
     {

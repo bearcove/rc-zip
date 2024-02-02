@@ -13,7 +13,10 @@ use winnow::{
 /// Represents dates from year 1980 to 2180, with 2 second precision.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct MsdosTimestamp {
+    /// Time in 2-second intervals
     pub time: u16,
+
+    /// Date in MS-DOS format, cf. https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
     pub date: u16,
 }
 
@@ -27,6 +30,7 @@ impl fmt::Debug for MsdosTimestamp {
 }
 
 impl MsdosTimestamp {
+    /// Parser for MS-DOS timestamps
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         seq! {Self {
             time: le_u16,
@@ -64,6 +68,7 @@ impl MsdosTimestamp {
 /// A timestamp in NTFS format.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct NtfsTimestamp {
+    /// Timestamp in 100ns intervals since 1601-01-01 00:00:00 UTC
     pub timestamp: u64,
 }
 

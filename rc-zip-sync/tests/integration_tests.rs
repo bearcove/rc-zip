@@ -55,7 +55,6 @@ impl ZipTest {
         }
 
         if let Some(exp_encoding) = self.expected_encoding {
-            println!("{}: should be {}", self.name(), exp_encoding);
             assert_eq!(archive.encoding(), exp_encoding);
         }
 
@@ -351,10 +350,10 @@ fn state_machine() {
     let cases = test_cases();
     let case = cases.iter().find(|x| x.name() == "zip64.zip").unwrap();
     let bs = case.bytes();
-    let mut zar = ArchiveFsm::new(bs.len() as u64);
+    let mut fsm = ArchiveFsm::new(bs.len() as u64);
 
     let archive = 'read_zip: loop {
-        if let Some(offset) = zar.wants_read() {
+        if let Some(offset) = fsm.wants_read() {
             let increment = 128usize;
             let offset = offset as usize;
             let slice = if offset + increment > bs.len() {
@@ -363,29 +362,22 @@ fn state_machine() {
                 &bs[offset..offset + increment]
             };
 
-            let len = cmp::min(slice.len(), zar.space().len());
-            println!(
-                "slice len: {}, zar space len: {}",
-                slice.len(),
-                zar.space().len()
-            );
-            zar.space()[..len].copy_from_slice(&slice[..len]);
+            let len = cmp::min(slice.len(), fsm.space().len());
+            fsm.space()[..len].copy_from_slice(&slice[..len]);
             match len {
                 0 => panic!("EOF!"),
                 read_bytes => {
-                    println!("at {}, zar read {} bytes", offset, read_bytes);
-                    zar.fill(read_bytes);
+                    fsm.fill(read_bytes);
                 }
             }
         }
 
-        match zar.process() {
+        fsm = match fsm.process() {
             Ok(res) => match res {
-                FsmResult::Continue => {}
+                FsmResult::Continue(fsm) => fsm,
                 FsmResult::Done(archive) => break 'read_zip archive,
             },
             Err(err) => {
-                println!("zar processing error: {:#?}", err);
                 panic!("{}", err)
             }
         }

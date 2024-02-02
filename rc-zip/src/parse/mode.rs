@@ -159,20 +159,42 @@ impl From<u32> for Mode {
     }
 }
 
+/// UnixMode represents the file mode and permission bits for Unix systems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UnixMode(pub u32);
 
 impl UnixMode {
+    /// bit mask for the file type bit fields
     pub const IFMT: Self = Self(0xf000);
+
+    /// the file is a socket
     pub const IFSOCK: Self = Self(0xc000);
+
+    /// the file is a symbolic link
     pub const IFLNK: Self = Self(0xa000);
+
+    /// the file is a regular file
     pub const IFREG: Self = Self(0x8000);
+
+    /// the file is a block device
     pub const IFBLK: Self = Self(0x6000);
+
+    /// the file is a directory
     pub const IFDIR: Self = Self(0x4000);
+
+    /// the file is a character device
     pub const IFCHR: Self = Self(0x2000);
+
+    /// the file is a FIFO
     pub const IFIFO: Self = Self(0x1000);
+
+    /// the file is set-user-ID
     pub const ISUID: Self = Self(0x800);
+
+    /// the file is set-group-ID
     pub const ISGID: Self = Self(0x400);
+
+    /// the file is sticky
     pub const ISVTX: Self = Self(0x200);
 }
 
@@ -182,11 +204,15 @@ impl From<u32> for UnixMode {
     }
 }
 
+/// MsdosMode represents the file mode and permission bits for MS-DOS
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MsdosMode(pub u32);
 
 impl MsdosMode {
+    /// the file is a directory
     pub const DIR: Self = Self(0x10);
+
+    /// the file is read-only
     pub const READ_ONLY: Self = Self(0x01);
 }
 
@@ -227,6 +253,7 @@ macro_rules! derive_bitops {
         }
 
         impl $T {
+            /// Check if the mode has the given bits set.
             pub fn has(&self, rhs: Self) -> bool {
                 self.0 & rhs.0 != 0
             }

@@ -59,7 +59,10 @@ pub enum ExtraField {
     /// NTFS (Win9x/WinNT FileTimes)
     Ntfs(ExtraNtfsField),
     /// Unknown extra field, with tag
-    Unknown { tag: u16 },
+    Unknown {
+        /// tag of the extra field
+        tag: u16,
+    },
 }
 
 impl ExtraField {
@@ -100,8 +103,13 @@ impl ExtraField {
 /// 4.5.3 -Zip64 Extended Information Extra Field (0x0001)
 #[derive(Clone, Default)]
 pub struct ExtraZip64Field {
+    /// 64-bit uncompressed size
     pub uncompressed_size: Option<u64>,
+
+    /// 64-bit compressed size
     pub compressed_size: Option<u64>,
+
+    /// 64-bit header offset
     pub header_offset: Option<u64>,
 }
 
@@ -194,7 +202,10 @@ impl ExtraUnixField {
 /// ```
 #[derive(Clone)]
 pub struct ExtraNewUnixField {
+    /// file user id
     pub uid: u64,
+
+    /// file group id
     pub gid: u64,
 }
 
@@ -229,6 +240,7 @@ impl ExtraNewUnixField {
 /// 4.5.5 -NTFS Extra Field (0x000a):
 #[derive(Clone)]
 pub struct ExtraNtfsField {
+    /// NTFS attributes
     pub attrs: Vec<NtfsAttr>,
 }
 
@@ -252,8 +264,14 @@ impl ExtraNtfsField {
 /// NTFS attribute for zip entries (mostly timestamps)
 #[derive(Clone)]
 pub enum NtfsAttr {
+    /// NTFS attribute 1, which contains modified/accessed/created timestamps
     Attr1(NtfsAttr1),
-    Unknown { tag: u16 },
+
+    /// Unknown NTFS attribute
+    Unknown {
+        /// tag of the attribute
+        tag: u16,
+    },
 }
 
 impl NtfsAttr {
@@ -271,10 +289,16 @@ impl NtfsAttr {
     }
 }
 
+/// NTFS attribute 1, which contains modified/accessed/created timestamps
 #[derive(Clone)]
 pub struct NtfsAttr1 {
+    /// modified time
     pub mtime: NtfsTimestamp,
+
+    /// accessed time
     pub atime: NtfsTimestamp,
+
+    /// created time
     pub ctime: NtfsTimestamp,
 }
 

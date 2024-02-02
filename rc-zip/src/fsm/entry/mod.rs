@@ -177,7 +177,9 @@ impl EntryFsm {
                 );
                 let in_buf = &in_buf[..in_buf_max_len];
 
-                let has_more_input = if *compressed_bytes == self.entry.compressed_size as _ {
+                let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
+
+                let has_more_input = if fed_bytes_after_this == self.entry.compressed_size as _ {
                     HasMoreInput::No
                 } else {
                     HasMoreInput::Yes

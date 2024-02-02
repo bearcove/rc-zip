@@ -16,3 +16,6 @@ pub mod encoding;
 pub mod error;
 pub mod fsm;
 pub mod parse;
+
+#[cfg(feature = "corpus")]
+pub mod corpus;

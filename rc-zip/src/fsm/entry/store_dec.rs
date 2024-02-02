@@ -1,5 +1,7 @@
 use std::cmp;
 
+use crate::error::Error;
+
 use super::{DecompressOutcome, Decompressor};
 
 #[derive(Default)]
@@ -10,7 +12,7 @@ impl Decompressor for StoreDec {
         &mut self,
         in_buf: &[u8],
         out_buf: &mut [u8],
-    ) -> Result<DecompressOutcome, crate::error::Error> {
+    ) -> Result<DecompressOutcome, Error> {
         let len = cmp::min(in_buf.len(), out_buf.len());
         out_buf[..len].copy_from_slice(&in_buf[..len]);
         Ok(DecompressOutcome {

@@ -10,10 +10,9 @@ use winnow::{
 };
 
 mod store_dec;
-use store_dec::StoreDec;
 
+#[cfg(feature = "deflate")]
 mod deflate_dec;
-use deflate_dec::DeflateDec;
 
 use crate::{
     error::{Error, FormatError, UnsupportedError},
@@ -110,7 +109,7 @@ impl EntryFsm {
         out: &mut [u8],
     ) -> Result<FsmResult<(Self, DecompressOutcome), ()>, Error> {
         use State as S;
-        match self.state {
+        match &mut self.state {
             S::ReadLocalHeader => {
                 let mut input = Partial::new(self.buffer.data());
                 match LocalFileHeaderRecord::parser.parse_next(&mut input) {
@@ -119,7 +118,7 @@ impl EntryFsm {
                             header,
                             uncompressed_size: 0,
                             hasher: crc32fast::Hasher::new(),
-                            decompressor: AnyDecompressor::new(header.method)?,
+                            decompressor: AnyDecompressor::new(self.method)?,
                         };
                         self.process(out)
                     }
@@ -133,7 +132,7 @@ impl EntryFsm {
                 header,
                 uncompressed_size,
                 hasher,
-                mut decompressor,
+                decompressor,
             } => {
                 let in_buf = self.buffer.data();
                 let is_flushing = in_buf.is_empty();
@@ -243,8 +242,9 @@ impl EntryFsm {
 }
 
 enum AnyDecompressor {
-    Store(StoreDec),
-    Deflate(DeflateDec),
+    Store(store_dec::StoreDec),
+    #[cfg(feature = "deflate")]
+    Deflate(deflate_dec::DeflateDec),
 }
 
 #[derive(Default, Debug)]
@@ -266,7 +266,15 @@ impl AnyDecompressor {
     fn new(method: Method) -> Result<Self, Error> {
         let dec = match method {
             Method::Store => Self::Store(Default::default()),
+
+            #[cfg(feature = "deflate")]
             Method::Deflate => Self::Deflate(Default::default()),
+            #[cfg(not(feature = "deflate"))]
+            Method::Deflate => {
+                let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));
+                return Err(err);
+            }
+
             _ => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotSupported(method));
                 return Err(err);
@@ -280,6 +288,7 @@ impl AnyDecompressor {
         /// forward to the appropriate decompressor
         match self {
             Self::Store(dec) => dec.decompress(in_buf, out),
+            #[cfg(feature = "deflate")]
             Self::Deflate(dec) => dec.decompress(in_buf, out),
         }
     }

@@ -829,6 +829,7 @@ dependencies = [
  "chrono",
  "crc32fast",
  "encoding_rs",
+ "miniz_oxide",
  "num_enum",
  "oem_cp",
  "oval",

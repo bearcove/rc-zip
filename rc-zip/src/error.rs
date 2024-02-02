@@ -23,6 +23,10 @@ pub enum Error {
     #[error("io: {0}")]
     IO(#[from] std::io::Error),
 
+    /// Decompression-related error
+    #[error("{method:?} decompression error: {msg}")]
+    Decompression { method: Method, msg: String },
+
     /// Could not read as a zip because size could not be determined
     #[error("size must be known to open zip file")]
     UnknownSize,

@@ -10,7 +10,7 @@ use rc_zip::{
     parse::{Archive, StoredEntry},
 };
 
-use crate::entry_reader::AsyncEntryReader;
+use crate::entry_reader::EntryReader;
 
 /// A trait for reading something as a zip archive.
 ///
@@ -156,8 +156,7 @@ where
 {
     /// Returns a reader for the entry.
     pub fn reader(&self) -> impl AsyncRead + Unpin + '_ {
-        tracing::trace!("Creating EntryReader");
-        AsyncEntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
+        EntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
     }
 
     /// Reads the entire entry into a vector.

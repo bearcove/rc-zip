@@ -241,12 +241,9 @@ where
 {
     const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
-    pub(crate) fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
-    where
-        F: Fn(u64) -> R,
-    {
+    pub(crate) fn new(entry: &StoredEntry, rd: R) -> Self {
         Self {
-            rd: get_reader(entry.header_offset),
+            rd,
             eof: false,
             state: State::ReadLocalHeader {
                 buffer: Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
@@ -328,12 +325,9 @@ impl<R> FsmEntryReader<R>
 where
     R: io::Read,
 {
-    pub(crate) fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
-    where
-        F: Fn(u64) -> R,
-    {
+    pub(crate) fn new(entry: &StoredEntry, rd: R) -> Self {
         Self {
-            rd: get_reader(entry.header_offset),
+            rd,
             fsm: Some(EntryFsm::new(entry.method(), entry.inner)),
         }
     }

@@ -153,12 +153,13 @@ where
 {
     /// Returns a reader for the entry.
     pub fn reader(&self) -> impl Read + 'a {
-        EntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
+        // FIXME: replace with `fsm_reader``
+        EntryReader::new(self.entry, self.file.cursor_at(self.entry.header_offset))
     }
 
     /// Returns an fsm-based reader for the entry
     pub fn fsm_reader(&self) -> impl Read + 'a {
-        FsmEntryReader::new(self.entry, |offset| self.file.cursor_at(offset))
+        FsmEntryReader::new(self.entry, self.file.cursor_at(self.entry.header_offset))
     }
 
     /// Reads the entire entry into a vector.

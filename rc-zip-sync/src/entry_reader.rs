@@ -37,7 +37,7 @@ where
         if fsm.wants_read() {
             tracing::trace!("fsm wants read");
             let n = self.rd.read(fsm.space())?;
-            tracing::trace!("read {} bytes", n);
+            tracing::trace!("giving fsm {} bytes", n);
             fsm.fill(n);
         } else {
             tracing::trace!("fsm does not want read");
@@ -46,7 +46,12 @@ where
         match fsm.process(buf)? {
             FsmResult::Continue((fsm, outcome)) => {
                 self.fsm = Some(fsm);
-                Ok(outcome.bytes_written)
+                if outcome.bytes_written > 0 {
+                    Ok(outcome.bytes_written)
+                } else {
+                    // loop, it happens
+                    self.read(buf)
+                }
             }
             FsmResult::Done(()) => {
                 // neat!

@@ -151,7 +151,7 @@ impl EntryFsm {
                             compressed_bytes: 0,
                             uncompressed_bytes: 0,
                             hasher: crc32fast::Hasher::new(),
-                            decompressor: AnyDecompressor::new(self.method)?,
+                            decompressor: AnyDecompressor::new(self.method, &self.entry)?,
                         };
                         self.process(out)
                     }
@@ -183,6 +183,14 @@ impl EntryFsm {
                     HasMoreInput::Yes
                 };
                 let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
+                trace!(
+                    compressed_bytes = *compressed_bytes,
+                    uncompressed_bytes = *uncompressed_bytes,
+                    bytes_read = outcome.bytes_read,
+                    bytes_written = outcome.bytes_written,
+                    eof = self.eof,
+                    "decompressed"
+                );
                 self.buffer.consume(outcome.bytes_read);
                 *compressed_bytes += outcome.bytes_read as u64;
 
@@ -204,6 +212,12 @@ impl EntryFsm {
                 hasher.update(&out[..outcome.bytes_written]);
                 // update the number of bytes we've decompressed
                 *uncompressed_bytes += outcome.bytes_written as u64;
+
+                trace!(
+                    compressed_bytes = *compressed_bytes,
+                    uncompressed_bytes = *uncompressed_bytes,
+                    "updated hasher"
+                );
 
                 Ok(FsmResult::Continue((self, outcome)))
             }
@@ -299,7 +313,7 @@ enum AnyDecompressor {
     #[cfg(feature = "bzip2")]
     Bzip2(bzip2_dec::Bzip2Dec),
     #[cfg(feature = "lzma")]
-    Lzma(lzma_dec::LzmaDec),
+    Lzma(Box<lzma_dec::LzmaDec>),
 }
 
 #[derive(Default, Debug)]
@@ -326,7 +340,7 @@ trait Decompressor {
 }
 
 impl AnyDecompressor {
-    fn new(method: Method) -> Result<Self, Error> {
+    fn new(method: Method, entry: &StoredEntryInner) -> Result<Self, Error> {
         let dec = match method {
             Method::Store => Self::Store(Default::default()),
 
@@ -347,7 +361,7 @@ impl AnyDecompressor {
             }
 
             #[cfg(feature = "lzma")]
-            Method::Lzma => Self::Lzma(Default::default()),
+            Method::Lzma => Self::Lzma(Box::new(lzma_dec::LzmaDec::new(entry.uncompressed_size))),
             #[cfg(not(feature = "lzma"))]
             Method::Lzma => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));

@@ -64,7 +64,7 @@ impl Decompressor for DeflateDec {
         );
 
         let mut outcome: DecompressOutcome = Default::default();
-        self.copy_to_outbuf(out, &mut outcome);
+        self.copy_to_out(out, &mut outcome);
         if outcome.bytes_written > 0 {
             tracing::trace!(
                 "returning {} bytes from internal buffer",
@@ -115,7 +115,7 @@ impl Decompressor for DeflateDec {
 			},
         }
 
-        self.copy_to_outbuf(out, &mut outcome);
+        self.copy_to_out(out, &mut outcome);
         Ok(outcome)
     }
 }
@@ -123,22 +123,22 @@ impl Decompressor for DeflateDec {
 impl DeflateDec {
     const INTERNAL_BUFFER_LENGTH: usize = 64 * 1024;
 
-    fn copy_to_outbuf(&mut self, mut out_buf: &mut [u8], outcome: &mut DecompressOutcome) {
+    fn copy_to_out(&mut self, mut out: &mut [u8], outcome: &mut DecompressOutcome) {
         // as long as there's room in out_buf and we have remaining data in the
         // internal buffer, copy from internal_buffer wrapping as needed,
         // decreasing self.remain_in_internal_buffer and increasing self.out_pos
         // and outcome.bytes_written
-        while !out_buf.is_empty() && self.remain_in_internal_buffer > 0 {
-            let copy_len = cmp::min(self.remain_in_internal_buffer, out_buf.len());
+        while !out.is_empty() && self.remain_in_internal_buffer > 0 {
+            let copy_len = cmp::min(self.remain_in_internal_buffer, out.len());
             // take wrapping into account
             let copy_len = cmp::min(copy_len, self.internal_buffer.len() - self.out_pos);
             trace!("copying {} bytes from internal buffer to out_buf", copy_len);
 
-            out_buf[..copy_len].copy_from_slice(&self.internal_buffer[self.out_pos..][..copy_len]);
+            out[..copy_len].copy_from_slice(&self.internal_buffer[self.out_pos..][..copy_len]);
             self.out_pos += copy_len;
             outcome.bytes_written += copy_len;
             self.remain_in_internal_buffer -= copy_len;
-            out_buf = &mut out_buf[copy_len..];
+            out = &mut out[copy_len..];
 
             // if we've reached the end of the buffer, wrap around
             if self.out_pos == self.internal_buffer.len() {

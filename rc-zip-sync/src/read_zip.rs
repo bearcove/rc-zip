@@ -226,14 +226,14 @@ pub trait ReadZipEntriesStreaming<R>
 where
     R: Read,
 {
-    fn first_entry(self) -> Result<StreamingEntryReader<R>, Error>;
+    fn read_first_zip_entry_streaming(self) -> Result<StreamingEntryReader<R>, Error>;
 }
 
 impl<R> ReadZipEntriesStreaming<R> for R
 where
     R: Read,
 {
-    fn first_entry(mut self) -> Result<StreamingEntryReader<Self>, Error> {
+    fn read_first_zip_entry_streaming(mut self) -> Result<StreamingEntryReader<Self>, Error> {
         // first, get enough data to read the first local file header
         let mut buf = oval::Buffer::with_capacity(16 * 1024);
 

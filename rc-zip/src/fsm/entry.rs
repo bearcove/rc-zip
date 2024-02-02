@@ -1,6 +1,8 @@
 // FIXME: remove
 #![allow(unused)]
 
+use std::cmp;
+
 use oval::Buffer;
 use tracing::trace;
 use winnow::{
@@ -34,8 +36,11 @@ enum State {
         /// The local file header for this entry
         header: LocalFileHeaderRecord,
 
-        /// Amount of data we have decompressed so far
-        uncompressed_size: u64,
+        /// Amount of bytes we've fed to the decompressor
+        compressed_bytes: u64,
+
+        /// Amount of bytes the decompressor has produced
+        uncompressed_bytes: u64,
 
         /// CRC32 hash of the decompressed data
         hasher: crc32fast::Hasher,
@@ -140,7 +145,8 @@ impl EntryFsm {
                         self.buffer.consume(consumed);
                         self.state = S::ReadData {
                             header,
-                            uncompressed_size: 0,
+                            compressed_bytes: 0,
+                            uncompressed_bytes: 0,
                             hasher: crc32fast::Hasher::new(),
                             decompressor: AnyDecompressor::new(self.method)?,
                         };
@@ -154,22 +160,36 @@ impl EntryFsm {
             }
             S::ReadData {
                 header,
-                uncompressed_size,
+                compressed_bytes,
+                uncompressed_bytes,
                 hasher,
                 decompressor,
             } => {
                 let in_buf = self.buffer.data();
-                let is_flushing = in_buf.is_empty();
-                let outcome = decompressor.decompress(in_buf, out)?;
+
+                // don't feed the decompressor bytes beyond the entry's compressed size
+                let in_buf_max_len = cmp::min(
+                    in_buf.len(),
+                    self.entry.compressed_size as usize - *compressed_bytes as usize,
+                );
+                let in_buf = &in_buf[..in_buf_max_len];
+
+                let has_more_input = if *compressed_bytes == self.entry.compressed_size as _ {
+                    HasMoreInput::No
+                } else {
+                    HasMoreInput::Yes
+                };
+                let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
                 self.buffer.consume(outcome.bytes_read);
+                *compressed_bytes += outcome.bytes_read as u64;
 
                 if outcome.bytes_written == 0 && self.eof {
                     // we're done, let's read the data descriptor (if there's one)
-                    transition!(self.state => (S::ReadData { header, uncompressed_size, hasher, decompressor }) {
+                    transition!(self.state => (S::ReadData { header, compressed_bytes, uncompressed_bytes, hasher, decompressor }) {
                         S::ReadDataDescriptor {
                             header,
                             metrics: EntryReadMetrics {
-                                uncompressed_size,
+                                uncompressed_size: uncompressed_bytes,
                                 crc32: hasher.finalize(),
                             },
                         }
@@ -278,9 +298,18 @@ pub struct DecompressOutcome {
     pub bytes_written: usize,
 }
 
+pub enum HasMoreInput {
+    Yes,
+    No,
+}
+
 trait Decompressor {
-    fn decompress(&mut self, in_buf: &[u8], out_buf: &mut [u8])
-        -> Result<DecompressOutcome, Error>;
+    fn decompress(
+        &mut self,
+        in_buf: &[u8],
+        out_buf: &mut [u8],
+        has_more_input: HasMoreInput,
+    ) -> Result<DecompressOutcome, Error>;
 }
 
 impl AnyDecompressor {
@@ -305,12 +334,17 @@ impl AnyDecompressor {
     }
 
     #[inline]
-    fn decompress(&mut self, in_buf: &[u8], out: &mut [u8]) -> Result<DecompressOutcome, Error> {
+    fn decompress(
+        &mut self,
+        in_buf: &[u8],
+        out: &mut [u8],
+        has_more_input: HasMoreInput,
+    ) -> Result<DecompressOutcome, Error> {
         /// forward to the appropriate decompressor
         match self {
-            Self::Store(dec) => dec.decompress(in_buf, out),
+            Self::Store(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "deflate")]
-            Self::Deflate(dec) => dec.decompress(in_buf, out),
+            Self::Deflate(dec) => dec.decompress(in_buf, out, has_more_input),
         }
     }
 }

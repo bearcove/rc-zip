@@ -3,14 +3,16 @@ use std::cmp;
 use miniz_oxide::inflate::{
     core::{
         decompress,
-        inflate_flags::{TINFL_FLAG_IGNORE_ADLER32, TINFL_FLAG_PARSE_ZLIB_HEADER},
+        inflate_flags::{
+            TINFL_FLAG_HAS_MORE_INPUT, TINFL_FLAG_IGNORE_ADLER32, TINFL_FLAG_PARSE_ZLIB_HEADER,
+        },
         DecompressorOxide,
     },
     TINFLStatus,
 };
 use tracing::trace;
 
-use crate::{error::Error, parse::Method};
+use crate::{error::Error, fsm::entry::HasMoreInput, parse::Method};
 
 use super::{DecompressOutcome, Decompressor};
 
@@ -53,6 +55,7 @@ impl Decompressor for DeflateDec {
         &mut self,
         in_buf: &[u8],
         out_buf: &mut [u8],
+        has_more_input: HasMoreInput,
     ) -> Result<DecompressOutcome, Error> {
         tracing::trace!(
             in_buf_len = in_buf.len(),
@@ -75,10 +78,8 @@ impl Decompressor for DeflateDec {
         // no output bytes, let's call miniz_oxide
 
         let mut flags = TINFL_FLAG_IGNORE_ADLER32;
-        if in_buf.is_empty() {
-            // `Decompressor` invariant: if in_buf is empty, we're at EOF
-        } else {
-            flags |= TINFL_FLAG_PARSE_ZLIB_HEADER;
+        if matches!(has_more_input, HasMoreInput::Yes) {
+            flags |= TINFL_FLAG_HAS_MORE_INPUT;
         }
 
         let (status, bytes_read, bytes_written) = decompress(

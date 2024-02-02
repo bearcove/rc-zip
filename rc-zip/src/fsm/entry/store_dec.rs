@@ -2,7 +2,7 @@ use std::cmp;
 
 use crate::error::Error;
 
-use super::{DecompressOutcome, Decompressor};
+use super::{DecompressOutcome, Decompressor, HasMoreInput};
 
 #[derive(Default)]
 pub(crate) struct StoreDec;
@@ -12,6 +12,7 @@ impl Decompressor for StoreDec {
         &mut self,
         in_buf: &[u8],
         out_buf: &mut [u8],
+        _has_more_input: HasMoreInput,
     ) -> Result<DecompressOutcome, Error> {
         let len = cmp::min(in_buf.len(), out_buf.len());
         out_buf[..len].copy_from_slice(&in_buf[..len]);

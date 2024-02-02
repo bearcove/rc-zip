@@ -48,7 +48,7 @@ impl Decompressor for LzmaDec {
             in_buf_len = in_buf.len(),
             out_len = out.len(),
             remain_in_internal_buffer = self.internal_buf_mut().len(),
-            "DeflateDec::decompress",
+            "decompress",
         );
 
         let mut outcome: DecompressOutcome = Default::default();
@@ -56,7 +56,7 @@ impl Decompressor for LzmaDec {
         self.copy_to_out(out, &mut outcome);
         if outcome.bytes_written > 0 {
             trace!(
-                "LzmaDec: still draining internal buffer, just copied {} bytes",
+                "still draining internal buffer, just copied {} bytes",
                 outcome.bytes_written
             );
             return Ok(outcome);
@@ -66,7 +66,7 @@ impl Decompressor for LzmaDec {
             State::Writing(stream) => {
                 let n = stream.write(in_buf).map_err(dec_err)?;
                 trace!(
-                    "LzmaDec: wrote {} bytes to decompressor (of {} available)",
+                    "wrote {} bytes to decompressor (of {} available)",
                     n,
                     in_buf.len()
                 );
@@ -79,20 +79,20 @@ impl Decompressor for LzmaDec {
                     // trailer after LZMA compressed data? and the decoder will _refuse_
                     // to let us write them, so when we have just these 10 bytes left,
                     // it's good to just let the decoder finish up.
-                    trace!("LzmaDec: didn't write all output AND no output yet, so keep going");
+                    trace!("didn't write all output AND no output yet, so keep going");
                     return self.decompress(&in_buf[n..], out, has_more_input);
                 }
 
                 match has_more_input {
                     HasMoreInput::Yes => {
                         // keep going
-                        trace!("LzmaDec: more input to come");
+                        trace!("more input to come");
                     }
                     HasMoreInput::No => {
-                        trace!("LzmaDec: no more input to come");
+                        trace!("no more input to come");
                         match std::mem::take(&mut self.state) {
                             State::Writing(stream) => {
-                                trace!("LzmaDec: finishing...");
+                                trace!("finishing...");
                                 self.state = State::Draining(stream.finish().map_err(dec_err)?);
                             }
                             _ => unreachable!(),
@@ -107,10 +107,7 @@ impl Decompressor for LzmaDec {
         }
 
         self.copy_to_out(out, &mut outcome);
-        trace!(
-            "LzmaDec: decompressor gave us {} bytes",
-            outcome.bytes_written
-        );
+        trace!("decompressor gave us {} bytes", outcome.bytes_written);
         Ok(outcome)
     }
 }
@@ -137,7 +134,7 @@ impl LzmaDec {
 
         while !out.is_empty() && !internal_buf.is_empty() {
             let to_copy = cmp::min(out.len(), internal_buf.len());
-            trace!("LzmaDec: copying {} bytes from internal buffer", to_copy);
+            trace!("copying {} bytes from internal buffer", to_copy);
             out[..to_copy].copy_from_slice(&internal_buf[..to_copy]);
             out = &mut out[to_copy..];
 

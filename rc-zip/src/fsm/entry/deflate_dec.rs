@@ -60,7 +60,7 @@ impl Decompressor for DeflateDec {
             out_len = out.len(),
             remain_in_internal_buffer = self.remain_in_internal_buffer,
             out_pos = self.out_pos,
-            "DeflateDec::decompress",
+            "decompress",
         );
 
         let mut outcome: DecompressOutcome = Default::default();

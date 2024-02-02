@@ -13,6 +13,9 @@ mod store_dec;
 #[cfg(feature = "deflate")]
 mod deflate_dec;
 
+#[cfg(feature = "deflate64")]
+mod deflate64_dec;
+
 #[cfg(feature = "bzip2")]
 mod bzip2_dec;
 
@@ -317,6 +320,8 @@ enum AnyDecompressor {
     Store(store_dec::StoreDec),
     #[cfg(feature = "deflate")]
     Deflate(Box<deflate_dec::DeflateDec>),
+    #[cfg(feature = "deflate64")]
+    Deflate64(Box<deflate64_dec::Deflate64Dec>),
     #[cfg(feature = "bzip2")]
     Bzip2(bzip2_dec::Bzip2Dec),
     #[cfg(feature = "lzma")]
@@ -357,6 +362,14 @@ impl AnyDecompressor {
             Method::Deflate => Self::Deflate(Default::default()),
             #[cfg(not(feature = "deflate"))]
             Method::Deflate => {
+                let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));
+                return Err(err);
+            }
+
+            #[cfg(feature = "deflate64")]
+            Method::Deflate64 => Self::Deflate64(Default::default()),
+            #[cfg(not(feature = "deflate64"))]
+            Method::Deflate64 => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));
                 return Err(err);
             }
@@ -407,6 +420,8 @@ impl Decompressor for AnyDecompressor {
             Self::Store(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "deflate")]
             Self::Deflate(dec) => dec.decompress(in_buf, out, has_more_input),
+            #[cfg(feature = "deflate64")]
+            Self::Deflate64(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "bzip2")]
             Self::Bzip2(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "lzma")]

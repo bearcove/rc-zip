@@ -1,5 +1,9 @@
 //! A library for reading zip files synchronously using std I/O traits,
 //! built on top of [rc-zip](https://crates.io/crates/rc-zip).
+//!
+//! See also:
+//!
+//!   * [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio) for using tokio I/O traits
 
 #![warn(missing_docs)]
 

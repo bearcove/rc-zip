@@ -6,10 +6,11 @@
 //! file, winnow parsers that can turn byte buffers into those types, and
 //! state machines that can use those parsers to read zip files from a stream.
 //!
-//! [rc-zip-sync](https://crates.io/crates/rc-zip-sync) and
-//! [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio) build on top of this
-//! to provide a higher-level API for reading zip files, from sync and async
-//! code respectively.
+//! This crate is low-level, you may be interested in either of those higher
+//! level wrappers:
+//!
+//!   * [rc-zip-sync](https://crates.io/crates/rc-zip-sync) for using std I/O traits
+//!   * [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio) for using tokio I/O traits
 
 pub mod encoding;
 pub mod error;

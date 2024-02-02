@@ -354,7 +354,7 @@ trait Decompressor {
 }
 
 impl AnyDecompressor {
-    fn new(method: Method, entry: &StoredEntryInner) -> Result<Self, Error> {
+    fn new(method: Method, #[allow(unused)] entry: &StoredEntryInner) -> Result<Self, Error> {
         let dec = match method {
             Method::Store => Self::Store(Default::default()),
 

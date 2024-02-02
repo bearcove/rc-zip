@@ -820,6 +820,7 @@ dependencies = [
  "test-log",
  "tracing",
  "tracing-subscriber",
+ "winnow",
 ]
 
 [[package]]

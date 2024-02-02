@@ -9,6 +9,7 @@
 
 mod entry_reader;
 mod read_zip;
+mod streaming_entry_reader;
 
 // re-exports
 pub use rc_zip;

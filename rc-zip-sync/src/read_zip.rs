@@ -1,10 +1,16 @@
 use rc_zip::{
     error::Error,
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, StoredEntry},
+    parse::{Archive, LocalFileHeaderRecord, StoredEntry},
+};
+use winnow::{
+    error::ErrMode,
+    stream::{AsBytes, Offset},
+    Parser, Partial,
 };
 
 use crate::entry_reader::EntryReader;
+use crate::streaming_entry_reader::StreamingEntryReader;
 use std::{io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive
@@ -213,5 +219,46 @@ impl ReadZip for std::fs::File {
     fn read_zip(&self) -> Result<SyncArchive<'_, Self>, Error> {
         let size = self.metadata()?.len();
         self.read_zip_with_size(size)
+    }
+}
+
+pub trait ReadZipEntriesStreaming<R>
+where
+    R: Read,
+{
+    fn first_entry(self) -> Result<StreamingEntryReader<R>, Error>;
+}
+
+impl<R> ReadZipEntriesStreaming<R> for R
+where
+    R: Read,
+{
+    fn first_entry(mut self) -> Result<StreamingEntryReader<Self>, Error> {
+        // first, get enough data to read the first local file header
+        let mut buf = oval::Buffer::with_capacity(16 * 1024);
+
+        let header = loop {
+            let n = self.read(buf.space())?;
+            buf.fill(n);
+
+            let mut input = Partial::new(buf.data());
+            match LocalFileHeaderRecord::parser.parse_next(&mut input) {
+                Ok(header) => {
+                    let consumed = input.as_bytes().offset_from(&buf.data());
+                    buf.consume(consumed);
+                    tracing::trace!(?header, %consumed, "Got local file header record!");
+                    break header;
+                }
+                // TODO: keep reading if we don't have enough data
+                Err(ErrMode::Incomplete(_)) => {
+                    // read more
+                }
+                Err(e) => {
+                    panic!("{e}")
+                }
+            }
+        };
+
+        Ok(StreamingEntryReader::new(buf, header, self))
     }
 }

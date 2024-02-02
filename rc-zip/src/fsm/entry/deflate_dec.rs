@@ -105,7 +105,7 @@ impl Decompressor for DeflateDec {
         }
 
         self.copy_to_outbuf(out_buf, &mut outcome);
-        return Ok(outcome);
+        Ok(outcome)
     }
 }
 

@@ -179,7 +179,7 @@ impl EntryFsm {
                     Err(ErrMode::Incomplete(_)) => {
                         Ok(FsmResult::Continue((self, Default::default())))
                     }
-                    Err(_e) => Err(Error::Format(FormatError::InvalidDataDescriptor).into()),
+                    Err(_e) => Err(Error::Format(FormatError::InvalidDataDescriptor)),
                 }
             }
             S::Validate {

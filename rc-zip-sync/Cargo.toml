@@ -36,7 +36,7 @@ winnow = "0.5.36"
 [features]
 default = ["file", "deflate"]
 file = ["positioned-io"]
-deflate = ["dep:flate2"]
+deflate = ["dep:flate2", "rc-zip/deflate"]
 deflate64 = ["dep:deflate64"]
 lzma = ["dep:lzma-rs"]
 bzip2 = ["dep:bzip2"]

@@ -164,7 +164,7 @@ where
     /// Reads the entire entry into a vector.
     pub fn bytes(&self) -> std::io::Result<Vec<u8>> {
         let mut v = Vec::new();
-        self.reader().read_to_end(&mut v)?;
+        self.fsm_reader().read_to_end(&mut v)?;
         Ok(v)
     }
 }

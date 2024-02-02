@@ -13,6 +13,7 @@ pub(crate) struct LzmaDec {
 
 impl LzmaDec {
     pub fn new(uncompressed_size: u64) -> Self {
+        trace!(%uncompressed_size, "LzmaDec::new");
         let memlimit = 128 * 1024 * 1024;
         let opts = lzma_rs::decompress::Options {
             unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(uncompressed_size)),

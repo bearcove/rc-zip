@@ -184,10 +184,9 @@ impl EntryFsm {
                 };
                 let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
                 trace!(
+                    ?outcome,
                     compressed_bytes = *compressed_bytes,
                     uncompressed_bytes = *uncompressed_bytes,
-                    bytes_read = outcome.bytes_read,
-                    bytes_written = outcome.bytes_written,
                     eof = self.eof,
                     "decompressed"
                 );
@@ -197,12 +196,15 @@ impl EntryFsm {
                 if outcome.bytes_written == 0 && self.eof {
                     // we're done, let's read the data descriptor (if there's one)
                     transition!(self.state => (S::ReadData { header, uncompressed_bytes, hasher, .. }) {
-                        S::ReadDataDescriptor {
-                            header,
-                            metrics: EntryReadMetrics {
-                                uncompressed_size: uncompressed_bytes,
-                                crc32: hasher.finalize(),
-                            },
+                        let metrics = EntryReadMetrics {
+                            uncompressed_size: uncompressed_bytes,
+                            crc32: hasher.finalize(),
+                        };
+
+                        if header.has_data_descriptor() {
+                            S::ReadDataDescriptor { header, metrics }
+                        } else {
+                            S::Validate { header, metrics, descriptor: None }
                         }
                     });
                     return self.process(out);

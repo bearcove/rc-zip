@@ -51,7 +51,6 @@ where
 
         if fsm.wants_read() {
             tracing::trace!(space_avail = fsm.space().len(), "fsm wants read");
-
             let mut buf = ReadBuf::new(fsm.space());
             match this.rd.poll_read(cx, &mut buf) {
                 task::Poll::Ready(res) => res?,

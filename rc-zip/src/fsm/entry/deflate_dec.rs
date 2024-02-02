@@ -3,9 +3,7 @@ use std::cmp;
 use miniz_oxide::inflate::{
     core::{
         decompress,
-        inflate_flags::{
-            TINFL_FLAG_HAS_MORE_INPUT, TINFL_FLAG_IGNORE_ADLER32, TINFL_FLAG_PARSE_ZLIB_HEADER,
-        },
+        inflate_flags::{TINFL_FLAG_HAS_MORE_INPUT, TINFL_FLAG_IGNORE_ADLER32},
         DecompressorOxide,
     },
     TINFLStatus,

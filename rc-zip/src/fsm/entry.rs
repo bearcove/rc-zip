@@ -1,6 +1,3 @@
-// FIXME: remove
-#![allow(unused)]
-
 use std::cmp;
 
 use oval::Buffer;
@@ -159,11 +156,11 @@ impl EntryFsm {
                 }
             }
             S::ReadData {
-                header,
                 compressed_bytes,
                 uncompressed_bytes,
                 hasher,
                 decompressor,
+                ..
             } => {
                 let in_buf = self.buffer.data();
 
@@ -185,7 +182,7 @@ impl EntryFsm {
 
                 if outcome.bytes_written == 0 && self.eof {
                     // we're done, let's read the data descriptor (if there's one)
-                    transition!(self.state => (S::ReadData { header, compressed_bytes, uncompressed_bytes, hasher, decompressor }) {
+                    transition!(self.state => (S::ReadData { header, uncompressed_bytes, hasher, .. }) {
                         S::ReadDataDescriptor {
                             header,
                             metrics: EntryReadMetrics {
@@ -196,9 +193,15 @@ impl EntryFsm {
                     });
                     return self.process(out);
                 }
+
+                // write the decompressed data to the hasher
+                hasher.update(&out[..outcome.bytes_written]);
+                // update the number of bytes we've decompressed
+                *uncompressed_bytes += outcome.bytes_written as u64;
+
                 Ok(FsmResult::Continue((self, outcome)))
             }
-            S::ReadDataDescriptor { header, metrics } => {
+            S::ReadDataDescriptor { .. } => {
                 let mut input = Partial::new(self.buffer.data());
                 match DataDescriptorRecord::mk_parser(self.entry.is_zip64).parse_next(&mut input) {
                     Ok(descriptor) => {
@@ -340,7 +343,7 @@ impl AnyDecompressor {
         out: &mut [u8],
         has_more_input: HasMoreInput,
     ) -> Result<DecompressOutcome, Error> {
-        /// forward to the appropriate decompressor
+        // forward to the appropriate decompressor
         match self {
             Self::Store(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "deflate")]

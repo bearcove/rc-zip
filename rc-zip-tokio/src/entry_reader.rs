@@ -50,10 +50,16 @@ where
         };
 
         if fsm.wants_read() {
-            tracing::trace!("fsm wants read");
+            tracing::trace!(space_avail = fsm.space().len(), "fsm wants read");
 
             let mut buf = ReadBuf::new(fsm.space());
-            futures::ready!(this.rd.poll_read(cx, &mut buf))?;
+            match this.rd.poll_read(cx, &mut buf) {
+                task::Poll::Ready(res) => res?,
+                task::Poll::Pending => {
+                    *this.fsm = Some(fsm);
+                    return task::Poll::Pending;
+                }
+            }
             let n = buf.filled().len();
 
             tracing::trace!("read {} bytes", n);

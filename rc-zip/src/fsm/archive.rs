@@ -12,10 +12,10 @@ use winnow::{
     Parser, Partial,
 };
 
-/// ArchiveReader parses a valid zip archive into an [Archive][]. In particular, this struct finds
+/// [ArchiveReader] parses a valid zip archive into an [Archive]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
 /// and normalizes metadata.
-pub struct ArchiveReader {
+pub struct ArchiveFsm {
     // Size of the entire zip file
     size: u64,
     state: State,
@@ -71,7 +71,7 @@ impl State {
     }
 }
 
-impl ArchiveReader {
+impl ArchiveFsm {
     /// This should be > 65KiB, because the section at the end of the
     /// file that we check for end of central directory record is 65KiB.
     const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;

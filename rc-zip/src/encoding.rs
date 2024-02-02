@@ -1,3 +1,11 @@
+//! zip entry paths may be encoded in a variety of character encodings.
+//!
+//! Historically, CP-437 was used, but many modern zip files use UTF-8 with an
+//! optional UTF-8 flag.
+//!
+//! Others use the system's local character encoding, and we have no choice but
+//! to make an educated guess thanks to the chardet-ng crate.
+
 use std::fmt;
 
 /// Encodings supported by this crate
@@ -5,12 +13,14 @@ use std::fmt;
 pub enum Encoding {
     /// UTF-8
     Utf8,
+
     /// [Codepage 437](https://en.wikipedia.org/wiki/Code_page_437), also known as
     /// OEM-US, PC-8, or DOS Latin US.
     ///
     /// This is the fallback if UTF-8 is not specified and no other encoding
     /// is auto-detected. It was the original encoding of the zip format.
     Cp437,
+
     /// [Shift JIS](https://en.wikipedia.org/wiki/Shift_JIS), also known as SJIS.
     ///
     /// Still in use by some Japanese users as of 2019.

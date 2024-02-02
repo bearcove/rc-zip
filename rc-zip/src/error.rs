@@ -1,3 +1,5 @@
+//! All error types used in this crate
+
 use crate::Method;
 
 use super::encoding;

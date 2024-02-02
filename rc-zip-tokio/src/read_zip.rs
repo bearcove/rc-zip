@@ -5,7 +5,7 @@ use positioned_io::{RandomAccessFile, ReadAt};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use rc_zip::{
-    reader::{ArchiveReader, ArchiveReaderResult},
+    fsm::{ArchiveFsm, FsmResult},
     Archive, Error, StoredEntry,
 };
 
@@ -50,7 +50,7 @@ where
     type File = F;
 
     async fn read_zip_with_size_async(&self, size: u64) -> Result<AsyncArchive<'_, F>, Error> {
-        let mut ar = ArchiveReader::new(size);
+        let mut ar = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = ar.wants_read() {
                 match self.cursor_at(offset).read(ar.space()).await {
@@ -65,13 +65,13 @@ where
             }
 
             match ar.process()? {
-                ArchiveReaderResult::Done(archive) => {
+                FsmResult::Done(archive) => {
                     return Ok(AsyncArchive {
                         file: self,
                         archive,
                     })
                 }
-                ArchiveReaderResult::Continue => {}
+                FsmResult::Continue => {}
             }
         }
     }

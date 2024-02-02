@@ -346,12 +346,12 @@ fn real_world_files() {
 
 #[test_log::test]
 fn state_machine() {
-    use rc_zip::reader::{ArchiveReader, ArchiveReaderResult};
+    use rc_zip::fsm::{ArchiveFsm, FsmResult};
 
     let cases = test_cases();
     let case = cases.iter().find(|x| x.name() == "zip64.zip").unwrap();
     let bs = case.bytes();
-    let mut zar = ArchiveReader::new(bs.len() as u64);
+    let mut zar = ArchiveFsm::new(bs.len() as u64);
 
     let archive = 'read_zip: loop {
         if let Some(offset) = zar.wants_read() {
@@ -381,8 +381,8 @@ fn state_machine() {
 
         match zar.process() {
             Ok(res) => match res {
-                ArchiveReaderResult::Continue => {}
-                ArchiveReaderResult::Done(archive) => break 'read_zip archive,
+                FsmResult::Continue => {}
+                FsmResult::Done(archive) => break 'read_zip archive,
             },
             Err(err) => {
                 println!("zar processing error: {:#?}", err);

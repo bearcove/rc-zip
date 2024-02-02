@@ -1,5 +1,5 @@
 use rc_zip::{
-    reader::{ArchiveReader, ArchiveReaderResult},
+    fsm::{ArchiveFsm, FsmResult},
     Archive, Error, StoredEntry,
 };
 
@@ -41,7 +41,7 @@ where
 
     fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, F>, Error> {
         tracing::trace!(%size, "read_zip_with_size");
-        let mut ar = ArchiveReader::new(size);
+        let mut ar = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = ar.wants_read() {
                 tracing::trace!(%offset, "read_zip_with_size: wants_read, space len = {}", ar.space().len());
@@ -58,14 +58,14 @@ where
             }
 
             match ar.process()? {
-                ArchiveReaderResult::Done(archive) => {
+                FsmResult::Done(archive) => {
                     tracing::trace!("read_zip_with_size: done");
                     return Ok(SyncArchive {
                         file: self,
                         archive,
                     });
                 }
-                ArchiveReaderResult::Continue => {
+                FsmResult::Continue => {
                     tracing::trace!("read_zip_with_size: continue");
                 }
             }

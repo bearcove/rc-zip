@@ -1,3 +1,10 @@
+//! Contain winnow parsers for most elements that make up a ZIP file, like
+//! the end-of-central-directory record, local file headers, and central
+//! directory headers.
+//!
+//! Everything in there is based off of the appnote, which you can find in the
+//! source repository.
+
 pub use crate::encoding::Encoding;
 
 mod archive;

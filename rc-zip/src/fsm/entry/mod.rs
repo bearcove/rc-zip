@@ -45,6 +45,9 @@ enum State {
         /// The local file header for this entry
         header: LocalFileHeaderRecord,
 
+        /// Entry compressed size
+        compressed_size: u64,
+
         /// Amount of bytes we've fed to the decompressor
         compressed_bytes: u64,
 
@@ -84,14 +87,14 @@ enum State {
 /// A state machine that can parse a zip entry
 pub struct EntryFsm {
     state: State,
-    entry: StoredEntryInner,
+    entry: Option<StoredEntryInner>,
     buffer: Buffer,
     eof: bool,
 }
 
 impl EntryFsm {
     /// Create a new state machine for decompressing a zip entry
-    pub fn new(entry: StoredEntryInner) -> Self {
+    pub fn new(entry: Option<StoredEntryInner>) -> Self {
         Self {
             state: State::ReadLocalHeader,
             entry,
@@ -150,9 +153,27 @@ impl EntryFsm {
                         let consumed = input.as_bytes().offset_from(&self.buffer.data());
                         tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");
                         self.buffer.consume(consumed);
-                        let decompressor = AnyDecompressor::new(header.method, &self.entry)?;
+                        let decompressor = AnyDecompressor::new(
+                            header.method,
+                            self.entry.map(|entry| entry.uncompressed_size),
+                        )?;
+                        let compressed_size = match &self.entry {
+                            Some(entry) => entry.compressed_size,
+                            None => {
+                                if header.compressed_size == u32::MAX {
+                                    return Err(Error::Decompression {
+                                        method: header.method,
+                                        msg: "This entry cannot be decompressed because its compressed size is larger than 4GiB".into(),
+                                    });
+                                } else {
+                                    header.compressed_size as u64
+                                }
+                            }
+                        };
+
                         self.state = S::ReadData {
                             header,
+                            compressed_size,
                             compressed_bytes: 0,
                             uncompressed_bytes: 0,
                             hasher: crc32fast::Hasher::new(),
@@ -167,6 +188,7 @@ impl EntryFsm {
                 }
             }
             S::ReadData {
+                compressed_size,
                 compressed_bytes,
                 uncompressed_bytes,
                 hasher,
@@ -176,15 +198,16 @@ impl EntryFsm {
                 let in_buf = self.buffer.data();
 
                 // don't feed the decompressor bytes beyond the entry's compressed size
+
                 let in_buf_max_len = cmp::min(
                     in_buf.len(),
-                    self.entry.compressed_size as usize - *compressed_bytes as usize,
+                    *compressed_size as usize - *compressed_bytes as usize,
                 );
                 let in_buf = &in_buf[..in_buf_max_len];
 
                 let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
 
-                let has_more_input = if fed_bytes_after_this == self.entry.compressed_size as _ {
+                let has_more_input = if fed_bytes_after_this == *compressed_size as _ {
                     HasMoreInput::No
                 } else {
                     HasMoreInput::Yes
@@ -232,7 +255,14 @@ impl EntryFsm {
             }
             S::ReadDataDescriptor { .. } => {
                 let mut input = Partial::new(self.buffer.data());
-                match DataDescriptorRecord::mk_parser(self.entry.is_zip64).parse_next(&mut input) {
+
+                // if we don't have entry info, we're dangerously assuming the
+                // file isn't zip64. oh well.
+                // FIXME: we can just read until the next local file header and
+                // determine whether the file is zip64 or not from there?
+                let is_zip64 = self.entry.as_ref().map(|e| e.is_zip64).unwrap_or(false);
+
+                match DataDescriptorRecord::mk_parser(is_zip64).parse_next(&mut input) {
                     Ok(descriptor) => {
                         self.buffer
                             .consume(input.as_bytes().offset_from(&self.buffer.data()));
@@ -253,16 +283,19 @@ impl EntryFsm {
                 metrics,
                 descriptor,
             } => {
-                let expected_crc32 = if self.entry.crc32 != 0 {
-                    self.entry.crc32
+                let entry_crc32 = self.entry.map(|e| e.crc32).unwrap_or_default();
+                let expected_crc32 = if entry_crc32 != 0 {
+                    entry_crc32
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.crc32
                 } else {
                     header.crc32
                 };
 
-                let expected_size = if self.entry.uncompressed_size != 0 {
-                    self.entry.uncompressed_size
+                let entry_uncompressed_size =
+                    self.entry.map(|e| e.uncompressed_size).unwrap_or_default();
+                let expected_size = if entry_uncompressed_size != 0 {
+                    entry_uncompressed_size
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.uncompressed_size
                 } else {
@@ -353,7 +386,7 @@ trait Decompressor {
 }
 
 impl AnyDecompressor {
-    fn new(method: Method, #[allow(unused)] entry: &StoredEntryInner) -> Result<Self, Error> {
+    fn new(method: Method, #[allow(unused)] uncompressed_size: Option<u64>) -> Result<Self, Error> {
         let dec = match method {
             Method::Store => Self::Store(Default::default()),
 
@@ -382,7 +415,7 @@ impl AnyDecompressor {
             }
 
             #[cfg(feature = "lzma")]
-            Method::Lzma => Self::Lzma(Box::new(lzma_dec::LzmaDec::new(entry.uncompressed_size))),
+            Method::Lzma => Self::Lzma(Box::new(lzma_dec::LzmaDec::new(uncompressed_size))),
             #[cfg(not(feature = "lzma"))]
             Method::Lzma => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));

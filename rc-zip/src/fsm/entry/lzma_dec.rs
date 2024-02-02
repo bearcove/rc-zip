@@ -21,10 +21,10 @@ pub(crate) struct LzmaDec {
 }
 
 impl LzmaDec {
-    pub fn new(uncompressed_size: u64) -> Self {
+    pub fn new(uncompressed_size: Option<u64>) -> Self {
         let stream = Stream::new_with_options(
             &(Options {
-                unpacked_size: UnpackedSize::UseProvided(Some(uncompressed_size)),
+                unpacked_size: UnpackedSize::UseProvided(uncompressed_size),
                 allow_incomplete: false,
                 memlimit: Some(128 * 1024 * 1024),
             }),

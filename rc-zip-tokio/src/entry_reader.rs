@@ -28,7 +28,7 @@ where
     {
         Self {
             rd: get_reader(entry.header_offset),
-            fsm: Some(EntryFsm::new(entry.inner)),
+            fsm: Some(EntryFsm::new(Some(entry.inner))),
         }
     }
 }

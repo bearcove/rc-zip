@@ -19,7 +19,7 @@ where
     pub(crate) fn new(entry: &StoredEntry, rd: R) -> Self {
         Self {
             rd,
-            fsm: Some(EntryFsm::new(entry.inner)),
+            fsm: Some(EntryFsm::new(Some(entry.inner))),
         }
     }
 }

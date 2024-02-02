@@ -17,5 +17,5 @@ pub mod error;
 pub mod fsm;
 pub mod parse;
 
-#[cfg(feature = "corpus")]
+#[cfg(any(test, feature = "corpus"))]
 pub mod corpus;

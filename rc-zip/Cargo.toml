@@ -34,3 +34,5 @@ miniz_oxide = { version = "0.7.1", optional = true }
 deflate = ["dep:miniz_oxide"]
 corpus = []
 
+[dev-dependencies]
+test-log = { version = "0.2.14", default-features = false, features = ["tracing-subscriber", "trace"] }

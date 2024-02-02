@@ -805,6 +805,7 @@ dependencies = [
  "oem_cp",
  "oval",
  "pretty-hex",
+ "test-log",
  "thiserror",
  "tracing",
  "winnow",

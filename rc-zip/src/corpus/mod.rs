@@ -6,7 +6,11 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 
-use crate::{encoding::Encoding, error::Error};
+use crate::{
+    encoding::Encoding,
+    error::Error,
+    parse::{EntryContents, StoredEntry},
+};
 
 pub enum ZipSource {
     File(&'static str),
@@ -220,4 +224,47 @@ pub fn test_cases() -> Vec<ZipTest> {
             ..Default::default()
         },
     ]
+}
+
+pub fn check_file_against(file: &ZipTestFile, entry: &StoredEntry, actual_bytes: &[u8]) {
+    if let Some(expected) = file.modified {
+        assert_eq!(
+            expected,
+            entry.modified(),
+            "entry {} should have modified = {:?}",
+            entry.name(),
+            expected
+        )
+    }
+
+    if let Some(mode) = file.mode {
+        assert_eq!(entry.mode.0 & 0o777, mode);
+    }
+
+    // I have honestly yet to see a zip file _entry_ with a comment.
+    assert!(entry.comment().is_none());
+
+    match entry.contents() {
+        EntryContents::File => {
+            match &file.content {
+                FileContent::Unchecked => {
+                    // ah well
+                }
+                FileContent::Bytes(expected_bytes) => {
+                    // first check length
+                    assert_eq!(actual_bytes.len(), expected_bytes.len());
+                    assert_eq!(actual_bytes, &expected_bytes[..])
+                }
+                FileContent::File(file_path) => {
+                    let expected_bytes = std::fs::read(zips_dir().join(file_path)).unwrap();
+                    // first check length
+                    assert_eq!(actual_bytes.len(), expected_bytes.len());
+                    assert_eq!(actual_bytes, &expected_bytes[..])
+                }
+            }
+        }
+        EntryContents::Symlink | EntryContents::Directory => {
+            assert!(matches!(file.content, FileContent::Unchecked));
+        }
+    }
 }

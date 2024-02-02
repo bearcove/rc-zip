@@ -100,7 +100,7 @@ impl EntryFsm {
             }
             State::ReadDataDescriptor { .. } => true,
             State::Validate { .. } => false,
-            State::Transition => false,
+            State::Transition => unreachable!(),
         }
     }
 
@@ -118,12 +118,26 @@ impl EntryFsm {
         mut self,
         out: &mut [u8],
     ) -> Result<FsmResult<(Self, DecompressOutcome), ()>, Error> {
+        tracing::trace!(
+            state = match &self.state {
+                State::ReadLocalHeader => "ReadLocalHeader",
+                State::ReadData { .. } => "ReadData",
+                State::ReadDataDescriptor { .. } => "ReadDataDescriptor",
+                State::Validate { .. } => "Validate",
+                State::Transition => "Transition",
+            },
+            "process"
+        );
+
         use State as S;
         match &mut self.state {
             S::ReadLocalHeader => {
                 let mut input = Partial::new(self.buffer.data());
                 match LocalFileHeaderRecord::parser.parse_next(&mut input) {
                     Ok(header) => {
+                        let consumed = input.as_bytes().offset_from(&self.buffer.data());
+                        tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");
+                        self.buffer.consume(consumed);
                         self.state = S::ReadData {
                             header,
                             uncompressed_size: 0,

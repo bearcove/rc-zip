@@ -350,8 +350,12 @@ where
         };
 
         if fsm.wants_read() {
+            tracing::trace!("fsm wants read");
             let n = self.rd.read(fsm.space())?;
+            tracing::trace!("read {} bytes", n);
             fsm.fill(n);
+        } else {
+            tracing::trace!("fsm does not want read");
         }
 
         match fsm.process(buf)? {

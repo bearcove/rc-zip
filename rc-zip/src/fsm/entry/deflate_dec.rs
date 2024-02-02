@@ -54,9 +54,21 @@ impl Decompressor for DeflateDec {
         in_buf: &[u8],
         out_buf: &mut [u8],
     ) -> Result<DecompressOutcome, Error> {
+        tracing::trace!(
+            in_buf_len = in_buf.len(),
+            out_buf_len = out_buf.len(),
+            remain_in_internal_buffer = self.remain_in_internal_buffer,
+            out_pos = self.out_pos,
+            "DeflateDec::decompress",
+        );
+
         let mut outcome: DecompressOutcome = Default::default();
         self.copy_to_outbuf(out_buf, &mut outcome);
         if outcome.bytes_written > 0 {
+            tracing::trace!(
+                "returning {} bytes from internal buffer",
+                outcome.bytes_written
+            );
             return Ok(outcome);
         }
 

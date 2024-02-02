@@ -7,6 +7,7 @@ license = "Apache-2.0 or MIT"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
 edition = "2021"
 readme = "README.md"
+rust-version = "1.75"
 
 keywords = ["zip", "unzip"]
 categories = ["compression"]

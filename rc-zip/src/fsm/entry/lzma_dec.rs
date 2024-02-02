@@ -75,6 +75,10 @@ impl Decompressor for LzmaDec {
                 // if we haven't written all the input, and we haven't gotten
                 // any output, then we need to keep going
                 if n != 0 && n < in_buf.len() && self.internal_buf_mut().is_empty() {
+                    // note: the n != 0 here is because apparently there can be a 10-byte
+                    // trailer after LZMA compressed data? and the decoder will _refuse_
+                    // to let us write them, so when we have just these 10 bytes left,
+                    // it's good to just let the decoder finish up.
                     trace!("LzmaDec: didn't write all output AND no output yet, so keep going");
                     return self.decompress(&in_buf[n..], out, has_more_input);
                 }

@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-sync"
-version = "2.0.1"
+version = "3.0.0"
 dependencies = [
  "cfg-if",
  "chrono",
@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-tokio"
-version = "2.0.1"
+version = "3.0.0"
 dependencies = [
  "futures",
  "oval",

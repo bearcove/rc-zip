@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-tokio"
-version = "2.0.1"
+version = "3.0.0"
 description = "Asynchronous zip reading on top of rc-zip (for tokio I/O traits)"
 repository = "https://github.com/fasterthanlime/rc-zip"
 license = "Apache-2.0 or MIT"

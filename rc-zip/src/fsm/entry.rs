@@ -3,7 +3,11 @@
 
 use oval::Buffer;
 use tracing::trace;
-use winnow::{error::ErrMode, Parser, Partial};
+use winnow::{
+    error::ErrMode,
+    stream::{AsBytes, Offset},
+    Parser, Partial,
+};
 
 mod store_dec;
 use store_dec::StoreDec;
@@ -119,7 +123,9 @@ impl EntryFsm {
                         };
                         self.process(out)
                     }
-                    Err(ErrMode::Incomplete(_)) => Ok(FsmResult::Continue(self)),
+                    Err(ErrMode::Incomplete(_)) => {
+                        Ok(FsmResult::Continue((self, Default::default())))
+                    }
                     Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader)),
                 }
             }
@@ -149,7 +155,24 @@ impl EntryFsm {
                 }
                 Ok(FsmResult::Continue((self, outcome)))
             }
-            S::ReadDataDescriptor { header, metrics } => {}
+            S::ReadDataDescriptor { header, metrics } => {
+                let mut input = Partial::new(self.buffer.data());
+                match DataDescriptorRecord::mk_parser(self.entry.is_zip64).parse_next(&mut input) {
+                    Ok(descriptor) => {
+                        self.buffer
+                            .consume(input.as_bytes().offset_from(&self.buffer.data()));
+                        trace!("data descriptor = {:#?}", descriptor);
+                        transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
+                            S::Validate { metrics, header, descriptor: Some(descriptor) }
+                        });
+                        self.process(out)
+                    }
+                    Err(ErrMode::Incomplete(_)) => {
+                        Ok(FsmResult::Continue((self, Default::default())))
+                    }
+                    Err(_e) => Err(Error::Format(FormatError::InvalidDataDescriptor).into()),
+                }
+            }
             S::Validate {
                 header,
                 metrics,

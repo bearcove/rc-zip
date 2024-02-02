@@ -4,11 +4,18 @@ _default:
 	just --list
 
 check:
-	cargo hack clippy --feature-powerset --group-features deflate,deflate64,lzma,bzip2
+	cargo hack clippy --each-feature
+
+docs:
+	RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 # Run all tests locally
 test *args:
 	cargo nextest run {{args}} --all-features
+
+# Report unused dependencies:
+udeps:
+	RUSTC_BOOTSTRAP=1 cargo udeps
 
 # Run all tests with nextest and cargo-llvm-cov
 ci-test:

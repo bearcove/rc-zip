@@ -29,12 +29,13 @@ num_enum = "0.7.2"
 cfg-if = "1.0.0"
 crc32fast = "1.3.2"
 miniz_oxide = { version = "0.7.1", optional = true }
+bzip2 = { version = "0.4.4", optional = true }
 
 [features]
 corpus = []
 deflate = ["dep:miniz_oxide"]
 deflate64 = []
-bzip2 = []
+bzip2 = ["dep:bzip2"]
 lzma = []
 zstd = []
 

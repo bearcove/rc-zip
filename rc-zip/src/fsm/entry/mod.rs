@@ -13,6 +13,9 @@ mod store_dec;
 #[cfg(feature = "deflate")]
 mod deflate_dec;
 
+#[cfg(feature = "bzip2")]
+mod bzip2_dec;
+
 use crate::{
     error::{Error, FormatError, UnsupportedError},
     parse::{DataDescriptorRecord, LocalFileHeaderRecord, Method, StoredEntryInner},
@@ -290,6 +293,8 @@ enum AnyDecompressor {
     Store(store_dec::StoreDec),
     #[cfg(feature = "deflate")]
     Deflate(Box<deflate_dec::DeflateDec>),
+    #[cfg(feature = "bzip2")]
+    Bzip2(bzip2_dec::Bzip2Dec),
 }
 
 #[derive(Default, Debug)]
@@ -310,7 +315,7 @@ trait Decompressor {
     fn decompress(
         &mut self,
         in_buf: &[u8],
-        out_buf: &mut [u8],
+        out: &mut [u8],
         has_more_input: HasMoreInput,
     ) -> Result<DecompressOutcome, Error>;
 }
@@ -328,6 +333,14 @@ impl AnyDecompressor {
                 return Err(err);
             }
 
+            #[cfg(feature = "bzip2")]
+            Method::Bzip2 => Self::Bzip2(Default::default()),
+            #[cfg(not(feature = "bzip2"))]
+            Method::Bzip2 => {
+                let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));
+                return Err(err);
+            }
+
             _ => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotSupported(method));
                 return Err(err);
@@ -335,7 +348,9 @@ impl AnyDecompressor {
         };
         Ok(dec)
     }
+}
 
+impl Decompressor for AnyDecompressor {
     #[inline]
     fn decompress(
         &mut self,
@@ -348,6 +363,8 @@ impl AnyDecompressor {
             Self::Store(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "deflate")]
             Self::Deflate(dec) => dec.decompress(in_buf, out, has_more_input),
+            #[cfg(feature = "bzip2")]
+            Self::Bzip2(dec) => dec.decompress(in_buf, out, has_more_input),
         }
     }
 }

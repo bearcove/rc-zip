@@ -284,7 +284,7 @@ fn method_to_decoder(
                 if #[cfg(feature = "deflate")] {
                     Box::new(deflate_dec::mk_decoder(raw_r))
                 } else {
-                    return Err(Error::method_not_enabled(self.method));
+                    return Err(Error::method_not_enabled(method));
                 }
             }
         }

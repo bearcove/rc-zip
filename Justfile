@@ -4,7 +4,7 @@ _default:
 	just --list
 
 check:
-	cargo hack clippy --feature-powerset --group-features deflate,deflate64,lzma,bzip2
+	cargo hack clippy --each-feature
 
 # Run all tests locally
 test *args:

@@ -1,18 +1,9 @@
+use super::FsmResult;
 use crate::{
     encoding::Encoding, Archive, DirectoryHeader, EndOfCentralDirectory,
     EndOfCentralDirectory64Locator, EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord,
     Error, FormatError, Located, StoredEntry,
 };
-
-macro_rules! transition {
-    ($state: expr => ($pattern: pat) $body: expr) => {
-        $state = if let $pattern = std::mem::take(&mut $state) {
-            $body
-        } else {
-            unreachable!()
-        };
-    };
-}
 
 use tracing::trace;
 use winnow::{
@@ -28,15 +19,6 @@ pub struct ArchiveReader {
     // Size of the entire zip file
     size: u64,
     state: State,
-}
-
-pub enum ArchiveReaderResult {
-    /// Indicates that [ArchiveReader][] has work left, and the loop should continue.
-    Continue,
-    /// Indicates that [ArchiveReader][] is done reading the central directory,
-    /// contains an [Archive][]. Calling any method after [process()](ArchiveReader::process()) has returned
-    /// `Done` will panic.
-    Done(Archive),
 }
 
 #[derive(Default)]
@@ -184,13 +166,12 @@ impl ArchiveReader {
     /// Errors returned from process() are caused by invalid zip archives,
     /// unsupported format quirks, or implementation bugs - never I/O errors.
     ///
-    /// A result of [ArchiveReaderResult::Continue] indicates one should loop again,
+    /// A result of [FsmResult::Continue] indicates one should loop again,
     /// starting with [wants_read()](ArchiveReader::wants_read()).
     ///
-    /// A result of [ArchiveReaderResult::Done] contains the [Archive], and indicates that no
+    /// A result of [FsmResult::Done] contains the [Archive], and indicates that no
     /// method should ever be called again on this reader.
-    pub fn process(&mut self) -> Result<ArchiveReaderResult, Error> {
-        use ArchiveReaderResult as R;
+    pub fn process(&mut self) -> Result<FsmResult<Archive>, Error> {
         use State as S;
         match self.state {
             S::ReadEocd {
@@ -203,7 +184,7 @@ impl ArchiveReader {
                         haystack_size,
                         "ReadEocd | need more data"
                     );
-                    return Ok(R::Continue);
+                    return Ok(FsmResult::Continue);
                 }
 
                 match {
@@ -235,14 +216,14 @@ impl ArchiveReader {
                                     directory_headers: vec![],
                                 }
                             });
-                            Ok(R::Continue)
+                            Ok(FsmResult::Continue)
                         } else {
                             trace!("ReadEocd | transition to ReadEocd64Locator");
                             transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
                                 buffer.reset();
                                 S::ReadEocd64Locator { buffer, eocdr }
                             });
-                            Ok(R::Continue)
+                            Ok(FsmResult::Continue)
                         }
                     }
                 }
@@ -252,7 +233,7 @@ impl ArchiveReader {
                 match EndOfCentralDirectory64Locator::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data
-                        Ok(R::Continue)
+                        Ok(FsmResult::Continue)
                     }
                     Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
@@ -266,7 +247,7 @@ impl ArchiveReader {
                                 directory_headers: vec![],
                             }
                         });
-                        Ok(R::Continue)
+                        Ok(FsmResult::Continue)
                     }
                     Ok((_, locator)) => {
                         trace!(
@@ -281,7 +262,7 @@ impl ArchiveReader {
                                 eocdr,
                             }
                         });
-                        Ok(R::Continue)
+                        Ok(FsmResult::Continue)
                     }
                 }
             }
@@ -290,7 +271,7 @@ impl ArchiveReader {
                 match EndOfCentralDirectory64Record::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data
-                        Ok(R::Continue)
+                        Ok(FsmResult::Continue)
                     }
                     Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // at this point, we really expected to have a zip64 end
@@ -310,7 +291,7 @@ impl ArchiveReader {
                                 directory_headers: vec![],
                             }
                         });
-                        Ok(R::Continue)
+                        Ok(FsmResult::Continue)
                     }
                 }
             }
@@ -422,7 +403,7 @@ impl ArchiveReader {
                                 }
 
                                 self.state = S::Done;
-                                return Ok(R::Done(Archive {
+                                return Ok(FsmResult::Done(Archive {
                                     size: self.size,
                                     comment,
                                     entries,
@@ -445,7 +426,7 @@ impl ArchiveReader {
                 buffer.consume(consumed);
 
                 // need more data
-                Ok(R::Continue)
+                Ok(FsmResult::Continue)
             }
             S::Done { .. } => panic!("Called process() on ArchiveReader in Done state"),
             S::Transitioning => unreachable!(),

@@ -14,7 +14,7 @@ use crate::entry_reader::EntryReader;
 
 /// A trait for reading something as a zip archive.
 ///
-/// See also [AsyncReadZip].
+/// See also [ReadZipAsync].
 pub trait ReadZipWithSizeAsync {
     /// The type of the file to read from.
     type File: HasAsyncCursor;

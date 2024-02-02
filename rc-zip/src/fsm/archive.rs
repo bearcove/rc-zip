@@ -18,57 +18,50 @@ use winnow::{
 /// [ArchiveReader] parses a valid zip archive into an [Archive]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
 /// and normalizes metadata.
+///
+/// Look at the integration tests or [rc-zip-sync](https://crates.io/crates/rc-zip-sync)
+/// for examples on how to use this struct.
 pub struct ArchiveFsm {
-    // Size of the entire zip file
+    /// Size of the entire zip file
     size: u64,
+
+    /// Current stage: finding the eocd, reading the eocd, reading the eocd64
+    /// locator, reading the eocd64, or reading the central directory
     state: State,
+
+    /// Buffer for reading data from the file
+    buffer: Buffer,
 }
 
 #[derive(Default)]
 enum State {
     /// Finding and reading the end of central directory record
-    ReadEocd { buffer: Buffer, haystack_size: u64 },
+    ReadEocd {
+        /// size of the haystack in which we're looking for the end of central
+        /// directory record.
+        /// this may be less than 65KiB if the file is smaller than that.
+        haystack_size: u64,
+    },
 
     /// Reading the zip64 end of central directory record.
     ReadEocd64Locator {
-        buffer: Buffer,
         eocdr: Located<EndOfCentralDirectoryRecord>,
     },
 
     /// Reading the zip64 end of central directory record.
     ReadEocd64 {
-        buffer: Buffer,
         eocdr64_offset: u64,
         eocdr: Located<EndOfCentralDirectoryRecord>,
     },
 
     /// Reading all headers from the central directory
     ReadCentralDirectory {
-        buffer: Buffer,
         eocd: EndOfCentralDirectory,
         directory_headers: Vec<DirectoryHeader>,
     },
 
     #[default]
     Transitioning,
-}
-
-impl State {
-    fn get_buffer_mut(&mut self) -> Option<&mut Buffer> {
-        use State as S;
-        match self {
-            S::ReadEocd { ref mut buffer, .. } => Some(buffer),
-            S::ReadEocd64Locator { ref mut buffer, .. } => Some(buffer),
-            S::ReadEocd64 { ref mut buffer, .. } => Some(buffer),
-            S::ReadCentralDirectory { ref mut buffer, .. } => Some(buffer),
-            _ => None,
-        }
-    }
-
-    fn expect_buffer_mut(&mut self) -> &mut Buffer {
-        self.get_buffer_mut()
-            .expect("called expect_buffer_mut() on invalid state")
-    }
 }
 
 impl ArchiveFsm {
@@ -91,10 +84,8 @@ impl ArchiveFsm {
 
         Self {
             size,
-            state: State::ReadEocd {
-                buffer: Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
-                haystack_size,
-            },
+            buffer: Buffer::with_capacity(Self::DEFAULT_BUFFER_SIZE),
+            state: State::ReadEocd { haystack_size },
         }
     }
 
@@ -109,27 +100,17 @@ impl ArchiveFsm {
     pub fn wants_read(&self) -> Option<u64> {
         use State as S;
         match self.state {
-            S::ReadEocd {
-                ref buffer,
-                haystack_size,
-            } => Some(buffer.read_offset(self.size - haystack_size)),
-            S::ReadEocd64Locator {
-                ref buffer,
-                ref eocdr,
-            } => {
-                let length = EndOfCentralDirectory64Locator::LENGTH as u64;
-                Some(buffer.read_offset(eocdr.offset - length))
+            S::ReadEocd { haystack_size } => {
+                Some(self.buffer.read_offset(self.size - haystack_size))
             }
-            S::ReadEocd64 {
-                ref buffer,
-                eocdr64_offset,
-                ..
-            } => Some(buffer.read_offset(eocdr64_offset)),
-            S::ReadCentralDirectory {
-                ref buffer,
-                ref eocd,
-                ..
-            } => Some(buffer.read_offset(eocd.directory_offset())),
+            S::ReadEocd64Locator { ref eocdr } => {
+                let length = EndOfCentralDirectory64Locator::LENGTH as u64;
+                Some(self.buffer.read_offset(eocdr.offset - length))
+            }
+            S::ReadEocd64 { eocdr64_offset, .. } => Some(self.buffer.read_offset(eocdr64_offset)),
+            S::ReadCentralDirectory { ref eocd, .. } => {
+                Some(self.buffer.read_offset(eocd.directory_offset()))
+            }
             S::Transitioning => unreachable!(),
         }
     }
@@ -138,15 +119,14 @@ impl ArchiveFsm {
     /// write to
     #[inline]
     pub fn space(&mut self) -> &mut [u8] {
-        let buf = self.state.expect_buffer_mut();
         trace!(
-            available_space = buf.available_space(),
+            available_space = self.buffer.available_space(),
             "space() | available_space"
         );
-        if buf.available_space() == 0 {
-            buf.shift();
+        if self.buffer.available_space() == 0 {
+            self.buffer.shift();
         }
-        buf.space()
+        self.buffer.space()
     }
 
     /// after having written data to the buffer, use this function
@@ -157,7 +137,7 @@ impl ArchiveFsm {
     /// buffer
     #[inline]
     pub fn fill(&mut self, count: usize) -> usize {
-        self.state.expect_buffer_mut().fill(count)
+        self.buffer.fill(count)
     }
 
     /// Process buffered data
@@ -173,21 +153,14 @@ impl ArchiveFsm {
     pub fn process(mut self) -> Result<FsmResult<Self, Archive>, Error> {
         use State as S;
         match self.state {
-            S::ReadEocd {
-                ref mut buffer,
-                haystack_size,
-            } => {
-                if buffer.read_bytes() < haystack_size {
-                    trace!(
-                        read_bytes = buffer.read_bytes(),
-                        haystack_size,
-                        "ReadEocd | need more data"
-                    );
+            S::ReadEocd { haystack_size } => {
+                if self.buffer.read_bytes() < haystack_size {
+                    // read the entire haystack before we can continue
                     return Ok(FsmResult::Continue(self));
                 }
 
                 match {
-                    let haystack = &buffer.data()[..haystack_size as usize];
+                    let haystack = &self.buffer.data()[..haystack_size as usize];
                     EndOfCentralDirectoryRecord::find_in_block(haystack)
                 } {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
@@ -197,7 +170,7 @@ impl ArchiveFsm {
                             size = self.size,
                             "ReadEocd | found end of central directory record"
                         );
-                        buffer.reset();
+                        self.buffer.reset();
                         eocdr.offset += self.size - haystack_size;
 
                         if eocdr.offset < EndOfCentralDirectory64Locator::LENGTH as u64 {
@@ -207,10 +180,8 @@ impl ArchiveFsm {
                                 eocd64locator_length = EndOfCentralDirectory64Locator::LENGTH,
                                 "no room for an EOCD64 locator, definitely not a zip64 file"
                             );
-                            transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
-                                buffer.reset();
+                            transition!(self.state => (S::ReadEocd { .. }) {
                                 S::ReadCentralDirectory {
-                                    buffer,
                                     eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
                                     directory_headers: vec![],
                                 }
@@ -218,17 +189,17 @@ impl ArchiveFsm {
                             Ok(FsmResult::Continue(self))
                         } else {
                             trace!("ReadEocd | transition to ReadEocd64Locator");
-                            transition!(self.state => (S::ReadEocd { mut buffer, .. }) {
-                                buffer.reset();
-                                S::ReadEocd64Locator { buffer, eocdr }
+                            self.buffer.reset();
+                            transition!(self.state => (S::ReadEocd { .. }) {
+                                S::ReadEocd64Locator { eocdr }
                             });
                             Ok(FsmResult::Continue(self))
                         }
                     }
                 }
             }
-            S::ReadEocd64Locator { ref mut buffer, .. } => {
-                let input = Partial::new(buffer.data());
+            S::ReadEocd64Locator { .. } => {
+                let input = Partial::new(self.buffer.data());
                 match EndOfCentralDirectory64Locator::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data
@@ -237,11 +208,13 @@ impl ArchiveFsm {
                     Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
                         // we don't have a zip64 end of central directory locator - that's ok!
                         trace!("ReadEocd64Locator | no zip64 end of central directory locator");
-                        trace!("ReadEocd64Locator | data we got: {:02x?}", buffer.data());
-                        transition!(self.state => (S::ReadEocd64Locator { mut buffer, eocdr }) {
-                            buffer.reset();
+                        trace!(
+                            "ReadEocd64Locator | data we got: {:02x?}",
+                            self.buffer.data()
+                        );
+                        self.buffer.reset();
+                        transition!(self.state => (S::ReadEocd64Locator { eocdr }) {
                             S::ReadCentralDirectory {
-                                buffer,
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, None)?,
                                 directory_headers: vec![],
                             }
@@ -253,10 +226,9 @@ impl ArchiveFsm {
                             ?locator,
                             "ReadEocd64Locator | found zip64 end of central directory locator"
                         );
-                        transition!(self.state => (S::ReadEocd64Locator { mut buffer, eocdr }) {
-                            buffer.reset();
+                        self.buffer.reset();
+                        transition!(self.state => (S::ReadEocd64Locator { eocdr }) {
                             S::ReadEocd64 {
-                                buffer,
                                 eocdr64_offset: locator.directory_offset,
                                 eocdr,
                             }
@@ -265,8 +237,8 @@ impl ArchiveFsm {
                     }
                 }
             }
-            S::ReadEocd64 { ref mut buffer, .. } => {
-                let input = Partial::new(buffer.data());
+            S::ReadEocd64 { .. } => {
+                let input = Partial::new(self.buffer.data());
                 match EndOfCentralDirectory64Record::parser.parse_peek(input) {
                     Err(ErrMode::Incomplete(_)) => {
                         // need more data
@@ -279,10 +251,9 @@ impl ArchiveFsm {
                         Err(FormatError::Directory64EndRecordInvalid.into())
                     }
                     Ok((_, eocdr64)) => {
-                        transition!(self.state => (S::ReadEocd64 { mut buffer, eocdr, eocdr64_offset }) {
-                            buffer.reset();
+                        self.buffer.reset();
+                        transition!(self.state => (S::ReadEocd64 { eocdr, eocdr64_offset }) {
                             S::ReadCentralDirectory {
-                                buffer,
                                 eocd: EndOfCentralDirectory::new(self.size, eocdr, Some(Located {
                                     offset: eocdr64_offset,
                                     inner: eocdr64
@@ -295,17 +266,16 @@ impl ArchiveFsm {
                 }
             }
             S::ReadCentralDirectory {
-                ref mut buffer,
                 ref eocd,
                 ref mut directory_headers,
             } => {
                 trace!(
                     "ReadCentralDirectory | process(), available: {}",
-                    buffer.available_data()
+                    self.buffer.available_data()
                 );
-                let mut input = Partial::new(buffer.data());
+                let mut input = Partial::new(self.buffer.data());
                 trace!(
-                    initial_offset = input.as_bytes().offset_from(&buffer.data()),
+                    initial_offset = input.as_bytes().offset_from(&self.buffer.data()),
                     initial_len = input.len(),
                     "initial offset & len"
                 );
@@ -314,7 +284,7 @@ impl ArchiveFsm {
                         Ok(dh) => {
                             trace!(
                                 input_empty_now = input.is_empty(),
-                                offset = input.as_bytes().offset_from(&buffer.data()),
+                                offset = input.as_bytes().offset_from(&self.buffer.data()),
                                 len = input.len(),
                                 "ReadCentralDirectory | parsed directory header"
                             );
@@ -419,9 +389,9 @@ impl ArchiveFsm {
                         }
                     }
                 }
-                let consumed = input.as_bytes().offset_from(&buffer.data());
+                let consumed = input.as_bytes().offset_from(&self.buffer.data());
                 tracing::trace!(%consumed, "ReadCentralDirectory total consumed");
-                buffer.consume(consumed);
+                self.buffer.consume(consumed);
 
                 // need more data
                 Ok(FsmResult::Continue(self))

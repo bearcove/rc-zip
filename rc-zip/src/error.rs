@@ -41,10 +41,10 @@ impl Error {
 #[derive(Debug, thiserror::Error)]
 pub enum UnsupportedError {
     #[error("compression method not supported: {0:?}")]
-    MethodNotSupported(crate::format::Method),
+    MethodNotSupported(Method),
 
     #[error("compression method supported, but not enabled in this build: {0:?}")]
-    MethodNotEnabled(crate::format::Method),
+    MethodNotEnabled(Method),
 
     #[error("only LZMA2.0 is supported, found LZMA{minor}.{major}")]
     LzmaVersionUnsupported { minor: u8, major: u8 },

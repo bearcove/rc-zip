@@ -3,7 +3,7 @@ mod encoding;
 mod error;
 pub use error::*;
 
-mod format;
-pub use format::*;
+mod parse;
+pub use parse::*;
 
 pub mod fsm;

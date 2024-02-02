@@ -16,7 +16,7 @@ pub struct MsdosTimestamp {
     /// Time in 2-second intervals
     pub time: u16,
 
-    /// Date in MS-DOS format, cf. https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
+    /// Date in MS-DOS format, cf. <https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime>
     pub date: u16,
 }
 

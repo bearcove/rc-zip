@@ -6,11 +6,14 @@ use crate::{
     parse::{ExtraField, Mode, Version},
 };
 
-/// An Archive contains general information about a zip files,
-/// along with a list of [entries][StoredEntry].
+/// An Archive contains general information about a zip files, along with a list
+/// of [entries][StoredEntry].
 ///
-/// It is obtained via an [ArchiveReader](crate::reader::ArchiveReader), or via a higher-level API
-/// like the [ReadZip](crate::reader::sync::ReadZip) trait.
+/// It is obtained through a state machine like
+/// [ArchiveFsm](crate::fsm::ArchiveFsm), although end-users tend to use
+/// higher-levelr interfaces like
+/// [rc-zip-sync](https://crates.io/crates/rc-zip-sync) or
+/// [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio).
 pub struct Archive {
     pub(crate) size: u64,
     pub(crate) encoding: Encoding,

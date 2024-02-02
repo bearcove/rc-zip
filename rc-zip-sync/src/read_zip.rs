@@ -7,7 +7,7 @@ use rc_zip::{
 use crate::entry_reader::EntryReader;
 use std::{io::Read, ops::Deref};
 
-/// A trait for reading something as a zip archive (blocking I/O model)
+/// A trait for reading something as a zip archive
 ///
 /// See also [ReadZip].
 pub trait ReadZipWithSize {
@@ -15,14 +15,11 @@ pub trait ReadZipWithSize {
     type File: HasCursor;
 
     /// Reads self as a zip archive.
-    ///
-    /// This functions blocks until the entire archive has been read.
-    /// It is not compatible with non-blocking or async I/O.
     fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, Self::File>, Error>;
 }
 
-/// A trait for reading something as a zip archive (blocking I/O model),
-/// when we can tell size from self.
+/// A trait for reading something as a zip archive when we can tell size from
+/// self.
 ///
 /// See also [ReadZipWithSize].
 pub trait ReadZip {
@@ -30,9 +27,6 @@ pub trait ReadZip {
     type File: HasCursor;
 
     /// Reads self as a zip archive.
-    ///
-    /// This functions blocks until the entire archive has been read.
-    /// It is not compatible with non-blocking or async I/O.
     fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error>;
 }
 
@@ -91,6 +85,10 @@ impl ReadZip for Vec<u8> {
 }
 
 /// A zip archive, read synchronously from a file or other I/O resource.
+///
+/// This only contains metadata for the archive and its entries. Separate
+/// readers can be created for arbitraries entries on-demand using
+/// [SyncStoredEntry::reader].
 pub struct SyncArchive<'a, F>
 where
     F: HasCursor,
@@ -168,7 +166,7 @@ where
 
 /// A sliceable I/O resource: we can ask for a [Read] at a given offset.
 pub trait HasCursor {
-    /// The type of [Read] returned by [cursor_at].
+    /// The type of [Read] returned by [HasCursor::cursor_at].
     type Cursor<'a>: Read + 'a
     where
         Self: 'a;

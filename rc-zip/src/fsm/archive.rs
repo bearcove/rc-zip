@@ -15,12 +15,21 @@ use winnow::{
     Parser, Partial,
 };
 
-/// [ArchiveReader] parses a valid zip archive into an [Archive]. In particular, this struct finds
+/// [ArchiveFsm] parses a valid zip archive into an [Archive]. In particular, this struct finds
 /// an end of central directory record, parses the entire central directory, detects text encoding,
 /// and normalizes metadata.
 ///
-/// Look at the integration tests or [rc-zip-sync](https://crates.io/crates/rc-zip-sync)
-/// for examples on how to use this struct.
+/// The loop is as follows:
+///
+///   * Call [ArchiveFsm::wants_read] to check if more data is needed.
+///   * If it returns `Some(offset)`, read the file at that offset
+///     into [ArchiveFsm::space] and then call [ArchiveFsm::fill] with
+///     the number of bytes read.
+///   * Call [ArchiveFsm::process] to process the data.
+///   * If it returns [FsmResult::Continue], loop back to the first step.
+///
+/// Look at the integration tests or
+/// [rc-zip-sync](https://crates.io/crates/rc-zip-sync) for concrete examples.
 pub struct ArchiveFsm {
     /// Size of the entire zip file
     size: u64,
@@ -70,10 +79,6 @@ impl ArchiveFsm {
     const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
     /// Create a new archive reader with a specified file size.
-    ///
-    /// Actual reading of the file is performed by calling
-    /// [wants_read()](ArchiveReader::wants_read()), [read()](ArchiveReader::read()) and
-    /// [process()](ArchiveReader::process()) in a loop.
     pub fn new(size: u64) -> Self {
         let haystack_size: u64 = 65 * 1024;
         let haystack_size = if size < haystack_size {
@@ -89,14 +94,9 @@ impl ArchiveFsm {
         }
     }
 
-    /// Returns whether or not this reader needs more data to continue.
-    ///
-    /// Returns `Some(offset)` if this reader needs to read some data from `offset`.
-    /// In this case, [read()](ArchiveReader::read()) should be called with a [Read]
-    /// at the correct offset.
-    ///
-    /// Returns `None` if the reader does not need data and [process()](ArchiveReader::process())
-    /// can be called directly.
+    /// If this returns `Some(offset)`, the caller should read data from
+    /// `offset` into [ArchiveFsm::space] — without forgetting to call
+    /// [ArchiveFsm::fill] with the number of bytes written.
     pub fn wants_read(&self) -> Option<u64> {
         use State as S;
         match self.state {
@@ -115,8 +115,9 @@ impl ArchiveFsm {
         }
     }
 
-    /// returns a mutable slice with all the available space to
-    /// write to
+    /// Returns a mutable slice with all the available space to write to
+    ///
+    /// After writing to this, call [Self::fill] with the number of bytes written.
     #[inline]
     pub fn space(&mut self) -> &mut [u8] {
         trace!(
@@ -129,12 +130,8 @@ impl ArchiveFsm {
         self.buffer.space()
     }
 
-    /// after having written data to the buffer, use this function
-    /// to indicate how many bytes were written
-    ///
-    /// if there is not enough available space, this function can call
-    /// `shift()` to move the remaining data to the beginning of the
-    /// buffer
+    /// After having written data to [Self::space], call this to indicate how
+    /// many bytes were written.
     #[inline]
     pub fn fill(&mut self, count: usize) -> usize {
         self.buffer.fill(count)
@@ -142,14 +139,15 @@ impl ArchiveFsm {
 
     /// Process buffered data
     ///
-    /// Errors returned from process() are caused by invalid zip archives,
+    /// Errors returned from this function are caused by invalid zip archives,
     /// unsupported format quirks, or implementation bugs - never I/O errors.
     ///
-    /// A result of [FsmResult::Continue] indicates one should loop again,
-    /// starting with [wants_read()](ArchiveReader::wants_read()).
+    /// A result of [FsmResult::Continue] gives back ownership of the state
+    /// machine and indicates the I/O loop should continue, starting with
+    /// [ArchiveFsm::wants_read].
     ///
-    /// A result of [FsmResult::Done] contains the [Archive], and indicates that no
-    /// method should ever be called again on this reader.
+    /// A result of [FsmResult::Done] consumes the state machine and returns
+    /// a fully-parsed [Archive].
     pub fn process(mut self) -> Result<FsmResult<Self, Archive>, Error> {
         use State as S;
         match self.state {

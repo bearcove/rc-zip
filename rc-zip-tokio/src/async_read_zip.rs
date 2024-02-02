@@ -12,17 +12,14 @@ use rc_zip::{
 
 use crate::entry_reader::AsyncEntryReader;
 
-/// A trait for reading something as a zip archive (blocking I/O model)
+/// A trait for reading something as a zip archive.
 ///
-/// See also [ReadZip].
+/// See also [AsyncReadZip].
 pub trait AsyncReadZipWithSize {
     /// The type of the file to read from.
     type File: HasAsyncCursor;
 
     /// Reads self as a zip archive.
-    ///
-    /// This functions blocks until the entire archive has been read.
-    /// It is not compatible with non-blocking or async I/O.
     #[allow(async_fn_in_trait)]
     async fn read_zip_with_size_async(
         &self,
@@ -30,18 +27,16 @@ pub trait AsyncReadZipWithSize {
     ) -> Result<AsyncArchive<'_, Self::File>, Error>;
 }
 
-/// A trait for reading something as a zip archive (blocking I/O model),
-/// when we can tell size from self.
+/// A zip archive, read asynchronously from a file or other I/O resource.
 ///
-/// See also [ReadZipWithSize].
+/// This only contains metadata for the archive and its entries. Separate
+/// readers can be created for arbitraries entries on-demand using
+/// [AsyncStoredEntry::reader].
 pub trait AsyncReadZip {
     /// The type of the file to read from.
     type File: HasAsyncCursor;
 
     /// Reads self as a zip archive.
-    ///
-    /// This functions blocks until the entire archive has been read.
-    /// It is not compatible with non-blocking or async I/O.
     #[allow(async_fn_in_trait)]
     async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error>;
 }
@@ -173,14 +168,14 @@ where
     }
 }
 
-/// A sliceable I/O resource: we can ask for a [Read] at a given offset.
+/// A sliceable I/O resource: we can ask for an [AsyncRead] at a given offset.
 pub trait HasAsyncCursor {
-    /// The type returned by [cursor_at].
+    /// The type returned by [HasAsyncCursor::cursor_at].
     type Cursor<'a>: AsyncRead + Unpin + 'a
     where
         Self: 'a;
 
-    /// Returns a [Read] at the given offset.
+    /// Returns an [AsyncRead] at the given offset.
     fn cursor_at(&self, offset: u64) -> Self::Cursor<'_>;
 }
 

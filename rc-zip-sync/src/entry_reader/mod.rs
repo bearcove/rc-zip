@@ -17,6 +17,7 @@ use cfg_if::cfg_if;
 use oval::Buffer;
 use rc_zip::{
     error::{Error, FormatError},
+    fsm::{EntryFsm, FsmResult},
     parse::{DataDescriptorRecord, LocalFileHeaderRecord, Method, StoredEntry, StoredEntryInner},
 };
 use std::io;
@@ -312,5 +313,56 @@ where
         };
 
         Ok(decoder)
+    }
+}
+
+pub(crate) struct FsmEntryReader<R>
+where
+    R: io::Read,
+{
+    rd: R,
+    fsm: Option<EntryFsm>,
+}
+
+impl<R> FsmEntryReader<R>
+where
+    R: io::Read,
+{
+    pub(crate) fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
+    where
+        F: Fn(u64) -> R,
+    {
+        Self {
+            rd: get_reader(entry.header_offset),
+            fsm: Some(EntryFsm::new(entry.method(), entry.inner)),
+        }
+    }
+}
+
+impl<R> io::Read for FsmEntryReader<R>
+where
+    R: io::Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut fsm = match self.fsm.take() {
+            Some(fsm) => fsm,
+            None => return Ok(0),
+        };
+
+        if fsm.wants_read() {
+            let n = self.rd.read(fsm.space())?;
+            fsm.fill(n);
+        }
+
+        match fsm.process(buf)? {
+            FsmResult::Continue((fsm, outcome)) => {
+                self.fsm = Some(fsm);
+                Ok(outcome.bytes_written)
+            }
+            FsmResult::Done(()) => {
+                // neat!
+                Ok(0)
+            }
+        }
     }
 }

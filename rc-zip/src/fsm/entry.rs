@@ -104,6 +104,16 @@ impl EntryFsm {
         }
     }
 
+    /// Process the input and write the output to the given buffer
+    ///
+    /// This function will return `FsmResult::Continue` if it needs more input
+    /// to continue, or if it needs more space to write to. It will return
+    /// `FsmResult::Done` when all the input has been decompressed and all
+    /// the output has been written.
+    ///
+    /// Also, after writing all the output, process will read the data
+    /// descriptor (if any), and make sur the CRC32 hash and the uncompressed
+    /// size match the expected values.
     pub fn process(
         mut self,
         out: &mut [u8],
@@ -197,16 +207,14 @@ impl EntryFsm {
                     return Err(Error::Format(FormatError::WrongSize {
                         expected: expected_size,
                         actual: metrics.uncompressed_size,
-                    })
-                    .into());
+                    }));
                 }
 
                 if expected_crc32 != 0 && expected_crc32 != metrics.crc32 {
                     return Err(Error::Format(FormatError::WrongChecksum {
                         expected: expected_crc32,
                         actual: metrics.crc32,
-                    })
-                    .into());
+                    }));
                 }
 
                 Ok(FsmResult::Done(()))
@@ -244,7 +252,7 @@ impl EntryFsm {
 enum AnyDecompressor {
     Store(store_dec::StoreDec),
     #[cfg(feature = "deflate")]
-    Deflate(deflate_dec::DeflateDec),
+    Deflate(Box<deflate_dec::DeflateDec>),
 }
 
 #[derive(Default, Debug)]
@@ -257,7 +265,6 @@ pub struct DecompressOutcome {
 }
 
 trait Decompressor {
-    #[inline]
     fn decompress(&mut self, in_buf: &[u8], out_buf: &mut [u8])
         -> Result<DecompressOutcome, Error>;
 }

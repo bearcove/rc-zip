@@ -25,7 +25,12 @@ pub enum Error {
 
     /// Decompression-related error
     #[error("{method:?} decompression error: {msg}")]
-    Decompression { method: Method, msg: String },
+    Decompression {
+        /// The compression method that failed
+        method: Method,
+        /// Additional information
+        msg: String,
+    },
 
     /// Could not read as a zip because size could not be determined
     #[error("size must be known to open zip file")]

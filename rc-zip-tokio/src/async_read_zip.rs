@@ -1,7 +1,7 @@
 use std::{io, ops::Deref, pin::Pin, sync::Arc, task};
 
 use futures::future::BoxFuture;
-use positioned_io::{RandomAccessFile, ReadAt};
+use positioned_io::{RandomAccessFile, ReadAt, Size};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use rc_zip::{
@@ -15,7 +15,7 @@ use crate::entry_reader::EntryReader;
 /// A trait for reading something as a zip archive.
 ///
 /// See also [AsyncReadZip].
-pub trait AsyncReadZipWithSize {
+pub trait ReadZipWithSizeAsync {
     /// The type of the file to read from.
     type File: HasAsyncCursor;
 
@@ -32,7 +32,7 @@ pub trait AsyncReadZipWithSize {
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
 /// [AsyncStoredEntry::reader].
-pub trait AsyncReadZip {
+pub trait ReadZipAsync {
     /// The type of the file to read from.
     type File: HasAsyncCursor;
 
@@ -41,7 +41,7 @@ pub trait AsyncReadZip {
     async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error>;
 }
 
-impl<F> AsyncReadZipWithSize for F
+impl<F> ReadZipWithSizeAsync for F
 where
     F: HasAsyncCursor,
 {
@@ -75,7 +75,7 @@ where
     }
 }
 
-impl AsyncReadZip for &[u8] {
+impl ReadZipAsync for &[u8] {
     type File = Self;
 
     async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
@@ -83,11 +83,20 @@ impl AsyncReadZip for &[u8] {
     }
 }
 
-impl AsyncReadZip for Vec<u8> {
+impl ReadZipAsync for Vec<u8> {
     type File = Self;
 
     async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
         self.read_zip_with_size_async(self.len() as u64).await
+    }
+}
+
+impl ReadZipAsync for Arc<RandomAccessFile> {
+    type File = Self;
+
+    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
+        let size = self.size()?.unwrap_or_default();
+        self.read_zip_with_size_async(size).await
     }
 }
 

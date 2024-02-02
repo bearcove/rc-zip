@@ -12,23 +12,18 @@ use crate::{
     parse::{Archive, EntryContents, StoredEntry},
 };
 
-pub enum ZipSource {
-    File(&'static str),
-    Func(&'static str, Box<dyn Fn() -> Vec<u8>>),
-}
-
-pub struct ZipTest {
-    pub source: ZipSource,
+pub struct Case {
+    pub name: &'static str,
     pub expected_encoding: Option<Encoding>,
     pub comment: Option<&'static str>,
-    pub files: Vec<ZipTestFile>,
+    pub files: Vec<CaseFile>,
     pub error: Option<Error>,
 }
 
-impl Default for ZipTest {
+impl Default for Case {
     fn default() -> Self {
         Self {
-            source: ZipSource::Func("default.zip", Box::new(|| unreachable!())),
+            name: "test.zip",
             expected_encoding: None,
             comment: None,
             files: vec![],
@@ -37,24 +32,13 @@ impl Default for ZipTest {
     }
 }
 
-impl ZipTest {
-    pub fn name(&self) -> &'static str {
-        match &self.source {
-            ZipSource::File(name) => name,
-            ZipSource::Func(name, _f) => name,
-        }
-    }
-
-    // Read source archive from disk
-    pub fn bytes(&self) -> Vec<u8> {
-        match &self.source {
-            ZipSource::File(name) => std::fs::read(zips_dir().join(name)).unwrap(),
-            ZipSource::Func(_name, f) => f(),
-        }
+impl Case {
+    pub fn absolute_path(&self) -> PathBuf {
+        zips_dir().join(self.name)
     }
 }
 
-pub struct ZipTestFile {
+pub struct CaseFile {
     pub name: &'static str,
     pub mode: Option<u32>,
     pub modified: Option<DateTime<Utc>>,
@@ -67,7 +51,7 @@ pub enum FileContent {
     File(&'static str),
 }
 
-impl Default for ZipTestFile {
+impl Default for CaseFile {
     fn default() -> Self {
         Self {
             name: "default",
@@ -104,11 +88,11 @@ fn date(
     )
 }
 
-pub fn test_cases() -> Vec<ZipTest> {
+pub fn test_cases() -> Vec<Case> {
     vec![
-        ZipTest {
-            source: ZipSource::File("zip64.zip"),
-            files: vec![ZipTestFile {
+        Case {
+            name: "zip64.zip",
+            files: vec![CaseFile {
                 name: "README",
                 content: FileContent::Bytes(
                     "This small file is in ZIP64 format.\n".as_bytes().into(),
@@ -118,18 +102,18 @@ pub fn test_cases() -> Vec<ZipTest> {
             }],
             ..Default::default()
         },
-        ZipTest {
-            source: ZipSource::File("test.zip"),
+        Case {
+            name: "test.zip",
             comment: Some("This is a zipfile comment."),
             expected_encoding: Some(Encoding::Utf8),
             files: vec![
-                ZipTestFile {
+                CaseFile {
                     name: "test.txt",
                     content: FileContent::Bytes("This is a test text file.\n".as_bytes().into()),
                     modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
                 },
-                ZipTestFile {
+                CaseFile {
                     name: "gophercolor16x16.png",
                     content: FileContent::File("gophercolor16x16.png"),
                     modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)).unwrap()),
@@ -138,34 +122,34 @@ pub fn test_cases() -> Vec<ZipTest> {
             ],
             ..Default::default()
         },
-        ZipTest {
-            source: ZipSource::File("cp-437.zip"),
+        Case {
+            name: "cp-437.zip",
             expected_encoding: Some(Encoding::Cp437),
-            files: vec![ZipTestFile {
+            files: vec![CaseFile {
                 name: "français",
                 ..Default::default()
             }],
             ..Default::default()
         },
-        ZipTest {
-            source: ZipSource::File("shift-jis.zip"),
+        Case {
+            name: "shift-jis.zip",
             expected_encoding: Some(Encoding::ShiftJis),
             files: vec![
-                ZipTestFile {
+                CaseFile {
                     name: "should-be-jis/",
                     ..Default::default()
                 },
-                ZipTestFile {
+                CaseFile {
                     name: "should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi",
                     ..Default::default()
                 },
             ],
             ..Default::default()
         },
-        ZipTest {
-            source: ZipSource::File("utf8-winrar.zip"),
+        Case {
+            name: "utf8-winrar.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![ZipTestFile {
+            files: vec![CaseFile {
                 name: "世界",
                 content: FileContent::Bytes(vec![]),
                 modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0)).unwrap()),
@@ -174,10 +158,10 @@ pub fn test_cases() -> Vec<ZipTest> {
             ..Default::default()
         },
         #[cfg(feature = "lzma")]
-        ZipTest {
-            source: ZipSource::File("found-me-lzma.zip"),
+        Case {
+            source: "found-me-lzma.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![ZipTestFile {
+            files: vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
@@ -186,10 +170,10 @@ pub fn test_cases() -> Vec<ZipTest> {
             ..Default::default()
         },
         #[cfg(feature = "deflate64")]
-        ZipTest {
-            source: ZipSource::File("found-me-deflate64.zip"),
+        Case {
+            source: "found-me-deflate64.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![ZipTestFile {
+            files: vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
@@ -199,10 +183,10 @@ pub fn test_cases() -> Vec<ZipTest> {
         },
         // same with bzip2
         #[cfg(feature = "bzip2")]
-        ZipTest {
-            source: ZipSource::File("found-me-bzip2.zip"),
+        Case {
+            source: "found-me-bzip2.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![ZipTestFile {
+            files: vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
@@ -212,10 +196,10 @@ pub fn test_cases() -> Vec<ZipTest> {
         },
         // same with zstd
         #[cfg(feature = "zstd")]
-        ZipTest {
-            source: ZipSource::File("found-me-zstd.zip"),
+        Case {
+            source: "found-me-zstd.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![ZipTestFile {
+            files: vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0)).unwrap()),
@@ -226,8 +210,8 @@ pub fn test_cases() -> Vec<ZipTest> {
     ]
 }
 
-pub fn check_case(test: &ZipTest, archive: Result<&Archive, &Error>) {
-    let case_bytes = test.bytes();
+pub fn check_case(test: &Case, archive: Result<&Archive, &Error>) {
+    let case_bytes = std::fs::read(test.absolute_path()).unwrap();
 
     if let Some(expected) = &test.error {
         let actual = match archive {
@@ -255,14 +239,14 @@ pub fn check_case(test: &ZipTest, archive: Result<&Archive, &Error>) {
         test.files.len(),
         archive.entries().count(),
         "{} should have {} entries files",
-        test.name(),
+        test.name,
         test.files.len()
     );
 
     // then each implementation should check individual files
 }
 
-pub fn check_file_against(file: &ZipTestFile, entry: &StoredEntry, actual_bytes: &[u8]) {
+pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[u8]) {
     if let Some(expected) = file.modified {
         assert_eq!(
             expected,

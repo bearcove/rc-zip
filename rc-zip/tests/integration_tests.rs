@@ -8,8 +8,8 @@ use rc_zip::{
 #[test_log::test]
 fn state_machine() {
     let cases = corpus::test_cases();
-    let case = cases.iter().find(|x| x.name() == "zip64.zip").unwrap();
-    let bs = case.bytes();
+    let case = cases.iter().find(|x| x.name == "zip64.zip").unwrap();
+    let bs = std::fs::read(case.absolute_path()).unwrap();
     let mut fsm = ArchiveFsm::new(bs.len() as u64);
 
     let archive = 'read_zip: loop {

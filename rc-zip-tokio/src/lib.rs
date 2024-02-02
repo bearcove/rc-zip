@@ -12,6 +12,6 @@ mod entry_reader;
 
 // re-exports
 pub use async_read_zip::{
-    AsyncArchive, AsyncReadZip, AsyncReadZipWithSize, AsyncStoredEntry, HasAsyncCursor,
+    AsyncArchive, AsyncStoredEntry, HasAsyncCursor, ReadZipAsync, ReadZipWithSizeAsync,
 };
 pub use rc_zip;

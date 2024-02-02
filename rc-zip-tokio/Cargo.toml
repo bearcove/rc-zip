@@ -31,3 +31,8 @@ winnow = "0.5.36"
 default = ["deflate"]
 deflate = ["rc-zip/deflate"]
 
+[dev-dependencies]
+test-log = { version = "0.2.14", default-features = false, features = ["tracing-subscriber", "trace"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+rc-zip = { version = "2.0.1", path = "../rc-zip", features = ["corpus"] }
+tokio = { version = "1.35.1", features = ["rt", "macros"] }

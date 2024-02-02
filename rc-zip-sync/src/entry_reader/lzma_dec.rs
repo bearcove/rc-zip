@@ -1,6 +1,4 @@
-use byteorder::{LittleEndian, ReadBytesExt};
 use lzma_rs::decompress::Stream;
-use rc_zip::{Error, UnsupportedError};
 use std::io::{Read, Write};
 
 use crate::decoder::{Decoder, RawEntryReader};
@@ -101,37 +99,9 @@ where
 }
 
 pub(crate) fn mk_decoder(
-    mut r: RawEntryReader,
+    r: RawEntryReader,
     uncompressed_size: u64,
 ) -> std::io::Result<impl Decoder<RawEntryReader>> {
-    // TODO: move into rc-zip
-
-    // see `appnote.txt` section 5.8
-
-    // major & minor version are each 1 byte
-    let major = r.read_u8()?;
-    let minor = r.read_u8()?;
-
-    // properties size is a 2-byte little-endian integer
-    let properties_size = r.read_u16::<LittleEndian>()?;
-
-    if (major, minor) != (2, 0) {
-        return Err(
-            Error::Unsupported(UnsupportedError::LzmaVersionUnsupported { minor, major }).into(),
-        );
-    }
-
-    const LZMA_PROPERTIES_SIZE: u16 = 5;
-    if properties_size != LZMA_PROPERTIES_SIZE {
-        return Err(
-            Error::Unsupported(UnsupportedError::LzmaPropertiesHeaderWrongSize {
-                expected: 5,
-                actual: properties_size,
-            })
-            .into(),
-        );
-    }
-
     let memlimit = 128 * 1024 * 1024;
     let opts = lzma_rs::decompress::Options {
         unpacked_size: lzma_rs::decompress::UnpackedSize::UseProvided(Some(uncompressed_size)),

@@ -282,7 +282,7 @@ where
             Method::Lzma => {
                 cfg_if! {
                     if #[cfg(feature = "lzma")] {
-                        Box::new(lzma_dec::mk_decoder(raw_r,self.inner.uncompressed_size)?)
+                        Box::new(lzma_dec::mk_decoder(raw_r, self.inner.uncompressed_size)?)
                     } else {
                         return Err(Error::method_not_enabled(self.method));
                     }

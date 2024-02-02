@@ -824,11 +824,9 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 name = "rc-zip"
 version = "2.0.1"
 dependencies = [
- "byteorder",
  "cfg-if",
  "chardetng",
  "chrono",
- "crc32fast",
  "encoding_rs",
  "num_enum",
  "oem_cp",
@@ -843,7 +841,6 @@ dependencies = [
 name = "rc-zip-sync"
 version = "2.0.1"
 dependencies = [
- "byteorder",
  "bzip2",
  "cfg-if",
  "chrono",

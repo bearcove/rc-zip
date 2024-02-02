@@ -1,7 +1,8 @@
-use crate::format::*;
+use crate::{format::*, Error, UnsupportedError};
 use winnow::{
-    binary::{le_u16, le_u32, le_u64},
+    binary::{le_u16, le_u32, le_u64, le_u8},
     combinator::opt,
+    error::{ContextError, ErrMode, ErrorKind, FromExternalError},
     seq,
     token::tag,
     PResult, Parser, Partial,
@@ -15,7 +16,7 @@ pub struct LocalFileHeaderRecord {
     /// general purpose bit flag
     pub flags: u16,
     /// compression method
-    pub method: u16,
+    pub method: Method,
     /// last mod file datetime
     pub modified: MsdosTimestamp,
     /// crc-32
@@ -28,6 +29,16 @@ pub struct LocalFileHeaderRecord {
     pub name: ZipString,
     // extra field
     pub extra: ZipBytes,
+
+    // method-specific fields
+    pub method_specific: MethodSpecific,
+}
+
+#[derive(Debug)]
+/// Method-specific properties following the local file header
+pub enum MethodSpecific {
+    None,
+    Lzma(LzmaProperties),
 }
 
 impl LocalFileHeaderRecord {
@@ -38,7 +49,7 @@ impl LocalFileHeaderRecord {
 
         let reader_version = Version::parser.parse_next(i)?;
         let flags = le_u16.parse_next(i)?;
-        let method = le_u16.parse_next(i)?;
+        let method = le_u16.parse_next(i).map(Method::from)?;
         let modified = MsdosTimestamp::parser.parse_next(i)?;
         let crc32 = le_u32.parse_next(i)?;
         let compressed_size = le_u32.parse_next(i)?;
@@ -50,6 +61,21 @@ impl LocalFileHeaderRecord {
         let name = ZipString::parser(name_len).parse_next(i)?;
         let extra = ZipBytes::parser(extra_len).parse_next(i)?;
 
+        let method_specific = match method {
+            Method::Lzma => {
+                let lzma_properties = LzmaProperties::parser.parse_next(i)?;
+                if let Err(e) = lzma_properties.error_if_unsupported() {
+                    return Err(ErrMode::Cut(ContextError::from_external_error(
+                        i,
+                        ErrorKind::Verify,
+                        e,
+                    )));
+                }
+                MethodSpecific::Lzma(lzma_properties)
+            }
+            _ => MethodSpecific::None,
+        };
+
         Ok(Self {
             reader_version,
             flags,
@@ -60,6 +86,7 @@ impl LocalFileHeaderRecord {
             uncompressed_size,
             name,
             extra,
+            method_specific,
         })
     }
 
@@ -112,5 +139,50 @@ impl DataDescriptorRecord {
                 .parse_next(i)
             }
         }
+    }
+}
+
+/// 5.8.5 LZMA Properties header
+#[derive(Debug)]
+pub struct LzmaProperties {
+    /// major version
+    pub major: u8,
+    /// minor version
+    pub minor: u8,
+    /// properties size
+    pub properties_size: u16,
+}
+
+impl LzmaProperties {
+    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+        seq! {Self {
+            major: le_u8,
+            minor: le_u8,
+            properties_size: le_u16,
+        }}
+        .parse_next(i)
+    }
+
+    pub fn error_if_unsupported(&self) -> Result<(), Error> {
+        if (self.major, self.minor) != (2, 0) {
+            return Err(Error::Unsupported(
+                UnsupportedError::LzmaVersionUnsupported {
+                    minor: self.minor,
+                    major: self.major,
+                },
+            ));
+        }
+
+        const LZMA_PROPERTIES_SIZE: u16 = 5;
+        if self.properties_size != LZMA_PROPERTIES_SIZE {
+            return Err(Error::Unsupported(
+                UnsupportedError::LzmaPropertiesHeaderWrongSize {
+                    expected: 5,
+                    actual: self.properties_size,
+                },
+            ));
+        }
+
+        Ok(())
     }
 }

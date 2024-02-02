@@ -41,7 +41,7 @@ fn read_from_file() {
 #[test_log::test]
 fn real_world_files() {
     for case in corpus::test_cases() {
-        tracing::trace!("============ testing {}", case.name);
+        tracing::info!("============ testing {}", case.name);
 
         let file = File::open(case.absolute_path()).unwrap();
         let archive = file.read_zip().map_err(Error::from);

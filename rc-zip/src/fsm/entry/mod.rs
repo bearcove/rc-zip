@@ -19,6 +19,9 @@ mod bzip2_dec;
 #[cfg(feature = "lzma")]
 mod lzma_dec;
 
+#[cfg(feature = "zstd")]
+mod zstd_dec;
+
 use crate::{
     error::{Error, FormatError, UnsupportedError},
     parse::{DataDescriptorRecord, LocalFileHeaderRecord, Method, StoredEntryInner},
@@ -318,6 +321,8 @@ enum AnyDecompressor {
     Bzip2(bzip2_dec::Bzip2Dec),
     #[cfg(feature = "lzma")]
     Lzma(Box<lzma_dec::LzmaDec>),
+    #[cfg(feature = "zstd")]
+    Zstd(zstd_dec::ZstdDec),
 }
 
 #[derive(Default, Debug)]
@@ -372,6 +377,14 @@ impl AnyDecompressor {
                 return Err(err);
             }
 
+            #[cfg(feature = "zstd")]
+            Method::Zstd => Self::Zstd(zstd_dec::ZstdDec::new()?),
+            #[cfg(not(feature = "zstd"))]
+            Method::Zstd => {
+                let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));
+                return Err(err);
+            }
+
             _ => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotSupported(method));
                 return Err(err);
@@ -398,6 +411,8 @@ impl Decompressor for AnyDecompressor {
             Self::Bzip2(dec) => dec.decompress(in_buf, out, has_more_input),
             #[cfg(feature = "lzma")]
             Self::Lzma(dec) => dec.decompress(in_buf, out, has_more_input),
+            #[cfg(feature = "zstd")]
+            Self::Zstd(dec) => dec.decompress(in_buf, out, has_more_input),
         }
     }
 }

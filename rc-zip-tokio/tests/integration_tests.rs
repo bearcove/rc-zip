@@ -42,7 +42,7 @@ async fn read_from_file() {
 #[test_log::test(tokio::test)]
 async fn real_world_files() {
     for case in corpus::test_cases() {
-        tracing::trace!("============ testing {}", case.name);
+        tracing::info!("============ testing {}", case.name);
 
         let file = Arc::new(RandomAccessFile::open(case.absolute_path()).unwrap());
         let archive = file.read_zip_async().await;

@@ -7,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use rc_zip::{
     error::Error,
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, StoredEntry},
+    parse::{Archive, Entry},
 };
 
 use crate::entry_reader::EntryReader;
@@ -125,8 +125,8 @@ where
     F: HasAsyncCursor,
 {
     /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = AsyncStoredEntry<'_, F>> {
-        self.archive.entries().map(move |entry| AsyncStoredEntry {
+    pub fn entries(&self) -> impl Iterator<Item = AsyncEntry<'_, F>> {
+        self.archive.entries().map(move |entry| AsyncEntry {
             file: self.file,
             entry,
         })
@@ -134,11 +134,11 @@ where
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
     /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<AsyncStoredEntry<'_, F>> {
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<AsyncEntry<'_, F>> {
         self.archive
             .entries()
-            .find(|&x| x.name() == name.as_ref())
-            .map(|entry| AsyncStoredEntry {
+            .find(|&x| x.name == name.as_ref())
+            .map(|entry| AsyncEntry {
                 file: self.file,
                 entry,
             })
@@ -146,20 +146,20 @@ where
 }
 
 /// A single entry in a zip archive, read asynchronously from a file or other I/O resource.
-pub struct AsyncStoredEntry<'a, F> {
+pub struct AsyncEntry<'a, F> {
     file: &'a F,
-    entry: &'a StoredEntry,
+    entry: &'a Entry,
 }
 
-impl<F> Deref for AsyncStoredEntry<'_, F> {
-    type Target = StoredEntry;
+impl<F> Deref for AsyncEntry<'_, F> {
+    type Target = Entry;
 
     fn deref(&self) -> &Self::Target {
         self.entry
     }
 }
 
-impl<'a, F> AsyncStoredEntry<'a, F>
+impl<'a, F> AsyncEntry<'a, F>
 where
     F: HasAsyncCursor,
 {

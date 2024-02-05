@@ -1,5 +1,6 @@
 use chrono::{offset::Utc, DateTime, TimeZone};
 use num_enum::{FromPrimitive, IntoPrimitive};
+use ownable::{IntoOwned, ToOwned};
 use winnow::{binary::le_u16, PResult, Partial};
 
 use crate::{
@@ -21,11 +22,12 @@ pub struct Archive {
     pub(crate) size: u64,
     pub(crate) encoding: Encoding,
     pub(crate) entries: Vec<Entry>,
-    pub(crate) comment: Option<String>,
+    pub(crate) comment: String,
 }
 
 impl Archive {
     /// The size of .zip file that was read, in bytes.
+    #[inline(always)]
     pub fn size(&self) -> u64 {
         self.size
     }
@@ -43,14 +45,16 @@ impl Archive {
 
     /// Returns the detected character encoding for text fields
     /// (names, comments) inside this zip archive.
+    #[inline(always)]
     pub fn encoding(&self) -> Encoding {
         self.encoding
     }
 
     /// Returns the comment for this archive, if any. When reading
     /// a zip file with an empty comment field, this will return None.
-    pub fn comment(&self) -> Option<&String> {
-        self.comment.as_ref()
+    #[inline(always)]
+    pub fn comment(&self) -> &str {
+        &self.comment
     }
 }
 
@@ -269,7 +273,9 @@ impl Entry {
 ///
 /// However, in the wild, it is not too uncommon to encounter [Bzip2][Method::Bzip2],
 /// [Lzma][Method::Lzma] or others.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive, IntoOwned, ToOwned,
+)]
 #[repr(u16)]
 pub enum Method {
     /// No compression is applied

@@ -30,6 +30,3 @@ pub use eocd::*;
 
 mod local_headers;
 pub use local_headers::*;
-
-mod raw;
-pub use raw::*;

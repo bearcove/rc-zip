@@ -1,18 +1,11 @@
+use rc_zip::parse::Entry;
 use rc_zip::{
-    chrono::{DateTime, TimeZone, Utc},
-    parse::Entry,
-};
-use rc_zip::{
-    error::{Error, FormatError},
+    error::Error,
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, ExtraField, ExtraFieldSettings, LocalFileHeader, NtfsAttr},
+    parse::{Archive, LocalFileHeader},
 };
 use tracing::trace;
-use winnow::{
-    error::ErrMode,
-    stream::{AsBytes, Offset},
-    Parser, Partial,
-};
+use winnow::{error::ErrMode, Parser, Partial};
 
 use crate::entry_reader::EntryReader;
 use crate::streaming_entry_reader::StreamingEntryReader;
@@ -251,10 +244,8 @@ where
     R: Read,
 {
     fn read_first_zip_entry_streaming(mut self) -> Result<StreamingEntryReader<Self>, Error> {
-        // first, get enough data to read the first local file header
         let mut buf = oval::Buffer::with_capacity(16 * 1024);
-
-        let header = loop {
+        let entry = loop {
             let n = self.read(buf.space())?;
             trace!("read {} bytes into buf for first zip entry", n);
             buf.fill(n);
@@ -262,103 +253,15 @@ where
             let mut input = Partial::new(buf.data());
             match LocalFileHeader::parser.parse_next(&mut input) {
                 Ok(header) => {
-                    let consumed = input.as_bytes().offset_from(&buf.data());
-                    trace!(?header, %consumed, "Got local file header record!");
-                    // write extra bytes to `/tmp/extra.bin` for debugging
-                    std::fs::write("/tmp/extra.bin", &header.extra.0).unwrap();
-                    trace!("wrote extra bytes to /tmp/extra.bin");
-
-                    let mut modified: Option<DateTime<Utc>> = None;
-                    let mut created: Option<DateTime<Utc>> = None;
-                    let mut accessed: Option<DateTime<Utc>> = None;
-
-                    let mut compressed_size = header.compressed_size as u64;
-                    let mut uncompressed_size = header.uncompressed_size as u64;
-
-                    let mut uid: Option<u32> = None;
-                    let mut gid: Option<u32> = None;
-
-                    let mut extra_fields: Vec<ExtraField> = Vec::new();
-
-                    let settings = ExtraFieldSettings {
-                        needs_compressed_size: header.compressed_size == !0u32,
-                        needs_uncompressed_size: header.uncompressed_size == !0u32,
-                        needs_header_offset: false,
-                    };
-
-                    let mut slice = Partial::new(&header.extra.0[..]);
-                    while !slice.is_empty() {
-                        match ExtraField::mk_parser(settings).parse_next(&mut slice) {
-                            Ok(ef) => {
-                                match &ef {
-                                    ExtraField::Zip64(z64) => {
-                                        if let Some(n) = z64.uncompressed_size {
-                                            uncompressed_size = n;
-                                        }
-                                        if let Some(n) = z64.compressed_size {
-                                            compressed_size = n;
-                                        }
-                                    }
-                                    ExtraField::Timestamp(ts) => {
-                                        modified = Utc.timestamp_opt(ts.mtime as i64, 0).single();
-                                    }
-                                    ExtraField::Ntfs(nf) => {
-                                        for attr in &nf.attrs {
-                                            // note: other attributes are unsupported
-                                            if let NtfsAttr::Attr1(attr) = attr {
-                                                modified = attr.mtime.to_datetime();
-                                                created = attr.ctime.to_datetime();
-                                                accessed = attr.atime.to_datetime();
-                                            }
-                                        }
-                                    }
-                                    ExtraField::Unix(uf) => {
-                                        modified = Utc.timestamp_opt(uf.mtime as i64, 0).single();
-                                        if uid.is_none() {
-                                            uid = Some(uf.uid as u32);
-                                        }
-                                        if gid.is_none() {
-                                            gid = Some(uf.gid as u32);
-                                        }
-                                    }
-                                    ExtraField::NewUnix(uf) => {
-                                        uid = Some(uf.uid as u32);
-                                        gid = Some(uf.uid as u32);
-                                    }
-                                    _ => {}
-                                };
-                                extra_fields.push(ef);
-                            }
-                            Err(e) => {
-                                trace!("extra field error: {:#?}", e);
-                                return Err(FormatError::InvalidExtraField.into());
-                            }
-                        }
-                    }
-
-                    trace!(
-                        ?modified,
-                        ?created,
-                        ?accessed,
-                        ?compressed_size,
-                        ?uncompressed_size,
-                        ?uid,
-                        ?gid,
-                        "parsed extra fields"
-                    );
-
-                    break header;
+                    break header.as_entry()?;
                 }
-                // TODO: keep reading if we don't have enough data
-                Err(ErrMode::Incomplete(_)) => {
-                    // read more
-                }
+                Err(ErrMode::Incomplete(_)) => continue,
                 Err(e) => {
                     panic!("{e}")
                 }
             }
         };
 
-        Ok(StreamingEntryReader::new(buf, header, self))
+        Ok(StreamingEntryReader::new(buf, entry, self))
     }
 }

@@ -82,15 +82,10 @@ fn main() {
 
 fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     fn info(archive: &Archive) {
-        if let Some(comment) = archive.comment() {
-            println!("Comment:\n{}", comment);
-        }
-        let has_zip64 = archive.entries().any(|entry| entry.inner.is_zip64);
-        if has_zip64 {
-            println!("Found Zip64 end of central directory locator")
+        if !archive.comment().is_empty() {
+            println!("Comment:\n{}", archive.comment());
         }
 
-        let mut creator_versions = HashSet::<Version>::new();
         let mut reader_versions = HashSet::<Version>::new();
         let mut methods = HashSet::<Method>::new();
         let mut compressed_size: u64 = 0;
@@ -100,7 +95,6 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         let mut num_files = 0;
 
         for entry in archive.entries() {
-            creator_versions.insert(entry.creator_version);
             reader_versions.insert(entry.reader_version);
             match entry.kind() {
                 EntryKind::Symlink => {
@@ -110,17 +104,14 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     num_dirs += 1;
                 }
                 EntryKind::File => {
-                    methods.insert(entry.method());
+                    methods.insert(entry.method);
                     num_files += 1;
-                    compressed_size += entry.inner.compressed_size;
-                    uncompressed_size += entry.inner.uncompressed_size;
+                    compressed_size += entry.compressed_size;
+                    uncompressed_size += entry.uncompressed_size;
                 }
             }
         }
-        println!(
-            "Version made by: {:?}, required: {:?}",
-            creator_versions, reader_versions
-        );
+        println!("Versions: {:?}", reader_versions);
         println!("Encoding: {}, Methods: {:?}", archive.encoding(), methods);
         println!(
             "{} ({:.2}% compression) ({} files, {} dirs, {} symlinks)",
@@ -148,36 +139,33 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     "{mode:>9} {size:>12} {name}",
                     mode = entry.mode,
                     name = if verbose {
-                        Cow::from(entry.name())
+                        Cow::Borrowed(&entry.name)
                     } else {
-                        Cow::from(entry.name().truncate_path(55))
+                        Cow::Owned(entry.name.truncate_path(55))
                     },
-                    size = format_size(entry.inner.uncompressed_size, BINARY),
+                    size = format_size(entry.uncompressed_size, BINARY),
                 );
                 if verbose {
                     print!(
                         " ({} compressed)",
-                        format_size(entry.inner.compressed_size, BINARY)
+                        format_size(entry.compressed_size, BINARY)
                     );
                     print!(
                         " {modified} {uid} {gid}",
-                        modified = entry.modified(),
+                        modified = entry.modified,
                         uid = Optional(entry.uid),
                         gid = Optional(entry.gid),
                     );
 
-                    if let EntryKind::Symlink = entry.contents() {
+                    if let EntryKind::Symlink = entry.kind() {
                         let mut target = String::new();
                         entry.reader().read_to_string(&mut target).unwrap();
                         print!("\t{target}", target = target);
                     }
 
-                    print!("\t{:?}", entry.method());
-                    if entry.inner.is_zip64 {
-                        print!("\tZip64");
-                    }
-                    if let Some(comment) = entry.comment() {
-                        print!("\t{comment}", comment = comment);
+                    print!("\t{:?}", entry.method);
+                    if !entry.comment.is_empty() {
+                        print!("\t{comment}", comment = entry.comment);
                     }
                 }
                 println!();
@@ -191,12 +179,10 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let mut num_dirs = 0;
             let mut num_files = 0;
             let mut num_symlinks = 0;
-            let mut uncompressed_size: u64 = 0;
-            for entry in reader.entries() {
-                if let EntryKind::File = entry.contents() {
-                    uncompressed_size += entry.inner.uncompressed_size;
-                }
-            }
+            let uncompressed_size = reader
+                .entries()
+                .map(|entry| entry.uncompressed_size)
+                .sum::<u64>();
 
             let mut done_bytes: u64 = 0;
             use indicatif::{ProgressBar, ProgressStyle};
@@ -212,14 +198,13 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
             let start_time = std::time::SystemTime::now();
             for entry in reader.entries() {
-                let entry_name = entry.name();
-                let entry_name = match sanitize_entry_name(entry_name) {
+                let entry_name = match entry.sanitized_name() {
                     Some(name) => name,
                     None => continue,
                 };
 
                 pbar.set_message(entry_name.to_string());
-                match entry.contents() {
+                match entry.kind() {
                     EntryKind::Symlink => {
                         num_symlinks += 1;
 
@@ -274,13 +259,10 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         let mut entry_writer = File::create(path)?;
                         let entry_reader = entry.reader();
                         let before_entry_bytes = done_bytes;
-                        let mut progress_reader = ProgressRead::new(
-                            entry_reader,
-                            entry.inner.uncompressed_size,
-                            |prog| {
+                        let mut progress_reader =
+                            ProgressReader::new(entry_reader, entry.uncompressed_size, |prog| {
                                 pbar.set_position(before_entry_bytes + prog.done);
-                            },
-                        );
+                            });
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
                         done_bytes = before_entry_bytes + copied_bytes;
@@ -300,11 +282,15 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let bps = (uncompressed_size as f64 / seconds) as u64;
             println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
         }
-        Commands::UnzipStreaming { zipfile, .. } => {
+        Commands::UnzipStreaming { zipfile, dir, .. } => {
             let zipfile = File::open(zipfile)?;
+            let dir = PathBuf::from(dir.unwrap_or_else(|| ".".into()));
 
-            let mut entry = zipfile.read_first_zip_entry_streaming()?;
+            let mut num_dirs = 0;
+            let mut num_files = 0;
+            let mut num_symlinks = 0;
 
+            let mut done_bytes: u64 = 0;
             use indicatif::{ProgressBar, ProgressStyle};
             let pbar = ProgressBar::new(100);
             pbar.set_style(
@@ -314,23 +300,90 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     .progress_chars("=>-"),
             );
 
+            let mut uncompressed_size = 0;
             pbar.enable_steady_tick(Duration::from_millis(125));
 
+            let start_time = std::time::SystemTime::now();
+
+            let mut entry_reader = zipfile.read_first_zip_entry_streaming()?;
             loop {
-                let entry_name = entry.name().unwrap();
-                let entry_name = match sanitize_entry_name(entry_name) {
+                let entry_name = match entry_reader.entry().sanitized_name() {
                     Some(name) => name,
                     None => continue,
                 };
 
                 pbar.set_message(entry_name.to_string());
-                let mut buf = vec![];
-                entry.read_to_end(&mut buf)?;
+                match entry_reader.entry().kind() {
+                    EntryKind::Symlink => {
+                        num_symlinks += 1;
 
-                match entry.finish() {
+                        cfg_if! {
+                            if #[cfg(windows)] {
+                                let path = dir.join(entry_name);
+                                std::fs::create_dir_all(
+                                    path.parent()
+                                        .expect("all full entry paths should have parent paths"),
+                                )?;
+                                let mut entry_writer = File::create(path)?;
+                                let mut entry_reader = entry.reader();
+                                std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                            } else {
+                                let path = dir.join(entry_name);
+                                std::fs::create_dir_all(
+                                    path.parent()
+                                        .expect("all full entry paths should have parent paths"),
+                                )?;
+                                if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+                                    if metadata.is_file() {
+                                        std::fs::remove_file(&path)?;
+                                    }
+                                }
+
+                                let mut src = String::new();
+                                entry_reader.read_to_string(&mut src)?;
+
+                                // validate pointing path before creating a symbolic link
+                                if src.contains("..") {
+                                    continue;
+                                }
+                                std::os::unix::fs::symlink(src, &path)?;
+                            }
+                        }
+                    }
+                    EntryKind::Directory => {
+                        num_dirs += 1;
+                        let path = dir.join(entry_name);
+                        std::fs::create_dir_all(
+                            path.parent()
+                                .expect("all full entry paths should have parent paths"),
+                        )?;
+                    }
+                    EntryKind::File => {
+                        num_files += 1;
+                        let path = dir.join(entry_name);
+                        std::fs::create_dir_all(
+                            path.parent()
+                                .expect("all full entry paths should have parent paths"),
+                        )?;
+                        let mut entry_writer = File::create(path)?;
+                        let before_entry_bytes = done_bytes;
+                        let total = entry_reader.entry().uncompressed_size;
+                        let mut progress_reader =
+                            ProgressReader::new(entry_reader, total, |prog| {
+                                pbar.set_position(before_entry_bytes + prog.done);
+                            });
+
+                        let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
+                        uncompressed_size += copied_bytes;
+                        done_bytes = before_entry_bytes + copied_bytes;
+                        entry_reader = progress_reader.into_inner();
+                    }
+                }
+
+                match entry_reader.finish() {
                     Some(next_entry) => {
                         println!("Found next entry!");
-                        entry = next_entry;
+                        entry_reader = next_entry;
                     }
                     None => {
                         println!("End of archive!");
@@ -339,6 +392,17 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             pbar.finish();
+            let duration = start_time.elapsed()?;
+            println!(
+                "Extracted {} (in {} files, {} dirs, {} symlinks)",
+                format_size(uncompressed_size, BINARY),
+                num_files,
+                num_dirs,
+                num_symlinks
+            );
+            let seconds = (duration.as_millis() as f64) / 1000.0;
+            let bps = (uncompressed_size as f64 / seconds) as u64;
+            println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
         }
     }
 
@@ -349,7 +413,7 @@ trait Truncate {
     fn truncate_path(&self, limit: usize) -> String;
 }
 
-impl Truncate for &str {
+impl Truncate for String {
     fn truncate_path(&self, limit: usize) -> String {
         let mut name_tokens: Vec<&str> = Vec::new();
         let mut rest_tokens: std::collections::VecDeque<&str> = self.split('/').collect();
@@ -382,7 +446,7 @@ struct Progress {
     total: u64,
 }
 
-struct ProgressRead<F, R>
+struct ProgressReader<F, R>
 where
     R: io::Read,
     F: Fn(Progress),
@@ -392,7 +456,7 @@ where
     progress: Progress,
 }
 
-impl<F, R> ProgressRead<F, R>
+impl<F, R> ProgressReader<F, R>
 where
     R: io::Read,
     F: Fn(Progress),
@@ -406,7 +470,7 @@ where
     }
 }
 
-impl<F, R> io::Read for ProgressRead<F, R>
+impl<F, R> io::Read for ProgressReader<F, R>
 where
     R: io::Read,
     F: Fn(Progress),
@@ -421,32 +485,12 @@ where
     }
 }
 
-/// Sanitize zip entry names: skip entries with traversed/absolute path to
-/// mitigate zip slip, and strip absolute prefix on entries pointing to root
-/// path.
-fn sanitize_entry_name(name: &str) -> Option<&str> {
-    // refuse entries with traversed/absolute path to mitigate zip slip
-    if name.contains("..") {
-        return None;
-    }
-
-    #[cfg(windows)]
-    {
-        if name.contains(":\\") || name.starts_with("\\") {
-            return None;
-        }
-        Some(name)
-    }
-
-    #[cfg(not(windows))]
-    {
-        // strip absolute prefix on entries pointing to root path
-        let mut entry_chars = name.chars();
-        let mut name = name;
-        while name.starts_with('/') {
-            entry_chars.next();
-            name = entry_chars.as_str()
-        }
-        Some(name)
+impl<F, R> ProgressReader<F, R>
+where
+    R: io::Read,
+    F: Fn(Progress),
+{
+    fn into_inner(self) -> R {
+        self.inner
     }
 }

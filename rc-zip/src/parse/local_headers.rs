@@ -1,20 +1,27 @@
+use std::borrow::Cow;
+
 use crate::{
-    error::{Error, UnsupportedError},
-    parse::{Method, MsdosTimestamp, Version, ZipBytes, ZipString},
+    encoding::Encoding,
+    error::{Error, FormatError, UnsupportedError},
+    parse::{Method, MsdosTimestamp, Version},
 };
 
+use ownable::{IntoOwned, ToOwned};
+use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8},
     combinator::opt,
     error::{ContextError, ErrMode, ErrorKind, FromExternalError},
     seq,
-    token::tag,
+    token::{tag, take},
     PResult, Parser, Partial,
 };
 
-#[derive(Debug)]
+use super::{zero_datetime, Entry, ExtraField, ExtraFieldSettings, Mode};
+
+#[derive(Debug, ToOwned, IntoOwned)]
 /// 4.3.7 Local file header
-pub struct LocalFileHeader {
+pub struct LocalFileHeader<'a> {
     /// version needed to extract
     pub reader_version: Version,
 
@@ -37,16 +44,16 @@ pub struct LocalFileHeader {
     pub uncompressed_size: u32,
 
     /// file name
-    pub name: ZipString,
+    pub name: Cow<'a, [u8]>,
 
     /// extra field
-    pub extra: ZipBytes,
+    pub extra: Cow<'a, [u8]>,
 
     /// method-specific fields
     pub method_specific: MethodSpecific,
 }
 
-#[derive(Debug)]
+#[derive(Debug, ToOwned, IntoOwned)]
 /// Method-specific properties following the local file header
 pub enum MethodSpecific {
     /// No method-specific properties
@@ -56,12 +63,12 @@ pub enum MethodSpecific {
     Lzma(LzmaProperties),
 }
 
-impl LocalFileHeader {
+impl<'a> LocalFileHeader<'a> {
     /// The signature for a local file header
     pub const SIGNATURE: &'static str = "PK\x03\x04";
 
     /// Parser for the local file header
-    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    pub fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         let _ = tag(Self::SIGNATURE).parse_next(i)?;
 
         let reader_version = Version::parser.parse_next(i)?;
@@ -75,8 +82,8 @@ impl LocalFileHeader {
         let name_len = le_u16.parse_next(i)?;
         let extra_len = le_u16.parse_next(i)?;
 
-        let name = ZipString::parser(name_len).parse_next(i)?;
-        let extra = ZipBytes::parser(extra_len).parse_next(i)?;
+        let name = take(name_len).parse_next(i).map(Cow::Borrowed)?;
+        let extra = take(extra_len).parse_next(i).map(Cow::Borrowed)?;
 
         let method_specific = match method {
             Method::Lzma => {
@@ -113,6 +120,61 @@ impl LocalFileHeader {
         // 4.3.9.1 This descriptor MUST exist if bit 3 of the general
         // purpose bit flag is set (see below).
         self.flags & 0b1000 != 0
+    }
+
+    ///
+    pub fn as_entry(&self) -> Result<Entry, Error> {
+        // see APPNOTE 4.4.4: Bit 11 is the language encoding flag (EFS)
+        let has_utf8_flag = self.flags & 0x800 == 0;
+        let encoding = if has_utf8_flag {
+            Encoding::Utf8
+        } else {
+            Encoding::Cp437
+        };
+
+        let mut entry = Entry {
+            name: encoding.decode(&self.name[..])?,
+            method: self.method,
+            comment: Default::default(),
+            modified: self.modified.to_datetime().unwrap_or_else(zero_datetime),
+            created: None,
+            accessed: None,
+            header_offset: 0,
+            reader_version: self.reader_version,
+            flags: self.flags,
+            uid: None,
+            gid: None,
+            crc32: self.crc32,
+            compressed_size: self.compressed_size as _,
+            uncompressed_size: self.uncompressed_size as _,
+            mode: Mode(0),
+        };
+
+        if entry.name.ends_with('/') {
+            // believe it or not, this is straight from the APPNOTE
+            entry.mode |= Mode::DIR
+        };
+
+        let mut slice = Partial::new(&self.extra[..]);
+        let settings = ExtraFieldSettings {
+            compressed_size_u32: self.compressed_size,
+            uncompressed_size_u32: self.uncompressed_size,
+            header_offset_u32: 0,
+        };
+
+        while !slice.is_empty() {
+            match ExtraField::mk_parser(settings).parse_next(&mut slice) {
+                Ok(ef) => {
+                    entry.set_extra_field(&ef);
+                }
+                Err(e) => {
+                    trace!("extra field error: {:#?}", e);
+                    return Err(FormatError::InvalidExtraField.into());
+                }
+            }
+        }
+
+        Ok(entry)
     }
 }
 
@@ -163,7 +225,7 @@ impl DataDescriptorRecord {
 }
 
 /// 5.8.5 LZMA Properties header
-#[derive(Debug)]
+#[derive(Debug, ToOwned, IntoOwned)]
 pub struct LzmaProperties {
     /// major version
     pub major: u8,

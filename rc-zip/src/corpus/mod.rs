@@ -228,7 +228,7 @@ pub fn check_case(test: &Case, archive: Result<&Archive, &Error>) {
     assert_eq!(case_bytes.len() as u64, archive.size());
 
     if let Some(expected) = test.comment {
-        assert_eq!(expected, archive.comment().expect("should have comment"))
+        assert_eq!(expected, archive.comment())
     }
 
     if let Some(exp_encoding) = test.expected_encoding {

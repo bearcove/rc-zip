@@ -42,11 +42,14 @@ enum State {
     ReadLocalHeader,
 
     ReadData {
-        /// The local file header for this entry
-        header: LocalFileHeader,
+        /// The entry metadata
+        entry: Entry,
 
-        /// Entry compressed size
-        compressed_size: u64,
+        /// Whether the entry has a data descriptor
+        has_data_descriptor: bool,
+
+        /// Whether the entry is zip64 (because its compressed size or uncompressed size is u32::MAX)
+        is_zip64: bool,
 
         /// Amount of bytes we've fed to the decompressor
         compressed_bytes: u64,
@@ -62,16 +65,19 @@ enum State {
     },
 
     ReadDataDescriptor {
-        /// The local file header for this entry
-        header: LocalFileHeader,
+        /// The entry metadata
+        entry: Entry,
+
+        /// Whether the entry is zip64 (because its compressed size or uncompressed size is u32::MAX)
+        is_zip64: bool,
 
         /// Size we've decompressed + crc32 hash we've computed
         metrics: EntryReadMetrics,
     },
 
     Validate {
-        /// The local file header for this entry
-        header: LocalFileHeader,
+        /// The entry metadata
+        entry: Entry,
 
         /// Size we've decompressed + crc32 hash we've computed
         metrics: EntryReadMetrics,
@@ -157,34 +163,22 @@ impl EntryFsm {
                     Ok(header) => {
                         let consumed = input.as_bytes().offset_from(&self.buffer.data());
                         tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");
-                        self.buffer.consume(consumed);
                         let decompressor = AnyDecompressor::new(
                             header.method,
                             self.entry.as_ref().map(|entry| entry.uncompressed_size),
                         )?;
-                        let compressed_size = match &self.entry {
-                            Some(entry) => entry.compressed_size,
-                            None => {
-                                // FIXME: the zip64 extra field is here for that
-                                if header.compressed_size == u32::MAX {
-                                    return Err(Error::Decompression {
-                                        method: header.method,
-                                        msg: "This entry cannot be decompressed because its compressed size is larger than 4GiB".into(),
-                                    });
-                                } else {
-                                    header.compressed_size as u64
-                                }
-                            }
-                        };
 
                         self.state = S::ReadData {
-                            header,
-                            compressed_size,
+                            entry: header.as_entry()?,
+                            is_zip64: header.compressed_size == u32::MAX
+                                || header.uncompressed_size == u32::MAX,
+                            has_data_descriptor: header.has_data_descriptor(),
                             compressed_bytes: 0,
                             uncompressed_bytes: 0,
                             hasher: crc32fast::Hasher::new(),
                             decompressor,
                         };
+                        self.buffer.consume(consumed);
                         self.process(out)
                     }
                     Err(ErrMode::Incomplete(_)) => {
@@ -194,7 +188,7 @@ impl EntryFsm {
                 }
             }
             S::ReadData {
-                compressed_size,
+                entry,
                 compressed_bytes,
                 uncompressed_bytes,
                 hasher,
@@ -207,13 +201,13 @@ impl EntryFsm {
 
                 let in_buf_max_len = cmp::min(
                     in_buf.len(),
-                    *compressed_size as usize - *compressed_bytes as usize,
+                    entry.compressed_size as usize - *compressed_bytes as usize,
                 );
                 let in_buf = &in_buf[..in_buf_max_len];
 
                 let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
 
-                let has_more_input = if fed_bytes_after_this == *compressed_size as _ {
+                let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
                     HasMoreInput::No
                 } else {
                     HasMoreInput::Yes
@@ -231,16 +225,16 @@ impl EntryFsm {
 
                 if outcome.bytes_written == 0 && self.eof {
                     // we're done, let's read the data descriptor (if there's one)
-                    transition!(self.state => (S::ReadData { header, uncompressed_bytes, hasher, .. }) {
+                    transition!(self.state => (S::ReadData { entry, has_data_descriptor, is_zip64, uncompressed_bytes, hasher, .. }) {
                         let metrics = EntryReadMetrics {
                             uncompressed_size: uncompressed_bytes,
                             crc32: hasher.finalize(),
                         };
 
-                        if header.has_data_descriptor() {
-                            S::ReadDataDescriptor { header, metrics }
+                        if has_data_descriptor {
+                            S::ReadDataDescriptor { entry, metrics, is_zip64 }
                         } else {
-                            S::Validate { header, metrics, descriptor: None }
+                            S::Validate { entry, metrics, descriptor: None }
                         }
                     });
                     return self.process(out);
@@ -259,19 +253,16 @@ impl EntryFsm {
 
                 Ok(FsmResult::Continue((self, outcome)))
             }
-            S::ReadDataDescriptor { header, .. } => {
+            S::ReadDataDescriptor { is_zip64, .. } => {
                 let mut input = Partial::new(self.buffer.data());
 
-                let is_zip64 =
-                    header.compressed_size == u32::MAX || header.uncompressed_size == u32::MAX;
-
-                match DataDescriptorRecord::mk_parser(is_zip64).parse_next(&mut input) {
+                match DataDescriptorRecord::mk_parser(*is_zip64).parse_next(&mut input) {
                     Ok(descriptor) => {
                         self.buffer
                             .consume(input.as_bytes().offset_from(&self.buffer.data()));
                         trace!("data descriptor = {:#?}", descriptor);
-                        transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
-                            S::Validate { metrics, header, descriptor: Some(descriptor) }
+                        transition!(self.state => (S::ReadDataDescriptor { metrics, entry, .. }) {
+                            S::Validate { entry, metrics, descriptor: Some(descriptor) }
                         });
                         self.process(out)
                     }
@@ -282,7 +273,7 @@ impl EntryFsm {
                 }
             }
             S::Validate {
-                header,
+                entry,
                 metrics,
                 descriptor,
             } => {
@@ -292,25 +283,12 @@ impl EntryFsm {
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.crc32
                 } else {
-                    header.crc32
+                    entry.crc32
                 };
 
-                let entry_uncompressed_size = self
-                    .entry
-                    .as_ref()
-                    .map(|e| e.uncompressed_size)
-                    .unwrap_or_default();
-                let expected_size = if entry_uncompressed_size != 0 {
-                    entry_uncompressed_size
-                } else if let Some(descriptor) = descriptor.as_ref() {
-                    descriptor.uncompressed_size
-                } else {
-                    header.uncompressed_size as u64
-                };
-
-                if expected_size != metrics.uncompressed_size {
+                if entry.uncompressed_size != metrics.uncompressed_size {
                     return Err(Error::Format(FormatError::WrongSize {
-                        expected: expected_size,
+                        expected: entry.uncompressed_size,
                         actual: metrics.uncompressed_size,
                     }));
                 }

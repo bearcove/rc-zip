@@ -3,7 +3,7 @@ use std::{pin::Pin, task};
 use pin_project_lite::pin_project;
 use rc_zip::{
     fsm::{EntryFsm, FsmResult},
-    parse::StoredEntry,
+    parse::Entry,
 };
 use tokio::io::{AsyncRead, ReadBuf};
 
@@ -22,13 +22,13 @@ impl<R> EntryReader<R>
 where
     R: AsyncRead,
 {
-    pub(crate) fn new<F>(entry: &StoredEntry, get_reader: F) -> Self
+    pub(crate) fn new<F>(entry: &Entry, get_reader: F) -> Self
     where
         F: Fn(u64) -> R,
     {
         Self {
             rd: get_reader(entry.header_offset),
-            fsm: Some(EntryFsm::new(Some(entry.inner))),
+            fsm: Some(EntryFsm::new(Some(entry.clone()))),
         }
     }
 }

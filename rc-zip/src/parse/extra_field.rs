@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use ownable::{IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8, length_take},
@@ -8,7 +11,7 @@ use winnow::{
     PResult, Parser, Partial,
 };
 
-use crate::parse::{NtfsTimestamp, ZipBytes};
+use crate::parse::NtfsTimestamp;
 
 /// 4.4.28 extra field: (Variable)
 pub(crate) struct ExtraFieldRecord<'a> {
@@ -58,13 +61,13 @@ pub struct ExtraFieldSettings {
 ///
 /// See `extrafld.txt` in this crate's source distribution.
 #[derive(Clone)]
-pub enum ExtraField {
+pub enum ExtraField<'a> {
     /// Zip64 extended information extra field
     Zip64(ExtraZip64Field),
     /// Extended timestamp
     Timestamp(ExtraTimestampField),
     /// UNIX & Info-Zip UNIX
-    Unix(ExtraUnixField),
+    Unix(ExtraUnixField<'a>),
     /// New UNIX extra field
     NewUnix(ExtraNewUnixField),
     /// NTFS (Win9x/WinNT FileTimes)
@@ -76,12 +79,12 @@ pub enum ExtraField {
     },
 }
 
-impl ExtraField {
+impl<'a> ExtraField<'a> {
     /// Make a parser for extra fields, given the settings for the zip64 extra
     /// field (which depend on whether the u32 values are 0xFFFF_FFFF or not)
     pub fn mk_parser(
         settings: ExtraFieldSettings,
-    ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
+    ) -> impl FnMut(&mut Partial<&'a [u8]>) -> PResult<Self> {
         move |i| {
             use ExtraField as EF;
             let rec = ExtraFieldRecord::parser.parse_next(i)?;
@@ -184,8 +187,8 @@ impl ExtraTimestampField {
 }
 
 /// 4.5.7 -UNIX Extra Field (0x000d):
-#[derive(Clone)]
-pub struct ExtraUnixField {
+#[derive(Clone, ToOwned, IntoOwned)]
+pub struct ExtraUnixField<'a> {
     /// file last access time
     pub atime: u32,
     /// file last modification time
@@ -195,21 +198,21 @@ pub struct ExtraUnixField {
     /// file group id
     pub gid: u16,
     /// variable length data field
-    pub data: ZipBytes,
+    pub data: Cow<'a, [u8]>,
 }
 
-impl ExtraUnixField {
+impl<'a> ExtraUnixField<'a> {
     const TAG: u16 = 0x000d;
     const TAG_INFOZIP: u16 = 0x5855;
 
-    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         let t_size = le_u16.parse_next(i)? - 12;
         seq! {Self {
             atime: le_u32,
             mtime: le_u32,
             uid: le_u16,
             gid: le_u16,
-            data: ZipBytes::parser(t_size),
+            data: take(t_size).map(Cow::Borrowed),
         }}
         .parse_next(i)
     }

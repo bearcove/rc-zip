@@ -1,4 +1,5 @@
 use num_enum::{FromPrimitive, IntoPrimitive};
+use ownable::{IntoOwned, ToOwned};
 use std::fmt;
 use winnow::{binary::le_u8, seq, PResult, Parser, Partial};
 
@@ -8,7 +9,7 @@ use winnow::{binary::le_u8, seq, PResult, Parser, Partial};
 /// which features are required when reading a file.
 ///
 /// For more information, see the [.ZIP Application Note](https://support.pkware.com/display/PKZIP/APPNOTE), section 4.4.2.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, ToOwned, IntoOwned, PartialEq, Eq, Hash)]
 pub struct Version {
     /// The host system on which
     pub host_system: HostSystem,
@@ -38,7 +39,9 @@ impl Version {
 /// System on which an archive was created, as encoded into a version u16.
 ///
 /// See APPNOTE, section 4.4.2.2
-#[derive(Debug, Clone, Copy, IntoPrimitive, FromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, IntoPrimitive, FromPrimitive, ToOwned, IntoOwned, PartialEq, Eq, Hash,
+)]
 #[repr(u8)]
 pub enum HostSystem {
     /// MS-DOS and OS/2 (FAT / VFAT / FAT32 file systems)

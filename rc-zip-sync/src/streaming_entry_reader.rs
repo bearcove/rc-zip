@@ -1,16 +1,13 @@
 use oval::Buffer;
 use rc_zip::{
     fsm::{EntryFsm, FsmResult},
-    parse::LocalFileHeader,
+    parse::Entry,
 };
-use std::{
-    io::{self, Write},
-    str::Utf8Error,
-};
+use std::io::{self, Write};
 use tracing::trace;
 
 pub struct StreamingEntryReader<R> {
-    header: LocalFileHeader,
+    entry: Entry,
     rd: R,
     state: State,
 }
@@ -34,10 +31,10 @@ impl<R> StreamingEntryReader<R>
 where
     R: io::Read,
 {
-    pub(crate) fn new(remain: Buffer, header: LocalFileHeader, rd: R) -> Self {
+    pub(crate) fn new(remain: Buffer, entry: Entry, rd: R) -> Self {
         Self {
             rd,
-            header,
+            entry,
             state: State::Reading {
                 remain,
                 fsm: EntryFsm::new(None),
@@ -117,11 +114,10 @@ where
 }
 
 impl<R> StreamingEntryReader<R> {
-    /// Return the name of this entry, decoded as UTF-8.
-    ///
-    /// There is no support for CP-437 in the streaming interface
-    pub fn name(&self) -> Result<&str, Utf8Error> {
-        std::str::from_utf8(&self.header.name.0)
+    /// Return entry information for this reader
+    #[inline(always)]
+    pub fn entry(&self) -> &Entry {
+        &self.entry
     }
 
     /// Finish reading this entry, returning the next streaming entry reader, if

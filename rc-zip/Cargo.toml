@@ -33,6 +33,7 @@ deflate64 = { version = "0.1.7", optional = true }
 bzip2 = { version = "0.4.4", optional = true }
 lzma-rs = { version = "0.3.0", optional = true, features = ["stream"] }
 zstd = { version = "0.13.0", optional = true }
+ownable = "0.6.2"
 
 [features]
 corpus = []

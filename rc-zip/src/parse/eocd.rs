@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use ownable::{traits as ownable_traits, IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, length_take},
@@ -6,14 +9,11 @@ use winnow::{
     PResult, Parser, Partial,
 };
 
-use crate::{
-    error::{Error, FormatError},
-    parse::ZipString,
-};
+use crate::error::{Error, FormatError};
 
 /// 4.3.16  End of central directory record:
-#[derive(Debug)]
-pub struct EndOfCentralDirectoryRecord {
+#[derive(Debug, ToOwned, IntoOwned, Clone)]
+pub struct EndOfCentralDirectoryRecord<'a> {
     /// number of this disk
     pub disk_nbr: u16,
 
@@ -33,16 +33,16 @@ pub struct EndOfCentralDirectoryRecord {
     pub directory_offset: u32,
 
     /// .ZIP file comment
-    pub comment: ZipString,
+    pub comment: Cow<'a, [u8]>,
 }
 
-impl EndOfCentralDirectoryRecord {
+impl<'a> EndOfCentralDirectoryRecord<'a> {
     /// Does not include comment size & comment data
     const MIN_LENGTH: usize = 20;
     const SIGNATURE: &'static str = "PK\x05\x06";
 
     /// Find the end of central directory record in a block of data
-    pub fn find_in_block(b: &[u8]) -> Option<Located<Self>> {
+    pub fn find_in_block(b: &'a [u8]) -> Option<Located<Self>> {
         for i in (0..(b.len() - Self::MIN_LENGTH + 1)).rev() {
             let mut input = Partial::new(&b[i..]);
             if let Ok(directory) = Self::parser.parse_next(&mut input) {
@@ -56,7 +56,7 @@ impl EndOfCentralDirectoryRecord {
     }
 
     /// Parser for the end of central directory record
-    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    pub fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         let _ = tag(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
             disk_nbr: le_u16,
@@ -65,7 +65,7 @@ impl EndOfCentralDirectoryRecord {
             directory_records: le_u16,
             directory_size: le_u32,
             directory_offset: le_u32,
-            comment: length_take(le_u16).map(ZipString::from),
+            comment: length_take(le_u16).map(Cow::Borrowed),
         }}
         .parse_next(i)
     }
@@ -100,7 +100,7 @@ impl EndOfCentralDirectory64Locator {
 }
 
 /// 4.3.14  Zip64 end of central directory record
-#[derive(Debug)]
+#[derive(Debug, Clone, ToOwned, IntoOwned)]
 pub struct EndOfCentralDirectory64Record {
     /// size of zip64 end of central directory record
     pub record_size: u64,
@@ -153,7 +153,7 @@ impl EndOfCentralDirectory64Record {
 }
 
 /// A zip structure and its location in the input file
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Located<T> {
     /// Absolute by offset from the start of the file
     pub offset: u64,
@@ -162,23 +162,39 @@ pub struct Located<T> {
     pub inner: T,
 }
 
-impl<T> std::ops::Deref for Located<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+impl<T> ownable_traits::ToOwned for Located<T>
+where
+    T: ownable_traits::ToOwned,
+{
+    type Owned = Located<T::Owned>;
+
+    fn to_owned(&self) -> Self::Owned {
+        Located {
+            offset: self.offset,
+            inner: self.inner.to_owned(),
+        }
     }
 }
 
-impl<T> std::ops::DerefMut for Located<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+impl<T> ownable_traits::IntoOwned for Located<T>
+where
+    T: ownable_traits::IntoOwned,
+{
+    type Owned = Located<T::Owned>;
+
+    fn into_owned(self) -> Self::Owned {
+        Located {
+            offset: self.offset,
+            inner: self.inner.into_owned(),
+        }
     }
 }
 
 /// Coalesces zip and zip64 "end of central directory" record info
-pub struct EndOfCentralDirectory {
+#[derive(ToOwned, IntoOwned)]
+pub struct EndOfCentralDirectory<'a> {
     /// The end of central directory record
-    pub dir: Located<EndOfCentralDirectoryRecord>,
+    pub dir: Located<EndOfCentralDirectoryRecord<'a>>,
 
     /// The zip64 end of central directory record
     pub dir64: Option<Located<EndOfCentralDirectory64Record>>,
@@ -188,10 +204,10 @@ pub struct EndOfCentralDirectory {
     pub global_offset: i64,
 }
 
-impl EndOfCentralDirectory {
+impl<'a> EndOfCentralDirectory<'a> {
     pub(crate) fn new(
         size: u64,
-        dir: Located<EndOfCentralDirectoryRecord>,
+        dir: Located<EndOfCentralDirectoryRecord<'a>>,
         dir64: Option<Located<EndOfCentralDirectory64Record>>,
     ) -> Result<Self, Error> {
         let mut res = Self {
@@ -219,7 +235,7 @@ impl EndOfCentralDirectory {
         //
         // (e.g. https://www.icculus.org/mojosetup/ installers are ELF binaries with a .zip file appended)
         //
-        // `directory_end_offfset` is found by scanning the file (so it accounts for padding), but
+        // `directory_end_offset` is found by scanning the file (so it accounts for padding), but
         // `directory_offset` is found by reading a data structure (so it does not account for padding).
         // If we just trusted `directory_offset`, we'd be reading the central directory at the wrong place:
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -266,37 +282,37 @@ impl EndOfCentralDirectory {
     #[inline]
     pub(crate) fn directory_offset(&self) -> u64 {
         match self.dir64.as_ref() {
-            Some(d64) => d64.directory_offset,
-            None => self.dir.directory_offset as u64,
+            Some(d64) => d64.inner.directory_offset,
+            None => self.dir.inner.directory_offset as u64,
         }
     }
 
     #[inline]
     pub(crate) fn directory_size(&self) -> u64 {
         match self.dir64.as_ref() {
-            Some(d64) => d64.directory_size,
-            None => self.dir.directory_size as u64,
+            Some(d64) => d64.inner.directory_size,
+            None => self.dir.inner.directory_size as u64,
         }
     }
 
     #[inline]
     pub(crate) fn set_directory_offset(&mut self, offset: u64) {
         match self.dir64.as_mut() {
-            Some(d64) => d64.directory_offset = offset,
-            None => self.dir.directory_offset = offset as u32,
+            Some(d64) => d64.inner.directory_offset = offset,
+            None => self.dir.inner.directory_offset = offset as u32,
         };
     }
 
     #[inline]
     pub(crate) fn directory_records(&self) -> u64 {
         match self.dir64.as_ref() {
-            Some(d64) => d64.directory_records,
-            None => self.dir.directory_records as u64,
+            Some(d64) => d64.inner.directory_records,
+            None => self.dir.inner.directory_records as u64,
         }
     }
 
     #[inline]
-    pub(crate) fn comment(&self) -> &ZipString {
-        &self.dir.comment
+    pub(crate) fn comment(&self) -> &[u8] {
+        &self.dir.inner.comment
     }
 }

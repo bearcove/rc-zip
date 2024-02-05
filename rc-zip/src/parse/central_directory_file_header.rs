@@ -1,8 +1,11 @@
+use std::borrow::Cow;
+
+use ownable::{IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32},
     prelude::PResult,
-    token::tag,
+    token::{tag, take},
     Parser, Partial,
 };
 
@@ -12,14 +15,15 @@ use crate::{
     error::{Error, FormatError},
     parse::{
         zero_datetime, Entry, ExtraField, ExtraFieldSettings, HostSystem, Mode, MsdosMode,
-        MsdosTimestamp, UnixMode, Version, ZipBytes, ZipString,
+        MsdosTimestamp, UnixMode, Version,
     },
 };
 
 use super::Method;
 
 /// 4.3.12 Central directory structure: File header
-pub struct CentralDirectoryFileHeader {
+#[derive(IntoOwned, ToOwned)]
+pub struct CentralDirectoryFileHeader<'a> {
     /// version made by
     pub creator_version: Version,
 
@@ -56,21 +60,21 @@ pub struct CentralDirectoryFileHeader {
     /// relative offset of local header
     pub header_offset: u32,
 
-    /// name
-    pub name: ZipString,
+    /// name field
+    pub name: Cow<'a, [u8]>,
 
-    /// extra
-    pub extra: ZipBytes,
+    /// extra field
+    pub extra: Cow<'a, [u8]>,
 
-    /// comment
-    pub comment: ZipString,
+    /// comment field
+    pub comment: Cow<'a, [u8]>,
 }
 
-impl CentralDirectoryFileHeader {
+impl<'a> CentralDirectoryFileHeader<'a> {
     const SIGNATURE: &'static str = "PK\x01\x02";
 
     /// Parser for the central directory file header
-    pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    pub fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         _ = tag(Self::SIGNATURE).parse_next(i)?;
         let creator_version = Version::parser.parse_next(i)?;
         let reader_version = Version::parser.parse_next(i)?;
@@ -88,9 +92,9 @@ impl CentralDirectoryFileHeader {
         let external_attrs = le_u32.parse_next(i)?;
         let header_offset = le_u32.parse_next(i)?;
 
-        let name = ZipString::parser(name_len).parse_next(i)?;
-        let extra = ZipBytes::parser(extra_len).parse_next(i)?;
-        let comment = ZipString::parser(comment_len).parse_next(i)?;
+        let name = take(name_len).parse_next(i)?;
+        let extra = take(extra_len).parse_next(i)?;
+        let comment = take(comment_len).parse_next(i)?;
 
         Ok(Self {
             creator_version,
@@ -105,18 +109,18 @@ impl CentralDirectoryFileHeader {
             internal_attrs,
             external_attrs,
             header_offset,
-            name,
-            extra,
-            comment,
+            name: Cow::Borrowed(name),
+            extra: Cow::Borrowed(extra),
+            comment: Cow::Borrowed(comment),
         })
     }
 }
 
-impl CentralDirectoryFileHeader {
+impl CentralDirectoryFileHeader<'_> {
     /// Returns true if the name or comment is not valid UTF-8
     pub fn is_non_utf8(&self) -> bool {
-        let (valid1, require1) = detect_utf8(&self.name.0[..]);
-        let (valid2, require2) = detect_utf8(&self.comment.0[..]);
+        let (valid1, require1) = detect_utf8(&self.name[..]);
+        let (valid2, require2) = detect_utf8(&self.comment[..]);
         if !valid1 || !valid2 {
             // definitely not utf-8
             return true;
@@ -134,13 +138,13 @@ impl CentralDirectoryFileHeader {
         self.flags & 0x800 == 0
     }
 
-    /// Converts the directory header into a stored entry: this involves
+    /// Converts the directory header into a entry: this involves
     /// parsing the extra fields and converting the timestamps.
     pub fn as_entry(&self, encoding: Encoding, global_offset: u64) -> Result<Entry, Error> {
         let mut entry = Entry {
-            name: encoding.decode(&self.name.0)?,
+            name: encoding.decode(&self.name[..])?,
             method: self.method,
-            comment: encoding.decode(&self.comment.0)?,
+            comment: encoding.decode(&self.comment[..])?,
             modified: self.modified.to_datetime().unwrap_or_else(zero_datetime),
             created: None,
             accessed: None,
@@ -173,7 +177,7 @@ impl CentralDirectoryFileHeader {
             header_offset_u32: self.header_offset,
         };
 
-        let mut slice = Partial::new(&self.extra.0[..]);
+        let mut slice = Partial::new(&self.extra[..]);
         while !slice.is_empty() {
             match ExtraField::mk_parser(settings).parse_next(&mut slice) {
                 Ok(ef) => {

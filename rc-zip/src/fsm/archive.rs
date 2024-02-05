@@ -8,6 +8,7 @@ use crate::{
     },
 };
 
+use ownable::traits::IntoOwned;
 use tracing::trace;
 use winnow::{
     error::ErrMode,
@@ -54,19 +55,19 @@ enum State {
 
     /// Reading the zip64 end of central directory record.
     ReadEocd64Locator {
-        eocdr: Located<EndOfCentralDirectoryRecord>,
+        eocdr: Located<EndOfCentralDirectoryRecord<'static>>,
     },
 
     /// Reading the zip64 end of central directory record.
     ReadEocd64 {
         eocdr64_offset: u64,
-        eocdr: Located<EndOfCentralDirectoryRecord>,
+        eocdr: Located<EndOfCentralDirectoryRecord<'static>>,
     },
 
     /// Reading all headers from the central directory
     ReadCentralDirectory {
-        eocd: EndOfCentralDirectory,
-        directory_headers: Vec<CentralDirectoryFileHeader>,
+        eocd: EndOfCentralDirectory<'static>,
+        directory_headers: Vec<CentralDirectoryFileHeader<'static>>,
     },
 
     #[default]
@@ -140,12 +141,13 @@ impl ArchiveFsm {
                     EndOfCentralDirectoryRecord::find_in_block(haystack)
                 } {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
-                    Some(mut eocdr) => {
+                    Some(eocdr) => {
                         trace!(
                             ?eocdr,
                             size = self.size,
                             "ReadEocd | found end of central directory record"
                         );
+                        let mut eocdr = eocdr.into_owned();
                         self.buffer.reset();
                         eocdr.offset += self.size - haystack_size;
 
@@ -264,7 +266,7 @@ impl ArchiveFsm {
                                 len = input.len(),
                                 "ReadCentralDirectory | parsed directory header"
                             );
-                            directory_headers.push(dh);
+                            directory_headers.push(dh.into_owned());
                         }
                         Err(ErrMode::Incomplete(_needed)) => {
                             // need more data to read the full header
@@ -305,7 +307,7 @@ impl ArchiveFsm {
                                         directory_headers.iter().filter(|fh| fh.is_non_utf8())
                                     {
                                         all_utf8 = false;
-                                        if !feed(&fh.name.0) || !feed(&fh.comment.0) {
+                                        if !feed(&fh.name[..]) || !feed(&fh.comment[..]) {
                                             break 'recognize_encoding;
                                         }
                                     }
@@ -341,10 +343,7 @@ impl ArchiveFsm {
                                     .collect();
                                 let entries = entries?;
 
-                                let mut comment: Option<String> = None;
-                                if !eocd.comment().0.is_empty() {
-                                    comment = Some(encoding.decode(&eocd.comment().0)?);
-                                }
+                                let comment = encoding.decode(eocd.comment())?;
 
                                 return Ok(FsmResult::Done(Archive {
                                     size: self.size,

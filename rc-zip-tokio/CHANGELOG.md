@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-tokio-v3.0.0...rc-zip-tokio-v4.0.0) - 2024-02-05
+
+### Added
+- [**breaking**] Introduce `ReadZipStreaming` trait ([#62](https://github.com/fasterthanlime/rc-zip/pull/62))
+
 ## [3.0.0](https://github.com/fasterthanlime/rc-zip/releases/tag/rc-zip-tokio-v3.0.0) - 2024-02-02
 
 ### Other

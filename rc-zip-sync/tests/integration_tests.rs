@@ -15,10 +15,12 @@ fn check_case<F: HasCursor>(test: &Case, archive: Result<SyncArchive<'_, F>, Err
     };
 
     for file in &test.files {
+        tracing::info!("checking file {}", file.name);
         let entry = archive
             .by_name(file.name)
             .unwrap_or_else(|| panic!("entry {} should exist", file.name));
 
+        tracing::info!("got entry for {}", file.name);
         corpus::check_file_against(file, &entry, &entry.bytes().unwrap()[..])
     }
 }

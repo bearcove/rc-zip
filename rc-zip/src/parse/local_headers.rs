@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    encoding::Encoding,
+    encoding::{detect_utf8, Encoding},
     error::{Error, FormatError, UnsupportedError},
     parse::{Method, MsdosTimestamp, Version},
 };
@@ -122,18 +122,19 @@ impl<'a> LocalFileHeader<'a> {
         self.flags & 0b1000 != 0
     }
 
-    ///
+    /// Converts the local file header into an entry.
     pub fn as_entry(&self) -> Result<Entry, Error> {
         // see APPNOTE 4.4.4: Bit 11 is the language encoding flag (EFS)
         let has_utf8_flag = self.flags & 0x800 == 0;
-        let encoding = if has_utf8_flag {
+        let encoding = if has_utf8_flag && detect_utf8(&self.name[..]).0 {
             Encoding::Utf8
         } else {
             Encoding::Cp437
         };
+        let name = encoding.decode(&self.name[..])?;
 
         let mut entry = Entry {
-            name: encoding.decode(&self.name[..])?,
+            name,
             method: self.method,
             comment: Default::default(),
             modified: self.modified.to_datetime().unwrap_or_else(zero_datetime),

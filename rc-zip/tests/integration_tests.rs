@@ -9,17 +9,18 @@ use rc_zip::{
 fn state_machine() {
     let cases = corpus::test_cases();
     let case = cases.iter().find(|x| x.name == "zip64.zip").unwrap();
-    let bs = std::fs::read(case.absolute_path()).unwrap();
-    let mut fsm = ArchiveFsm::new(bs.len() as u64);
+    let bytes = case.bytes();
+
+    let mut fsm = ArchiveFsm::new(bytes.len() as u64);
 
     let archive = 'read_zip: loop {
         if let Some(offset) = fsm.wants_read() {
             let increment = 128usize;
             let offset = offset as usize;
-            let slice = if offset + increment > bs.len() {
-                &bs[offset..]
+            let slice = if offset + increment > bytes.len() {
+                &bytes[offset..]
             } else {
-                &bs[offset..offset + increment]
+                &bytes[offset..offset + increment]
             };
 
             let len = cmp::min(slice.len(), fsm.space().len());

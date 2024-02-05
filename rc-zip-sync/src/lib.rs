@@ -9,7 +9,9 @@
 
 mod entry_reader;
 mod read_zip;
+
 mod streaming_entry_reader;
+pub use streaming_entry_reader::StreamingEntryReader;
 
 // re-exports
 pub use rc_zip;

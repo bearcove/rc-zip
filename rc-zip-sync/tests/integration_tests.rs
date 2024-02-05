@@ -1,5 +1,5 @@
 use rc_zip::{
-    corpus::{self, zips_dir, Case},
+    corpus::{self, zips_dir, Case, Files},
     error::Error,
     parse::Archive,
 };
@@ -14,14 +14,16 @@ fn check_case<F: HasCursor>(test: &Case, archive: Result<SyncArchive<'_, F>, Err
         Err(_) => return,
     };
 
-    for file in &test.files {
-        tracing::info!("checking file {}", file.name);
-        let entry = archive
-            .by_name(file.name)
-            .unwrap_or_else(|| panic!("entry {} should exist", file.name));
+    if let Files::ExhaustiveList(files) = &test.files {
+        for file in files {
+            tracing::info!("checking file {}", file.name);
+            let entry = archive
+                .by_name(file.name)
+                .unwrap_or_else(|| panic!("entry {} should exist", file.name));
 
-        tracing::info!("got entry for {}", file.name);
-        corpus::check_file_against(file, &entry, &entry.bytes().unwrap()[..])
+            tracing::info!("got entry for {}", file.name);
+            corpus::check_file_against(file, &entry, &entry.bytes().unwrap()[..])
+        }
     }
 }
 
@@ -45,9 +47,10 @@ fn real_world_files() {
     for case in corpus::test_cases() {
         tracing::info!("============ testing {}", case.name);
 
-        let file = File::open(case.absolute_path()).unwrap();
+        let guarded_path = case.absolute_path();
+        let file = File::open(&guarded_path.path).unwrap();
         let archive = file.read_zip().map_err(Error::from);
-
-        check_case(&case, archive)
+        check_case(&case, archive);
+        drop(guarded_path)
     }
 }

@@ -1,4 +1,4 @@
-use std::{io, ops::Deref, pin::Pin, sync::Arc, task};
+use std::{cmp, io, ops::Deref, pin::Pin, sync::Arc, task};
 
 use futures::future::BoxFuture;
 use positioned_io::{RandomAccessFile, ReadAt, Size};
@@ -31,7 +31,7 @@ pub trait ReadZipWithSizeAsync {
 ///
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
-/// [AsyncStoredEntry::reader].
+/// [AsyncEntry::reader].
 pub trait ReadZipAsync {
     /// The type of the file to read from.
     type File: HasAsyncCursor;
@@ -259,9 +259,10 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
                     ARAFCState::Idle(core) => core,
                     _ => unreachable!(),
                 };
+                let read_len = cmp::min(buf.remaining(), core.inner_buf.len());
                 let pos = self.pos;
                 let fut = Box::pin(tokio::task::spawn_blocking(move || {
-                    let read = core.file.read_at(pos, &mut core.inner_buf);
+                    let read = core.file.read_at(pos, &mut core.inner_buf[..read_len]);
                     (read, core)
                 }));
                 self.state = ARAFCState::Reading { fut };

@@ -267,8 +267,7 @@ impl ArchiveFsm {
                                 len = input.len(),
                                 "ReadCentralDirectory | parsed directory header"
                             );
-                            valid_consumed =
-                                input.as_bytes().offset_from(&self.buffer.data()) as usize;
+                            valid_consumed = input.as_bytes().offset_from(&self.buffer.data());
                             directory_headers.push(dh.into_owned());
                         }
                         Err(ErrMode::Incomplete(_needed)) => {

@@ -1,6 +1,6 @@
 use positioned_io::RandomAccessFile;
 use rc_zip::{
-    corpus::{self, zips_dir, Case},
+    corpus::{self, zips_dir, Case, Files},
     error::Error,
     parse::Archive,
 };
@@ -15,12 +15,14 @@ async fn check_case<F: HasAsyncCursor>(test: &Case, archive: Result<AsyncArchive
         Err(_) => return,
     };
 
-    for file in &test.files {
-        let entry = archive
-            .by_name(file.name)
-            .unwrap_or_else(|| panic!("entry {} should exist", file.name));
+    if let Files::ExhaustiveList(files) = &test.files {
+        for file in files {
+            let entry = archive
+                .by_name(file.name)
+                .unwrap_or_else(|| panic!("entry {} should exist", file.name));
 
-        corpus::check_file_against(file, &entry, &entry.bytes().await.unwrap()[..])
+            corpus::check_file_against(file, &entry, &entry.bytes().await.unwrap()[..])
+        }
     }
 }
 
@@ -44,9 +46,10 @@ async fn real_world_files() {
     for case in corpus::test_cases() {
         tracing::info!("============ testing {}", case.name);
 
-        let file = Arc::new(RandomAccessFile::open(case.absolute_path()).unwrap());
+        let guarded_path = case.absolute_path();
+        let file = Arc::new(RandomAccessFile::open(&guarded_path.path).unwrap());
         let archive = file.read_zip_async().await;
-
-        check_case(&case, archive).await
+        check_case(&case, archive).await;
+        drop(guarded_path)
     }
 }

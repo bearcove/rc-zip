@@ -6,6 +6,11 @@ use rc_zip::{
 use std::io::{self, Write};
 use tracing::trace;
 
+/// Reads a zip entry based on a local header. Some information is missing,
+/// not all name encodings may work, and only by reading it in its entirety
+/// can you move on to the next entry.
+///
+/// However, it only requires an [io::Read], and does not need to seek.
 pub struct StreamingEntryReader<R> {
     entry: Entry,
     rd: R,

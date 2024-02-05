@@ -11,7 +11,7 @@ use crate::{
 use super::{zero_datetime, ExtraField, NtfsAttr};
 
 /// An Archive contains general information about a zip files, along with a list
-/// of [entries][StoredEntry].
+/// of [entries][Entry].
 ///
 /// It is obtained through a state machine like
 /// [ArchiveFsm](crate::fsm::ArchiveFsm), although end-users tend to use
@@ -59,10 +59,6 @@ impl Archive {
 }
 
 /// Describes a zip archive entry (a file, a directory, a symlink)
-///
-/// `Entry` contains normalized metadata fields, that can be set when
-/// writing a zip archive. Additional metadata, along with the information
-/// required to extract an entry, are available in [StoredEntry][] instead.
 #[derive(Clone)]
 pub struct Entry {
     /// Name of the file

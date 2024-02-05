@@ -160,11 +160,12 @@ impl EntryFsm {
                         self.buffer.consume(consumed);
                         let decompressor = AnyDecompressor::new(
                             header.method,
-                            self.entry.map(|entry| entry.uncompressed_size),
+                            self.entry.as_ref().map(|entry| entry.uncompressed_size),
                         )?;
                         let compressed_size = match &self.entry {
                             Some(entry) => entry.compressed_size,
                             None => {
+                                // FIXME: the zip64 extra field is here for that
                                 if header.compressed_size == u32::MAX {
                                     return Err(Error::Decompression {
                                         method: header.method,
@@ -258,14 +259,11 @@ impl EntryFsm {
 
                 Ok(FsmResult::Continue((self, outcome)))
             }
-            S::ReadDataDescriptor { .. } => {
+            S::ReadDataDescriptor { header, .. } => {
                 let mut input = Partial::new(self.buffer.data());
 
-                // if we don't have entry info, we're dangerously assuming the
-                // file isn't zip64. oh well.
-                // FIXME: we can just read until the next local file header and
-                // determine whether the file is zip64 or not from there?
-                let is_zip64 = self.entry.as_ref().map(|e| e.is_zip64).unwrap_or(false);
+                let is_zip64 =
+                    header.compressed_size == u32::MAX || header.uncompressed_size == u32::MAX;
 
                 match DataDescriptorRecord::mk_parser(is_zip64).parse_next(&mut input) {
                     Ok(descriptor) => {
@@ -288,7 +286,7 @@ impl EntryFsm {
                 metrics,
                 descriptor,
             } => {
-                let entry_crc32 = self.entry.map(|e| e.crc32).unwrap_or_default();
+                let entry_crc32 = self.entry.as_ref().map(|e| e.crc32).unwrap_or_default();
                 let expected_crc32 = if entry_crc32 != 0 {
                     entry_crc32
                 } else if let Some(descriptor) = descriptor.as_ref() {
@@ -297,8 +295,11 @@ impl EntryFsm {
                     header.crc32
                 };
 
-                let entry_uncompressed_size =
-                    self.entry.map(|e| e.uncompressed_size).unwrap_or_default();
+                let entry_uncompressed_size = self
+                    .entry
+                    .as_ref()
+                    .map(|e| e.uncompressed_size)
+                    .unwrap_or_default();
                 let expected_size = if entry_uncompressed_size != 0 {
                     entry_uncompressed_size
                 } else if let Some(descriptor) = descriptor.as_ref() {

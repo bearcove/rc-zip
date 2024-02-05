@@ -8,7 +8,7 @@ use winnow::{binary::le_u8, seq, PResult, Parser, Partial};
 /// which features are required when reading a file.
 ///
 /// For more information, see the [.ZIP Application Note](https://support.pkware.com/display/PKZIP/APPNOTE), section 4.4.2.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy)]
 pub struct Version {
     /// The host system on which
     pub host_system: HostSystem,
@@ -20,13 +20,7 @@ pub struct Version {
 
 impl fmt::Debug for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:?} v{}.{}",
-            self.host_system(),
-            self.major(),
-            self.minor()
-        )
+        write!(f, "{:?} v{}", self.host_system, self.version)
     }
 }
 
@@ -34,7 +28,7 @@ impl Version {
     /// Parse a version from a byte slice
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         seq! {Self {
-            host_system: le_u8.map(HostSystem::from_u8),
+            host_system: le_u8.map(HostSystem::from),
             version: le_u8,
         }}
         .parse_next(i)

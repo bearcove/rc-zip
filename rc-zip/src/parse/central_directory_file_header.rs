@@ -1,4 +1,3 @@
-use chrono::{offset::TimeZone, DateTime, Utc};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32},
@@ -13,11 +12,11 @@ use crate::{
     error::{Error, FormatError},
     parse::{
         zero_datetime, Entry, ExtraField, ExtraFieldSettings, HostSystem, Mode, MsdosMode,
-        MsdosTimestamp, NtfsAttr, UnixMode, Version, ZipBytes, ZipString,
+        MsdosTimestamp, UnixMode, Version, ZipBytes, ZipString,
     },
 };
 
-use super::{EntryCdFields, Method};
+use super::Method;
 
 /// 4.3.12 Central directory structure: File header
 pub struct CentralDirectoryFileHeader {

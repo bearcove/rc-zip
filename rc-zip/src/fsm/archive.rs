@@ -334,11 +334,10 @@ impl ArchiveFsm {
                                     }
                                 };
 
-                                let is_zip64 = eocd.dir64.is_some();
                                 let global_offset = eocd.global_offset as u64;
                                 let entries: Result<Vec<Entry>, Error> = directory_headers
                                     .iter()
-                                    .map(|x| x.as_entry(is_zip64, encoding, global_offset))
+                                    .map(|x| x.as_entry(encoding, global_offset))
                                     .collect();
                                 let entries = entries?;
 

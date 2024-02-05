@@ -1,8 +1,11 @@
-use rc_zip::chrono::{DateTime, TimeZone, Utc};
+use rc_zip::{
+    chrono::{DateTime, TimeZone, Utc},
+    parse::Entry,
+};
 use rc_zip::{
     error::{Error, FormatError},
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, ExtraField, ExtraFieldSettings, LocalFileHeader, NtfsAttr, StoredEntry},
+    parse::{Archive, ExtraField, ExtraFieldSettings, LocalFileHeader, NtfsAttr},
 };
 use tracing::trace;
 use winnow::{
@@ -96,7 +99,7 @@ impl ReadZip for Vec<u8> {
 ///
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
-/// [SyncStoredEntry::reader].
+/// [SyncEntry::reader].
 pub struct SyncArchive<'a, F>
 where
     F: HasCursor,
@@ -133,7 +136,7 @@ where
     pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<SyncEntry<'_, F>> {
         self.archive
             .entries()
-            .find(|&x| x.name() == name.as_ref())
+            .find(|&x| x.name == name.as_ref())
             .map(|entry| SyncEntry {
                 file: self.file,
                 entry,
@@ -144,11 +147,11 @@ where
 /// A zip entry, read synchronously from a file or other I/O resource.
 pub struct SyncEntry<'a, F> {
     file: &'a F,
-    entry: &'a StoredEntry,
+    entry: &'a Entry,
 }
 
 impl<F> Deref for SyncEntry<'_, F> {
-    type Target = StoredEntry;
+    type Target = Entry;
 
     fn deref(&self) -> &Self::Target {
         self.entry

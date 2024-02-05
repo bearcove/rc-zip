@@ -1,6 +1,6 @@
 use rc_zip::{
     fsm::{EntryFsm, FsmResult},
-    parse::StoredEntry,
+    parse::Entry,
 };
 use std::io;
 use tracing::trace;
@@ -17,10 +17,10 @@ impl<R> EntryReader<R>
 where
     R: io::Read,
 {
-    pub(crate) fn new(entry: &StoredEntry, rd: R) -> Self {
+    pub(crate) fn new(entry: &Entry, rd: R) -> Self {
         Self {
             rd,
-            fsm: Some(EntryFsm::new(Some(entry.inner))),
+            fsm: Some(EntryFsm::new(Some(entry.clone()))),
         }
     }
 }

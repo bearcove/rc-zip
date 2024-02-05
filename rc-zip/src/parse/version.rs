@@ -29,8 +29,8 @@ impl Version {
     /// Parse a version from a byte slice
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         seq! {Self {
-            host_system: le_u8.map(HostSystem::from),
             version: le_u8,
+            host_system: le_u8.map(HostSystem::from),
         }}
         .parse_next(i)
     }

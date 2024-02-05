@@ -222,10 +222,22 @@ impl ReadZip for std::fs::File {
     }
 }
 
+/// Allows reading zip entries in a streaming fashion, without seeking,
+/// based only on local headers. THIS IS NOT RECOMMENDED, as correctly
+/// reading zip files requires reading the central directory (located at
+/// the end of the file).
+///
+/// Using local headers only involves a lot of guesswork and is only really
+/// useful if you have some level of control over your input.
 pub trait ReadZipEntriesStreaming<R>
 where
     R: Read,
 {
+    /// Get the first zip entry from the stream as a [StreamingEntryReader].
+    ///
+    /// See [ReadZipEntriesStreaming]'s documentation for why using this is
+    /// generally a bad idea: you might want to use [ReadZip] or
+    /// [ReadZipWithSize] instead.
     fn read_first_zip_entry_streaming(self) -> Result<StreamingEntryReader<R>, Error>;
 }
 
@@ -239,13 +251,13 @@ where
 
         let header = loop {
             let n = self.read(buf.space())?;
+            tracing::trace!("read {} bytes into buf for first zip entry", n);
             buf.fill(n);
 
             let mut input = Partial::new(buf.data());
             match LocalFileHeaderRecord::parser.parse_next(&mut input) {
                 Ok(header) => {
                     let consumed = input.as_bytes().offset_from(&buf.data());
-                    buf.consume(consumed);
                     tracing::trace!(?header, %consumed, "Got local file header record!");
                     break header;
                 }

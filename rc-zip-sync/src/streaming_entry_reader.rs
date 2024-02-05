@@ -7,6 +7,7 @@ use std::{
     io::{self, Write},
     str::Utf8Error,
 };
+use tracing::trace;
 
 pub struct StreamingEntryReader<R> {
     header: LocalFileHeaderRecord,
@@ -15,6 +16,7 @@ pub struct StreamingEntryReader<R> {
 }
 
 #[derive(Default)]
+#[allow(clippy::large_enum_variant)]
 enum State {
     Reading {
         remain: Buffer,
@@ -55,18 +57,22 @@ where
                 mut fsm,
             } => {
                 if fsm.wants_read() {
-                    tracing::trace!("fsm wants read");
+                    trace!("fsm wants read");
                     if remain.available_data() > 0 {
-                        let n = remain.read(buf)?;
-                        tracing::trace!("giving fsm {} bytes from remain", n);
+                        trace!(
+                            "remain has {} data bytes available",
+                            remain.available_data(),
+                        );
+                        let n = remain.read(fsm.space())?;
+                        trace!("giving fsm {} bytes from remain", n);
                         fsm.fill(n);
                     } else {
                         let n = self.rd.read(fsm.space())?;
-                        tracing::trace!("giving fsm {} bytes from rd", n);
+                        trace!("giving fsm {} bytes from rd", n);
                         fsm.fill(n);
                     }
                 } else {
-                    tracing::trace!("fsm does not want read");
+                    trace!("fsm does not want read");
                 }
 
                 match fsm.process(buf)? {
@@ -85,7 +91,7 @@ where
                         // what the fsm just gave back
                         if remain.available_data() > 0 {
                             fsm_remain.grow(fsm_remain.capacity() + remain.available_data());
-                            fsm_remain.write_all(remain.data());
+                            fsm_remain.write_all(remain.data())?;
                             drop(remain)
                         }
 

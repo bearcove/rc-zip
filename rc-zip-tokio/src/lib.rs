@@ -7,11 +7,14 @@
 
 #![warn(missing_docs)]
 
-mod async_read_zip;
 mod entry_reader;
+mod read_zip;
+
+mod streaming_entry_reader;
+pub use streaming_entry_reader::StreamingEntryReader;
 
 // re-exports
-pub use async_read_zip::{
-    AsyncArchive, AsyncStoredEntry, HasAsyncCursor, ReadZipAsync, ReadZipWithSizeAsync,
-};
 pub use rc_zip;
+pub use read_zip::{
+    ArchiveHandle, EntryHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize,
+};

@@ -27,7 +27,7 @@ mod zstd_dec;
 
 use crate::{
     error::{Error, FormatError, UnsupportedError},
-    parse::{DataDescriptorRecord, LocalFileHeaderRecord, Method, StoredEntryInner},
+    parse::{DataDescriptorRecord, Entry, LocalFileHeader, Method},
 };
 
 use super::FsmResult;
@@ -42,8 +42,11 @@ enum State {
     ReadLocalHeader,
 
     ReadData {
-        /// The local file header for this entry
-        header: LocalFileHeaderRecord,
+        /// Whether the entry has a data descriptor
+        has_data_descriptor: bool,
+
+        /// Whether the entry is zip64 (because its compressed size or uncompressed size is u32::MAX)
+        is_zip64: bool,
 
         /// Amount of bytes we've fed to the decompressor
         compressed_bytes: u64,
@@ -59,17 +62,14 @@ enum State {
     },
 
     ReadDataDescriptor {
-        /// The local file header for this entry
-        header: LocalFileHeaderRecord,
+        /// Whether the entry is zip64 (because its compressed size or uncompressed size is u32::MAX)
+        is_zip64: bool,
 
         /// Size we've decompressed + crc32 hash we've computed
         metrics: EntryReadMetrics,
     },
 
     Validate {
-        /// The local file header for this entry
-        header: LocalFileHeaderRecord,
-
         /// Size we've decompressed + crc32 hash we've computed
         metrics: EntryReadMetrics,
 
@@ -84,21 +84,25 @@ enum State {
 /// A state machine that can parse a zip entry
 pub struct EntryFsm {
     state: State,
-    entry: StoredEntryInner,
-    method: Method,
+    entry: Option<Entry>,
     buffer: Buffer,
-    eof: bool,
 }
 
 impl EntryFsm {
     /// Create a new state machine for decompressing a zip entry
-    pub fn new(method: Method, entry: StoredEntryInner) -> Self {
+    pub fn new(entry: Option<Entry>, buffer: Option<Buffer>) -> Self {
+        const BUF_CAPACITY: usize = 256 * 1024;
+
         Self {
             state: State::ReadLocalHeader,
             entry,
-            method,
-            buffer: Buffer::with_capacity(256 * 1024),
-            eof: false,
+            buffer: match buffer {
+                Some(buffer) => {
+                    assert!(buffer.capacity() >= BUF_CAPACITY, "buffer too small");
+                    buffer
+                }
+                None => Buffer::with_capacity(BUF_CAPACITY),
+            },
         }
     }
 
@@ -118,6 +122,60 @@ impl EntryFsm {
         }
     }
 
+    /// Like `process`, but only processes the header. If this returns
+    /// `Ok(None)`, the caller should read more data and call this function
+    /// again.
+    pub fn process_till_header(&mut self) -> Result<Option<&Entry>, Error> {
+        match &self.state {
+            State::ReadLocalHeader => {
+                self.internal_process_local_header()?;
+            }
+            _ => {
+                // already good
+            }
+        }
+
+        // this will be non-nil if we've parsed the local header, otherwise,
+        Ok(self.entry.as_ref())
+    }
+
+    fn internal_process_local_header(&mut self) -> Result<bool, Error> {
+        assert!(
+            matches!(self.state, State::ReadLocalHeader),
+            "internal_process_local_header called in wrong state",
+        );
+
+        let mut input = Partial::new(self.buffer.data());
+        match LocalFileHeader::parser.parse_next(&mut input) {
+            Ok(header) => {
+                let consumed = input.as_bytes().offset_from(&self.buffer.data());
+                tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");
+                let decompressor = AnyDecompressor::new(
+                    header.method,
+                    self.entry.as_ref().map(|entry| entry.uncompressed_size),
+                )?;
+
+                if self.entry.is_none() {
+                    self.entry = Some(header.as_entry()?);
+                }
+
+                self.state = State::ReadData {
+                    is_zip64: header.compressed_size == u32::MAX
+                        || header.uncompressed_size == u32::MAX,
+                    has_data_descriptor: header.has_data_descriptor(),
+                    compressed_bytes: 0,
+                    uncompressed_bytes: 0,
+                    hasher: crc32fast::Hasher::new(),
+                    decompressor,
+                };
+                self.buffer.consume(consumed);
+                Ok(true)
+            }
+            Err(ErrMode::Incomplete(_)) => Ok(false),
+            Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader)),
+        }
+    }
+
     /// Process the input and write the output to the given buffer
     ///
     /// This function will return `FsmResult::Continue` if it needs more input
@@ -131,7 +189,7 @@ impl EntryFsm {
     pub fn process(
         mut self,
         out: &mut [u8],
-    ) -> Result<FsmResult<(Self, DecompressOutcome), ()>, Error> {
+    ) -> Result<FsmResult<(Self, DecompressOutcome), Buffer>, Error> {
         tracing::trace!(
             state = match &self.state {
                 State::ReadLocalHeader => "ReadLocalHeader",
@@ -146,26 +204,8 @@ impl EntryFsm {
         use State as S;
         match &mut self.state {
             S::ReadLocalHeader => {
-                let mut input = Partial::new(self.buffer.data());
-                match LocalFileHeaderRecord::parser.parse_next(&mut input) {
-                    Ok(header) => {
-                        let consumed = input.as_bytes().offset_from(&self.buffer.data());
-                        tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");
-                        self.buffer.consume(consumed);
-                        self.state = S::ReadData {
-                            header,
-                            compressed_bytes: 0,
-                            uncompressed_bytes: 0,
-                            hasher: crc32fast::Hasher::new(),
-                            decompressor: AnyDecompressor::new(self.method, &self.entry)?,
-                        };
-                        self.process(out)
-                    }
-                    Err(ErrMode::Incomplete(_)) => {
-                        Ok(FsmResult::Continue((self, Default::default())))
-                    }
-                    Err(_e) => Err(Error::Format(FormatError::InvalidLocalHeader)),
-                }
+                self.internal_process_local_header()?;
+                self.process(out)
             }
             S::ReadData {
                 compressed_bytes,
@@ -177,42 +217,56 @@ impl EntryFsm {
                 let in_buf = self.buffer.data();
 
                 // don't feed the decompressor bytes beyond the entry's compressed size
+
+                let entry = self.entry.as_ref().unwrap();
                 let in_buf_max_len = cmp::min(
                     in_buf.len(),
-                    self.entry.compressed_size as usize - *compressed_bytes as usize,
+                    entry.compressed_size as usize - *compressed_bytes as usize,
                 );
                 let in_buf = &in_buf[..in_buf_max_len];
 
                 let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
-
-                let has_more_input = if fed_bytes_after_this == self.entry.compressed_size as _ {
+                let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
                     HasMoreInput::No
                 } else {
                     HasMoreInput::Yes
                 };
+
+                trace!(
+                    compressed_bytes = *compressed_bytes,
+                    uncompressed_bytes = *uncompressed_bytes,
+                    fed_bytes_after_this,
+                    in_buf_len = in_buf.len(),
+                    ?has_more_input,
+                    "decompressing"
+                );
+
                 let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
                 trace!(
                     ?outcome,
                     compressed_bytes = *compressed_bytes,
                     uncompressed_bytes = *uncompressed_bytes,
-                    eof = self.eof,
                     "decompressed"
                 );
                 self.buffer.consume(outcome.bytes_read);
                 *compressed_bytes += outcome.bytes_read as u64;
 
-                if outcome.bytes_written == 0 && self.eof {
+                if outcome.bytes_written == 0 && *compressed_bytes == entry.compressed_size {
+                    trace!("eof and no bytes written, we're done");
+
                     // we're done, let's read the data descriptor (if there's one)
-                    transition!(self.state => (S::ReadData { header, uncompressed_bytes, hasher, .. }) {
+                    transition!(self.state => (S::ReadData {  has_data_descriptor, is_zip64, uncompressed_bytes, hasher, .. }) {
                         let metrics = EntryReadMetrics {
                             uncompressed_size: uncompressed_bytes,
                             crc32: hasher.finalize(),
                         };
 
-                        if header.has_data_descriptor() {
-                            S::ReadDataDescriptor { header, metrics }
+                        if has_data_descriptor {
+                            trace!("transitioning to ReadDataDescriptor");
+                            S::ReadDataDescriptor { metrics, is_zip64 }
                         } else {
-                            S::Validate { header, metrics, descriptor: None }
+                            trace!("transitioning to Validate");
+                            S::Validate { metrics, descriptor: None }
                         }
                     });
                     return self.process(out);
@@ -231,15 +285,16 @@ impl EntryFsm {
 
                 Ok(FsmResult::Continue((self, outcome)))
             }
-            S::ReadDataDescriptor { .. } => {
+            S::ReadDataDescriptor { is_zip64, .. } => {
                 let mut input = Partial::new(self.buffer.data());
-                match DataDescriptorRecord::mk_parser(self.entry.is_zip64).parse_next(&mut input) {
+
+                match DataDescriptorRecord::mk_parser(*is_zip64).parse_next(&mut input) {
                     Ok(descriptor) => {
                         self.buffer
                             .consume(input.as_bytes().offset_from(&self.buffer.data()));
                         trace!("data descriptor = {:#?}", descriptor);
-                        transition!(self.state => (S::ReadDataDescriptor { metrics, header, .. }) {
-                            S::Validate { metrics, header, descriptor: Some(descriptor) }
+                        transition!(self.state => (S::ReadDataDescriptor { metrics, .. }) {
+                            S::Validate { metrics, descriptor: Some(descriptor) }
                         });
                         self.process(out)
                     }
@@ -250,29 +305,22 @@ impl EntryFsm {
                 }
             }
             S::Validate {
-                header,
                 metrics,
                 descriptor,
             } => {
-                let expected_crc32 = if self.entry.crc32 != 0 {
-                    self.entry.crc32
+                let entry = self.entry.as_ref().unwrap();
+
+                let expected_crc32 = if entry.crc32 != 0 {
+                    entry.crc32
                 } else if let Some(descriptor) = descriptor.as_ref() {
                     descriptor.crc32
                 } else {
-                    header.crc32
+                    0
                 };
 
-                let expected_size = if self.entry.uncompressed_size != 0 {
-                    self.entry.uncompressed_size
-                } else if let Some(descriptor) = descriptor.as_ref() {
-                    descriptor.uncompressed_size
-                } else {
-                    header.uncompressed_size as u64
-                };
-
-                if expected_size != metrics.uncompressed_size {
+                if entry.uncompressed_size != metrics.uncompressed_size {
                     return Err(Error::Format(FormatError::WrongSize {
-                        expected: expected_size,
+                        expected: entry.uncompressed_size,
                         actual: metrics.uncompressed_size,
                     }));
                 }
@@ -284,7 +332,7 @@ impl EntryFsm {
                     }));
                 }
 
-                Ok(FsmResult::Done(()))
+                Ok(FsmResult::Done(self.buffer))
             }
             S::Transition => {
                 unreachable!("the state machine should never be in the transition state")
@@ -305,13 +353,8 @@ impl EntryFsm {
 
     /// After having written data to [Self::space], call this to indicate how
     /// many bytes were written.
-    ///
-    /// If this is called with zero, it indicates eof
     #[inline]
     pub fn fill(&mut self, count: usize) -> usize {
-        if count == 0 {
-            self.eof = true;
-        }
         self.buffer.fill(count)
     }
 }
@@ -339,6 +382,8 @@ pub struct DecompressOutcome {
     pub bytes_written: usize,
 }
 
+/// Returns whether there's more input to be fed to the decompressor
+#[derive(Debug)]
 pub enum HasMoreInput {
     Yes,
     No,
@@ -354,7 +399,7 @@ trait Decompressor {
 }
 
 impl AnyDecompressor {
-    fn new(method: Method, #[allow(unused)] entry: &StoredEntryInner) -> Result<Self, Error> {
+    fn new(method: Method, #[allow(unused)] uncompressed_size: Option<u64>) -> Result<Self, Error> {
         let dec = match method {
             Method::Store => Self::Store(Default::default()),
 
@@ -383,7 +428,7 @@ impl AnyDecompressor {
             }
 
             #[cfg(feature = "lzma")]
-            Method::Lzma => Self::Lzma(Box::new(lzma_dec::LzmaDec::new(entry.uncompressed_size))),
+            Method::Lzma => Self::Lzma(Box::new(lzma_dec::LzmaDec::new(uncompressed_size))),
             #[cfg(not(feature = "lzma"))]
             Method::Lzma => {
                 let err = Error::Unsupported(UnsupportedError::MethodNotEnabled(method));

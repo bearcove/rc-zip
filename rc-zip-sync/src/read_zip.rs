@@ -1,10 +1,13 @@
 use rc_zip::{
     error::Error,
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, StoredEntry},
+    parse::Archive,
 };
+use rc_zip::{fsm::EntryFsm, parse::Entry};
+use tracing::trace;
 
 use crate::entry_reader::EntryReader;
+use crate::streaming_entry_reader::StreamingEntryReader;
 use std::{io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive
@@ -15,7 +18,7 @@ pub trait ReadZipWithSize {
     type File: HasCursor;
 
     /// Reads self as a zip archive.
-    fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, Self::File>, Error>;
+    fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, Self::File>, Error>;
 }
 
 /// A trait for reading something as a zip archive when we can tell size from
@@ -27,7 +30,7 @@ pub trait ReadZip {
     type File: HasCursor;
 
     /// Reads self as a zip archive.
-    fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error>;
+    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error>;
 }
 
 impl<F> ReadZipWithSize for F
@@ -36,15 +39,15 @@ where
 {
     type File = F;
 
-    fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, F>, Error> {
-        tracing::trace!(%size, "read_zip_with_size");
+    fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, F>, Error> {
+        trace!(%size, "read_zip_with_size");
         let mut fsm = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = fsm.wants_read() {
-                tracing::trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
+                trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
                 match self.cursor_at(offset).read(fsm.space()) {
                     Ok(read_bytes) => {
-                        tracing::trace!(%read_bytes, "read_zip_with_size: read");
+                        trace!(%read_bytes, "read_zip_with_size: read");
                         if read_bytes == 0 {
                             return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
                         }
@@ -56,8 +59,8 @@ where
 
             fsm = match fsm.process()? {
                 FsmResult::Done(archive) => {
-                    tracing::trace!("read_zip_with_size: done");
-                    return Ok(SyncArchive {
+                    trace!("read_zip_with_size: done");
+                    return Ok(ArchiveHandle {
                         file: self,
                         archive,
                     });
@@ -71,7 +74,7 @@ where
 impl ReadZip for &[u8] {
     type File = Self;
 
-    fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error> {
+    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
         self.read_zip_with_size(self.len() as u64)
     }
 }
@@ -79,7 +82,7 @@ impl ReadZip for &[u8] {
 impl ReadZip for Vec<u8> {
     type File = Self;
 
-    fn read_zip(&self) -> Result<SyncArchive<'_, Self::File>, Error> {
+    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
         self.read_zip_with_size(self.len() as u64)
     }
 }
@@ -88,8 +91,8 @@ impl ReadZip for Vec<u8> {
 ///
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
-/// [SyncStoredEntry::reader].
-pub struct SyncArchive<'a, F>
+/// [EntryHandle::reader].
+pub struct ArchiveHandle<'a, F>
 where
     F: HasCursor,
 {
@@ -97,7 +100,7 @@ where
     archive: Archive,
 }
 
-impl<F> Deref for SyncArchive<'_, F>
+impl<F> Deref for ArchiveHandle<'_, F>
 where
     F: HasCursor,
 {
@@ -108,13 +111,13 @@ where
     }
 }
 
-impl<F> SyncArchive<'_, F>
+impl<F> ArchiveHandle<'_, F>
 where
     F: HasCursor,
 {
     /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = SyncStoredEntry<'_, F>> {
-        self.archive.entries().map(move |entry| SyncStoredEntry {
+    pub fn entries(&self) -> impl Iterator<Item = EntryHandle<'_, F>> {
+        self.archive.entries().map(move |entry| EntryHandle {
             file: self.file,
             entry,
         })
@@ -122,11 +125,11 @@ where
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
     /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<SyncStoredEntry<'_, F>> {
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<EntryHandle<'_, F>> {
         self.archive
             .entries()
-            .find(|&x| x.name() == name.as_ref())
-            .map(|entry| SyncStoredEntry {
+            .find(|&x| x.name == name.as_ref())
+            .map(|entry| EntryHandle {
                 file: self.file,
                 entry,
             })
@@ -134,20 +137,20 @@ where
 }
 
 /// A zip entry, read synchronously from a file or other I/O resource.
-pub struct SyncStoredEntry<'a, F> {
+pub struct EntryHandle<'a, F> {
     file: &'a F,
-    entry: &'a StoredEntry,
+    entry: &'a Entry,
 }
 
-impl<F> Deref for SyncStoredEntry<'_, F> {
-    type Target = StoredEntry;
+impl<F> Deref for EntryHandle<'_, F> {
+    type Target = Entry;
 
     fn deref(&self) -> &Self::Target {
         self.entry
     }
 }
 
-impl<'a, F> SyncStoredEntry<'a, F>
+impl<'a, F> EntryHandle<'a, F>
 where
     F: HasCursor,
 {
@@ -210,8 +213,50 @@ impl HasCursor for std::fs::File {
 impl ReadZip for std::fs::File {
     type File = Self;
 
-    fn read_zip(&self) -> Result<SyncArchive<'_, Self>, Error> {
+    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self>, Error> {
         let size = self.metadata()?.len();
         self.read_zip_with_size(size)
+    }
+}
+
+/// Allows reading zip entries in a streaming fashion, without seeking,
+/// based only on local headers. THIS IS NOT RECOMMENDED, as correctly
+/// reading zip files requires reading the central directory (located at
+/// the end of the file).
+pub trait ReadZipStreaming<R>
+where
+    R: Read,
+{
+    /// Get the first zip entry from the stream as a [StreamingEntryReader].
+    ///
+    /// See the trait's documentation for why using this is
+    /// generally a bad idea: you might want to use [ReadZip] or
+    /// [ReadZipWithSize] instead.
+    fn stream_zip_entries_throwing_caution_to_the_wind(
+        self,
+    ) -> Result<StreamingEntryReader<R>, Error>;
+}
+
+impl<R> ReadZipStreaming<R> for R
+where
+    R: Read,
+{
+    fn stream_zip_entries_throwing_caution_to_the_wind(
+        mut self,
+    ) -> Result<StreamingEntryReader<Self>, Error> {
+        let mut fsm = EntryFsm::new(None, None);
+
+        loop {
+            if fsm.wants_read() {
+                let n = self.read(fsm.space())?;
+                trace!("read {} bytes into buf for first zip entry", n);
+                fsm.fill(n);
+            }
+
+            if let Some(entry) = fsm.process_till_header()? {
+                let entry = entry.clone();
+                return Ok(StreamingEntryReader::new(fsm, entry, self));
+            }
+        }
     }
 }

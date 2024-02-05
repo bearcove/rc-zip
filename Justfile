@@ -6,7 +6,7 @@ _default:
 check:
 	cargo hack clippy --each-feature
 
-docs:
+doc:
 	RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 # Run all tests locally

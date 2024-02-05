@@ -22,14 +22,11 @@ pub use version::*;
 mod date_time;
 pub use date_time::*;
 
-mod directory_header;
-pub use directory_header::*;
+mod central_directory_file_header;
+pub use central_directory_file_header::*;
 
 mod eocd;
 pub use eocd::*;
 
-mod local;
-pub use local::*;
-
-mod raw;
-pub use raw::*;
+mod local_headers;
+pub use local_headers::*;

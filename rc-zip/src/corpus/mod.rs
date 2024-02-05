@@ -2,22 +2,37 @@
 
 //! A corpus of zip files for testing.
 
-use std::path::PathBuf;
+use std::{fs::File, path::PathBuf};
 
 use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
+use temp_dir::TempDir;
 
 use crate::{
     encoding::Encoding,
     error::Error,
-    parse::{Archive, EntryContents, StoredEntry},
+    parse::{Archive, Entry, EntryKind},
 };
 
 pub struct Case {
     pub name: &'static str,
     pub expected_encoding: Option<Encoding>,
     pub comment: Option<&'static str>,
-    pub files: Vec<CaseFile>,
+    pub files: Files,
     pub error: Option<Error>,
+}
+
+pub enum Files {
+    ExhaustiveList(Vec<CaseFile>),
+    NumFiles(usize),
+}
+
+impl Files {
+    fn len(&self) -> usize {
+        match self {
+            Self::ExhaustiveList(list) => list.len(),
+            Self::NumFiles(n) => *n,
+        }
+    }
 }
 
 impl Default for Case {
@@ -26,15 +41,43 @@ impl Default for Case {
             name: "test.zip",
             expected_encoding: None,
             comment: None,
-            files: vec![],
+            files: Files::NumFiles(0),
             error: None,
         }
     }
 }
 
+/// This path may disappear on drop (if the zip is bz2-compressed), so be
+/// careful
+pub struct GuardedPath {
+    pub path: PathBuf,
+    _guard: Option<TempDir>,
+}
+
 impl Case {
-    pub fn absolute_path(&self) -> PathBuf {
-        zips_dir().join(self.name)
+    pub fn absolute_path(&self) -> GuardedPath {
+        let path = zips_dir().join(self.name);
+        if let Some(dec_name) = self.name.strip_suffix(".bz2") {
+            let dir = TempDir::new().unwrap();
+            let dec_path = dir.path().join(dec_name);
+            std::io::copy(
+                &mut File::open(&path).unwrap(),
+                &mut bzip2::write::BzDecoder::new(File::create(&dec_path).unwrap()),
+            )
+            .unwrap();
+            tracing::trace!("decompressed {} to {}", path.display(), dec_path.display());
+            GuardedPath {
+                path: dec_path,
+                _guard: Some(dir),
+            }
+        } else {
+            GuardedPath { path, _guard: None }
+        }
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        let gp = self.absolute_path();
+        std::fs::read(gp.path).unwrap()
     }
 }
 
@@ -92,21 +135,21 @@ pub fn test_cases() -> Vec<Case> {
     vec![
         Case {
             name: "zip64.zip",
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "README",
                 content: FileContent::Bytes(
                     "This small file is in ZIP64 format.\n".as_bytes().into(),
                 ),
                 modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)).unwrap()),
                 mode: Some(0o644),
-            }],
+            }]),
             ..Default::default()
         },
         Case {
             name: "test.zip",
             comment: Some("This is a zipfile comment."),
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![
+            files: Files::ExhaustiveList(vec![
                 CaseFile {
                     name: "test.txt",
                     content: FileContent::Bytes("This is a test text file.\n".as_bytes().into()),
@@ -119,22 +162,22 @@ pub fn test_cases() -> Vec<Case> {
                     modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
                 },
-            ],
+            ]),
             ..Default::default()
         },
         Case {
             name: "cp-437.zip",
             expected_encoding: Some(Encoding::Cp437),
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "français",
                 ..Default::default()
-            }],
+            }]),
             ..Default::default()
         },
         Case {
             name: "shift-jis.zip",
             expected_encoding: Some(Encoding::ShiftJis),
-            files: vec![
+            files: Files::ExhaustiveList(vec![
                 CaseFile {
                     name: "should-be-jis/",
                     ..Default::default()
@@ -143,42 +186,48 @@ pub fn test_cases() -> Vec<Case> {
                     name: "should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi",
                     ..Default::default()
                 },
-            ],
+            ]),
             ..Default::default()
         },
         Case {
             name: "utf8-winrar.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "世界",
                 content: FileContent::Bytes(vec![]),
                 modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0)).unwrap()),
                 ..Default::default()
-            }],
+            }]),
+            ..Default::default()
+        },
+        Case {
+            name: "wine-zeroed.zip.bz2",
+            expected_encoding: Some(Encoding::Utf8),
+            files: Files::NumFiles(11372),
             ..Default::default()
         },
         #[cfg(feature = "lzma")]
         Case {
             name: "found-me-lzma.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
-            }],
+            }]),
             ..Default::default()
         },
         #[cfg(feature = "deflate64")]
         Case {
             name: "found-me-deflate64.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
-            }],
+            }]),
             ..Default::default()
         },
         // same with bzip2
@@ -186,12 +235,12 @@ pub fn test_cases() -> Vec<Case> {
         Case {
             name: "found-me-bzip2.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
-            }],
+            }]),
             ..Default::default()
         },
         // same with zstd
@@ -199,21 +248,29 @@ pub fn test_cases() -> Vec<Case> {
         Case {
             name: "found-me-zstd.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: vec![CaseFile {
+            files: Files::ExhaustiveList(vec![CaseFile {
                 name: "found-me.txt",
                 content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
                 modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0)).unwrap()),
                 ..Default::default()
-            }],
+            }]),
             ..Default::default()
         },
     ]
 }
 
-pub fn check_case(test: &Case, archive: Result<&Archive, &Error>) {
-    let case_bytes = std::fs::read(test.absolute_path()).unwrap();
+pub fn streaming_test_cases() -> Vec<Case> {
+    vec![Case {
+        name: "meta.zip",
+        files: Files::NumFiles(0),
+        ..Default::default()
+    }]
+}
 
-    if let Some(expected) = &test.error {
+pub fn check_case(case: &Case, archive: Result<&Archive, &Error>) {
+    let case_bytes = case.bytes();
+
+    if let Some(expected) = &case.error {
         let actual = match archive {
             Err(e) => e,
             Ok(_) => panic!("should have failed"),
@@ -223,37 +280,40 @@ pub fn check_case(test: &Case, archive: Result<&Archive, &Error>) {
         assert_eq!(expected, actual);
         return;
     }
-    let archive = archive.unwrap();
+    let archive = archive.unwrap_or_else(|e| {
+        panic!(
+            "{} should have succeeded, but instead: {e:?} ({e})",
+            case.name
+        )
+    });
 
     assert_eq!(case_bytes.len() as u64, archive.size());
 
-    if let Some(expected) = test.comment {
-        assert_eq!(expected, archive.comment().expect("should have comment"))
+    if let Some(expected) = case.comment {
+        assert_eq!(expected, archive.comment())
     }
 
-    if let Some(exp_encoding) = test.expected_encoding {
+    if let Some(exp_encoding) = case.expected_encoding {
         assert_eq!(archive.encoding(), exp_encoding);
     }
 
     assert_eq!(
-        test.files.len(),
+        case.files.len(),
         archive.entries().count(),
         "{} should have {} entries files",
-        test.name,
-        test.files.len()
+        case.name,
+        case.files.len()
     );
 
     // then each implementation should check individual files
 }
 
-pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[u8]) {
+pub fn check_file_against(file: &CaseFile, entry: &Entry, actual_bytes: &[u8]) {
     if let Some(expected) = file.modified {
         assert_eq!(
-            expected,
-            entry.modified(),
+            expected, entry.modified,
             "entry {} should have modified = {:?}",
-            entry.name(),
-            expected
+            entry.name, expected
         )
     }
 
@@ -262,10 +322,10 @@ pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[
     }
 
     // I have honestly yet to see a zip file _entry_ with a comment.
-    assert!(entry.comment().is_none());
+    assert!(entry.comment.is_empty());
 
-    match entry.contents() {
-        EntryContents::File => {
+    match entry.kind() {
+        EntryKind::File => {
             match &file.content {
                 FileContent::Unchecked => {
                     // ah well
@@ -283,7 +343,7 @@ pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[
                 }
             }
         }
-        EntryContents::Symlink | EntryContents::Directory => {
+        EntryKind::Symlink | EntryKind::Directory => {
             assert!(matches!(file.content, FileContent::Unchecked));
         }
     }

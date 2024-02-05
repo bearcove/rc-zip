@@ -33,9 +33,11 @@ deflate64 = { version = "0.1.7", optional = true }
 bzip2 = { version = "0.4.4", optional = true }
 lzma-rs = { version = "0.3.0", optional = true, features = ["stream"] }
 zstd = { version = "0.13.0", optional = true }
+ownable = "0.6.2"
+temp-dir = { version = "0.1.12", optional = true }
 
 [features]
-corpus = []
+corpus = ["dep:temp-dir", "dep:bzip2"]
 deflate = ["dep:miniz_oxide"]
 deflate64 = ["dep:deflate64"]
 bzip2 = ["dep:bzip2"]

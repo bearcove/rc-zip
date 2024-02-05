@@ -3,11 +3,12 @@ use crate::{
     encoding::Encoding,
     error::{Error, FormatError},
     parse::{
-        Archive, DirectoryHeader, EndOfCentralDirectory, EndOfCentralDirectory64Locator,
-        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Located, StoredEntry,
+        Archive, CentralDirectoryFileHeader, EndOfCentralDirectory, EndOfCentralDirectory64Locator,
+        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Entry, Located,
     },
 };
 
+use ownable::traits::IntoOwned;
 use tracing::trace;
 use winnow::{
     error::ErrMode,
@@ -54,19 +55,19 @@ enum State {
 
     /// Reading the zip64 end of central directory record.
     ReadEocd64Locator {
-        eocdr: Located<EndOfCentralDirectoryRecord>,
+        eocdr: Located<EndOfCentralDirectoryRecord<'static>>,
     },
 
     /// Reading the zip64 end of central directory record.
     ReadEocd64 {
         eocdr64_offset: u64,
-        eocdr: Located<EndOfCentralDirectoryRecord>,
+        eocdr: Located<EndOfCentralDirectoryRecord<'static>>,
     },
 
     /// Reading all headers from the central directory
     ReadCentralDirectory {
-        eocd: EndOfCentralDirectory,
-        directory_headers: Vec<DirectoryHeader>,
+        eocd: EndOfCentralDirectory<'static>,
+        directory_headers: Vec<CentralDirectoryFileHeader<'static>>,
     },
 
     #[default]
@@ -140,12 +141,13 @@ impl ArchiveFsm {
                     EndOfCentralDirectoryRecord::find_in_block(haystack)
                 } {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
-                    Some(mut eocdr) => {
+                    Some(eocdr) => {
                         trace!(
                             ?eocdr,
                             size = self.size,
                             "ReadEocd | found end of central directory record"
                         );
+                        let mut eocdr = eocdr.into_owned();
                         self.buffer.reset();
                         eocdr.offset += self.size - haystack_size;
 
@@ -249,6 +251,7 @@ impl ArchiveFsm {
                     "ReadCentralDirectory | process(), available: {}",
                     self.buffer.available_data()
                 );
+                let mut valid_consumed = 0;
                 let mut input = Partial::new(self.buffer.data());
                 trace!(
                     initial_offset = input.as_bytes().offset_from(&self.buffer.data()),
@@ -256,7 +259,7 @@ impl ArchiveFsm {
                     "initial offset & len"
                 );
                 'read_headers: while !input.is_empty() {
-                    match DirectoryHeader::parser.parse_next(&mut input) {
+                    match CentralDirectoryFileHeader::parser.parse_next(&mut input) {
                         Ok(dh) => {
                             trace!(
                                 input_empty_now = input.is_empty(),
@@ -264,14 +267,15 @@ impl ArchiveFsm {
                                 len = input.len(),
                                 "ReadCentralDirectory | parsed directory header"
                             );
-                            directory_headers.push(dh);
+                            valid_consumed = input.as_bytes().offset_from(&self.buffer.data());
+                            directory_headers.push(dh.into_owned());
                         }
                         Err(ErrMode::Incomplete(_needed)) => {
                             // need more data to read the full header
                             trace!("ReadCentralDirectory | incomplete!");
                             break 'read_headers;
                         }
-                        Err(ErrMode::Backtrack(_err)) | Err(ErrMode::Cut(_err)) => {
+                        Err(ErrMode::Backtrack(err)) | Err(ErrMode::Cut(err)) => {
                             // this is the normal end condition when reading
                             // the central directory (due to 65536-entries non-zip64 files)
                             // let's just check a few numbers first.
@@ -280,80 +284,14 @@ impl ArchiveFsm {
                             let expected_records = directory_headers.len() as u16;
                             let actual_records = eocd.directory_records() as u16;
 
-                            if expected_records == actual_records {
-                                let mut detectorng = chardetng::EncodingDetector::new();
-                                let mut all_utf8 = true;
-                                let mut had_suspicious_chars_for_cp437 = false;
+                            if expected_records != actual_records {
+                                tracing::trace!(
+                                    "error while reading central records: we read {} records, but EOCD announced {}. the last failed with: {err:?} (display: {err}). at that point, input had length {}",
+                                    expected_records,
+                                    actual_records,
+                                    input.len()
+                                );
 
-                                {
-                                    let max_feed: usize = 4096;
-                                    let mut total_fed: usize = 0;
-                                    let mut feed = |slice: &[u8]| {
-                                        detectorng.feed(slice, false);
-                                        for b in slice {
-                                            if (0xB0..=0xDF).contains(b) {
-                                                // those are, like, box drawing characters
-                                                had_suspicious_chars_for_cp437 = true;
-                                            }
-                                        }
-
-                                        total_fed += slice.len();
-                                        total_fed < max_feed
-                                    };
-
-                                    'recognize_encoding: for fh in
-                                        directory_headers.iter().filter(|fh| fh.is_non_utf8())
-                                    {
-                                        all_utf8 = false;
-                                        if !feed(&fh.name.0) || !feed(&fh.comment.0) {
-                                            break 'recognize_encoding;
-                                        }
-                                    }
-                                }
-
-                                let encoding = {
-                                    if all_utf8 {
-                                        Encoding::Utf8
-                                    } else {
-                                        let encoding = detectorng.guess(None, true);
-                                        if encoding == encoding_rs::SHIFT_JIS {
-                                            // well hold on, sometimes Codepage 437 is detected as
-                                            // Shift-JIS by chardetng. If we have any characters
-                                            // that aren't valid DOS file names, then okay it's probably
-                                            // Shift-JIS. Otherwise, assume it's CP437.
-                                            if had_suspicious_chars_for_cp437 {
-                                                Encoding::ShiftJis
-                                            } else {
-                                                Encoding::Cp437
-                                            }
-                                        } else if encoding == encoding_rs::UTF_8 {
-                                            Encoding::Utf8
-                                        } else {
-                                            Encoding::Cp437
-                                        }
-                                    }
-                                };
-
-                                let is_zip64 = eocd.dir64.is_some();
-                                let global_offset = eocd.global_offset as u64;
-                                let entries: Result<Vec<StoredEntry>, Error> = directory_headers
-                                    .iter()
-                                    .map(|x| x.as_stored_entry(is_zip64, encoding, global_offset))
-                                    .collect();
-                                let entries = entries?;
-
-                                let mut comment: Option<String> = None;
-                                if !eocd.comment().0.is_empty() {
-                                    comment = Some(encoding.decode(&eocd.comment().0)?);
-                                }
-
-                                return Ok(FsmResult::Done(Archive {
-                                    size: self.size,
-                                    comment,
-                                    entries,
-                                    encoding,
-                                }));
-                            } else {
                                 // if we read the wrong number of directory entries,
                                 // error out.
                                 return Err(FormatError::InvalidCentralRecord {
@@ -362,10 +300,79 @@ impl ArchiveFsm {
                                 }
                                 .into());
                             }
+
+                            let mut detectorng = chardetng::EncodingDetector::new();
+                            let mut all_utf8 = true;
+                            let mut had_suspicious_chars_for_cp437 = false;
+
+                            {
+                                let max_feed: usize = 4096;
+                                let mut total_fed: usize = 0;
+                                let mut feed = |slice: &[u8]| {
+                                    detectorng.feed(slice, false);
+                                    for b in slice {
+                                        if (0xB0..=0xDF).contains(b) {
+                                            // those are, like, box drawing characters
+                                            had_suspicious_chars_for_cp437 = true;
+                                        }
+                                    }
+
+                                    total_fed += slice.len();
+                                    total_fed < max_feed
+                                };
+
+                                'recognize_encoding: for fh in
+                                    directory_headers.iter().filter(|fh| fh.is_non_utf8())
+                                {
+                                    all_utf8 = false;
+                                    if !feed(&fh.name[..]) || !feed(&fh.comment[..]) {
+                                        break 'recognize_encoding;
+                                    }
+                                }
+                            }
+
+                            let encoding = {
+                                if all_utf8 {
+                                    Encoding::Utf8
+                                } else {
+                                    let encoding = detectorng.guess(None, true);
+                                    if encoding == encoding_rs::SHIFT_JIS {
+                                        // well hold on, sometimes Codepage 437 is detected as
+                                        // Shift-JIS by chardetng. If we have any characters
+                                        // that aren't valid DOS file names, then okay it's probably
+                                        // Shift-JIS. Otherwise, assume it's CP437.
+                                        if had_suspicious_chars_for_cp437 {
+                                            Encoding::ShiftJis
+                                        } else {
+                                            Encoding::Cp437
+                                        }
+                                    } else if encoding == encoding_rs::UTF_8 {
+                                        Encoding::Utf8
+                                    } else {
+                                        Encoding::Cp437
+                                    }
+                                }
+                            };
+
+                            let global_offset = eocd.global_offset as u64;
+                            let entries: Result<Vec<Entry>, Error> = directory_headers
+                                .iter()
+                                .map(|x| x.as_entry(encoding, global_offset))
+                                .collect();
+                            let entries = entries?;
+
+                            let comment = encoding.decode(eocd.comment())?;
+
+                            return Ok(FsmResult::Done(Archive {
+                                size: self.size,
+                                comment,
+                                entries,
+                                encoding,
+                            }));
                         }
                     }
                 }
-                let consumed = input.as_bytes().offset_from(&self.buffer.data());
+                let consumed = valid_consumed;
                 tracing::trace!(%consumed, "ReadCentralDirectory total consumed");
                 self.buffer.consume(consumed);
 

@@ -1,5 +1,7 @@
+use num_enum::{FromPrimitive, IntoPrimitive};
+use ownable::{IntoOwned, ToOwned};
 use std::fmt;
-use winnow::{binary::le_u16, PResult, Parser, Partial};
+use winnow::{binary::le_u8, seq, PResult, Parser, Partial};
 
 /// A zip version (either created by, or required when reading an archive).
 ///
@@ -7,127 +9,105 @@ use winnow::{binary::le_u16, PResult, Parser, Partial};
 /// which features are required when reading a file.
 ///
 /// For more information, see the [.ZIP Application Note](https://support.pkware.com/display/PKZIP/APPNOTE), section 4.4.2.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Version(pub u16);
+#[derive(Clone, Copy, ToOwned, IntoOwned, PartialEq, Eq, Hash)]
+pub struct Version {
+    /// The host system on which
+    pub host_system: HostSystem,
+
+    /// Integer version, e.g. 45 for Zip version 4.5
+    /// See APPNOTE, section 4.4.2.1
+    pub version: u8,
+}
 
 impl fmt::Debug for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:?} v{}.{}",
-            self.host_system(),
-            self.major(),
-            self.minor()
-        )
+        write!(f, "{:?} v{}", self.host_system, self.version)
     }
 }
 
 impl Version {
     /// Parse a version from a byte slice
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        le_u16.map(Self).parse_next(i)
-    }
-
-    /// Identifies the host system on which the zip attributes are compatible.
-    pub fn host_system(&self) -> HostSystem {
-        match self.host() {
-            0 => HostSystem::MsDos,
-            1 => HostSystem::Amiga,
-            2 => HostSystem::OpenVms,
-            3 => HostSystem::Unix,
-            4 => HostSystem::VmCms,
-            5 => HostSystem::AtariSt,
-            6 => HostSystem::Os2Hpfs,
-            7 => HostSystem::Macintosh,
-            8 => HostSystem::ZSystem,
-            9 => HostSystem::CpM,
-            10 => HostSystem::WindowsNtfs,
-            11 => HostSystem::Mvs,
-            12 => HostSystem::Vse,
-            13 => HostSystem::AcornRisc,
-            14 => HostSystem::Vfat,
-            15 => HostSystem::AlternateMvs,
-            16 => HostSystem::BeOs,
-            17 => HostSystem::Tandem,
-            18 => HostSystem::Os400,
-            19 => HostSystem::Osx,
-            n => HostSystem::Unknown(n),
-        }
-    }
-
-    /// Integer host system
-    pub fn host(&self) -> u8 {
-        (self.0 >> 8) as u8
-    }
-
-    /// Integer version, e.g. 45 for Zip version 4.5
-    pub fn version(&self) -> u8 {
-        (self.0 & 0xff) as u8
-    }
-
-    /// ZIP specification major version
-    ///
-    /// See APPNOTE, section 4.4.2.1
-    pub fn major(&self) -> u32 {
-        self.version() as u32 / 10
-    }
-
-    /// ZIP specification minor version
-    ///
-    /// See APPNOTE, section 4.4.2.1
-    pub fn minor(&self) -> u32 {
-        self.version() as u32 % 10
+        seq! {Self {
+            version: le_u8,
+            host_system: le_u8.map(HostSystem::from),
+        }}
+        .parse_next(i)
     }
 }
 
 /// System on which an archive was created, as encoded into a version u16.
 ///
 /// See APPNOTE, section 4.4.2.2
-#[derive(Debug)]
+#[derive(
+    Debug, Clone, Copy, IntoPrimitive, FromPrimitive, ToOwned, IntoOwned, PartialEq, Eq, Hash,
+)]
+#[repr(u8)]
 pub enum HostSystem {
     /// MS-DOS and OS/2 (FAT / VFAT / FAT32 file systems)
-    MsDos,
+    MsDos = 0,
+
     /// Amiga
-    Amiga,
+    Amiga = 1,
+
     /// OpenVMS
-    OpenVms,
+    OpenVms = 2,
+
     /// UNIX
-    Unix,
+    Unix = 3,
+
     /// VM/CMS
-    VmCms,
+    VmCms = 4,
+
     /// Atari ST
-    AtariSt,
+    AtariSt = 5,
+
     /// OS/2 H.P.F.S
-    Os2Hpfs,
+    Os2Hpfs = 6,
+
     /// Macintosh (see `Osx`)
-    Macintosh,
+    Macintosh = 7,
+
     /// Z-System
-    ZSystem,
+    ZSystem = 8,
+
     /// CP/M
-    CpM,
+    CpM = 9,
+
     /// Windows NTFS
-    WindowsNtfs,
+    WindowsNtfs = 10,
+
     /// MVS (OS/390 - Z/OS)
-    Mvs,
+    Mvs = 11,
+
     /// VSE
-    Vse,
+    Vse = 12,
+
     /// Acorn Risc
-    AcornRisc,
+    AcornRisc = 13,
+
     /// VFAT
-    Vfat,
+    Vfat = 14,
+
     /// alternate MVS
-    AlternateMvs,
+    AlternateMvs = 15,
+
     /// BeOS
-    BeOs,
+    BeOs = 16,
+
     /// Tandem
-    Tandem,
+    Tandem = 17,
+
     /// OS/400
-    Os400,
+    Os400 = 18,
+
     /// OS X (Darwin)
-    Osx,
+    Osx = 19,
+
     /// Unknown host system
     ///
     /// Values 20 through 255 are currently unused, as of
-    /// APPNOTE.TXT 6.3.6 (April 26, 2019)
+    /// APPNOTE.TXT 6.3.10
+    #[num_enum(catch_all)]
     Unknown(u8),
 }

@@ -1,13 +1,17 @@
-use chrono::{DateTime, Utc};
+use chrono::{offset::Utc, DateTime, TimeZone};
 use num_enum::{FromPrimitive, IntoPrimitive};
+use ownable::{IntoOwned, ToOwned};
+use winnow::{binary::le_u16, PResult, Partial};
 
 use crate::{
     encoding::Encoding,
-    parse::{ExtraField, Mode, Version},
+    parse::{Mode, Version},
 };
 
+use super::{zero_datetime, ExtraField, NtfsAttr};
+
 /// An Archive contains general information about a zip files, along with a list
-/// of [entries][StoredEntry].
+/// of [entries][Entry].
 ///
 /// It is obtained through a state machine like
 /// [ArchiveFsm](crate::fsm::ArchiveFsm), although end-users tend to use
@@ -17,84 +21,81 @@ use crate::{
 pub struct Archive {
     pub(crate) size: u64,
     pub(crate) encoding: Encoding,
-    pub(crate) entries: Vec<StoredEntry>,
-    pub(crate) comment: Option<String>,
+    pub(crate) entries: Vec<Entry>,
+    pub(crate) comment: String,
 }
 
 impl Archive {
     /// The size of .zip file that was read, in bytes.
+    #[inline(always)]
     pub fn size(&self) -> u64 {
         self.size
     }
 
     /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = &StoredEntry> {
+    pub fn entries(&self) -> impl Iterator<Item = &Entry> {
         self.entries.iter()
     }
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
     /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&StoredEntry> {
-        self.entries.iter().find(|&x| x.name() == name.as_ref())
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<&Entry> {
+        self.entries.iter().find(|&x| x.name == name.as_ref())
     }
 
     /// Returns the detected character encoding for text fields
     /// (names, comments) inside this zip archive.
+    #[inline(always)]
     pub fn encoding(&self) -> Encoding {
         self.encoding
     }
 
     /// Returns the comment for this archive, if any. When reading
     /// a zip file with an empty comment field, this will return None.
-    pub fn comment(&self) -> Option<&String> {
-        self.comment.as_ref()
+    #[inline(always)]
+    pub fn comment(&self) -> &str {
+        &self.comment
     }
 }
 
 /// Describes a zip archive entry (a file, a directory, a symlink)
-///
-/// `Entry` contains normalized metadata fields, that can be set when
-/// writing a zip archive. Additional metadata, along with the information
-/// required to extract an entry, are available in [StoredEntry][] instead.
 #[derive(Clone)]
 pub struct Entry {
     /// Name of the file
-    /// Must be a relative path, not start with a drive letter (e.g. C:),
-    /// and must use forward slashes instead of back slashes
+    ///
+    /// This should be a relative path, separated by `/`. However, there are zip
+    /// files in the wild with all sorts of evil variants, so, be conservative
+    /// in what you accept.
+    ///
+    /// See also [Self::sanitized_name], which returns a sanitized version of
+    /// the name, working around zip slip vulnerabilities.
     pub name: String,
 
-    /// Compression method
-    ///
-    /// See [Method][] for more details.
+    /// Compression method: Store, Deflate, Bzip2, etc.
     pub method: Method,
 
     /// Comment is any arbitrary user-defined string shorter than 64KiB
-    pub comment: Option<String>,
+    pub comment: String,
 
-    /// Modified timestamp
-    pub modified: chrono::DateTime<chrono::offset::Utc>,
-
-    /// Created timestamp
-    pub created: Option<chrono::DateTime<chrono::offset::Utc>>,
-
-    /// Accessed timestamp
-    pub accessed: Option<chrono::DateTime<chrono::offset::Utc>>,
-}
-
-/// An entry as stored into an Archive. Contains additional metadata and offset information.
-///
-/// Whereas [Entry][] is archive-independent, [StoredEntry][] contains information that is tied to
-/// a specific archive.
-///
-/// When reading archives, one deals with a list of [StoredEntry][], whereas when writing one, one
-/// typically only specifies an [Entry][] and provides the entry's contents: fields like the CRC32
-/// hash, uncompressed size, and compressed size are derived automatically from the input.
-#[derive(Clone)]
-pub struct StoredEntry {
-    /// Archive-independent information
+    /// This entry's "last modified" timestamp - with caveats
     ///
-    /// This contains the entry's name, timestamps, comment, compression method.
-    pub entry: Entry,
+    /// Due to the history of the ZIP file format, this may be inaccurate. It may be offset
+    /// by a few hours, if there is no extended timestamp information. It may have a resolution
+    /// as low as two seconds, if only MSDOS timestamps are present. It may default to the Unix
+    /// epoch, if something went really wrong.
+    ///
+    /// If you're reading this after the year 2038, or after the year 2108, godspeed.
+    pub modified: DateTime<Utc>,
+
+    /// This entry's "created" timestamp, if available.
+    ///
+    /// See [Self::modified] for caveats.
+    pub created: Option<DateTime<Utc>>,
+
+    /// This entry's "last accessed" timestamp, if available.
+    ///
+    /// See [Self::accessed] for caveats.
+    pub accessed: Option<DateTime<Utc>>,
 
     /// Offset of the local file header in the zip file
     ///
@@ -110,12 +111,6 @@ pub struct StoredEntry {
     /// [end of central directory record]
     /// ```
     pub header_offset: u64,
-
-    /// External attributes (zip)
-    pub external_attrs: u32,
-
-    /// Version of zip supported by the tool that crated this archive.
-    pub creator_version: Version,
 
     /// Version of zip needed to extract this archive.
     pub reader_version: Version,
@@ -139,24 +134,6 @@ pub struct StoredEntry {
     /// Only present if a Unix extra field or New Unix extra field was found.
     pub gid: Option<u32>,
 
-    /// File mode
-    pub mode: Mode,
-
-    /// Any extra fields recognized while parsing the file.
-    ///
-    /// Most of these should be normalized and accessible as other fields,
-    /// but they are also made available here raw.
-    pub extra_fields: Vec<ExtraField>,
-
-    /// These fields are cheap to clone and needed for entry readers,
-    /// hence them being in a separate struct
-    pub inner: StoredEntryInner,
-}
-
-/// Fields required to read an entry properly, typically cloned into owned entry
-/// readers.
-#[derive(Clone, Copy, Debug)]
-pub struct StoredEntryInner {
     /// CRC-32 hash as found in the central directory.
     ///
     /// Note that this may be zero, and the actual CRC32 might be in the local header, or (more
@@ -171,22 +148,11 @@ pub struct StoredEntryInner {
     /// This will be zero for directories.
     pub uncompressed_size: u64,
 
-    /// True if this entry was read from a zip64 archive
-    pub is_zip64: bool,
+    /// File mode.
+    pub mode: Mode,
 }
 
-impl StoredEntry {
-    /// Returns the entry's name. See also
-    /// [sanitized_name()](StoredEntry::sanitized_name), which returns a
-    /// sanitized version of the name.
-    ///
-    /// This should be a relative path, separated by `/`. However, there are zip
-    /// files in the wild with all sorts of evil variants, so, be conservative
-    /// in what you accept.
-    pub fn name(&self) -> &str {
-        self.entry.name.as_ref()
-    }
-
+impl Entry {
     /// Returns a sanitized version of the entry's name, if it
     /// seems safe. In particular, if this method feels like the
     /// entry name is trying to do a zip slip (cf.
@@ -195,7 +161,7 @@ impl StoredEntry {
     ///
     /// Other than that, it will strip any leading slashes on non-Windows OSes.
     pub fn sanitized_name(&self) -> Option<&str> {
-        let name = self.name();
+        let name = self.name.as_str();
 
         // refuse entries with traversed/absolute path to mitigate zip slip
         if name.contains("..") {
@@ -223,52 +189,56 @@ impl StoredEntry {
         }
     }
 
-    /// The entry's comment, if any.
-    ///
-    /// When reading a zip file, an empty comment results in None.
-    pub fn comment(&self) -> Option<&str> {
-        self.entry.comment.as_ref().map(|x| x.as_ref())
-    }
+    /// Apply the extra field to the entry, updating its metadata.
+    pub(crate) fn set_extra_field(&mut self, ef: &ExtraField) {
+        match &ef {
+            ExtraField::Zip64(z64) => {
+                self.uncompressed_size = z64.uncompressed_size;
+                self.compressed_size = z64.compressed_size;
+                self.header_offset = z64.header_offset;
+            }
+            ExtraField::Timestamp(ts) => {
+                self.modified = Utc
+                    .timestamp_opt(ts.mtime as i64, 0)
+                    .single()
+                    .unwrap_or_else(zero_datetime);
+            }
+            ExtraField::Ntfs(nf) => {
+                for attr in &nf.attrs {
+                    // note: other attributes are unsupported
+                    if let NtfsAttr::Attr1(attr) = attr {
+                        self.modified = attr.mtime.to_datetime().unwrap_or_else(zero_datetime);
+                        self.created = attr.ctime.to_datetime();
+                        self.accessed = attr.atime.to_datetime();
+                    }
+                }
+            }
+            ExtraField::Unix(uf) => {
+                self.modified = Utc
+                    .timestamp_opt(uf.mtime as i64, 0)
+                    .single()
+                    .unwrap_or_else(zero_datetime);
 
-    /// The compression method used for this entry
-    #[inline(always)]
-    pub fn method(&self) -> Method {
-        self.entry.method
-    }
+                if self.uid.is_none() {
+                    self.uid = Some(uf.uid as u32);
+                }
 
-    /// This entry's "last modified" timestamp - with caveats
-    ///
-    /// Due to the history of the ZIP file format, this may be inaccurate. It may be offset
-    /// by a few hours, if there is no extended timestamp information. It may have a resolution
-    /// as low as two seconds, if only MSDOS timestamps are present. It may default to the Unix
-    /// epoch, if something went really wrong.
-    ///
-    /// If you're reading this after the year 2038, or after the year 2108, godspeed.
-    #[inline(always)]
-    pub fn modified(&self) -> DateTime<Utc> {
-        self.entry.modified
-    }
-
-    /// This entry's "created" timestamp, if available.
-    ///
-    /// See [StoredEntry::modified()] for caveats.
-    #[inline(always)]
-    pub fn created(&self) -> Option<&DateTime<Utc>> {
-        self.entry.created.as_ref()
-    }
-
-    /// This entry's "last accessed" timestamp, if available.
-    ///
-    /// See [StoredEntry::modified()] for caveats.
-    #[inline(always)]
-    pub fn accessed(&self) -> Option<&DateTime<Utc>> {
-        self.entry.accessed.as_ref()
+                if self.gid.is_none() {
+                    self.gid = Some(uf.gid as u32);
+                }
+            }
+            ExtraField::NewUnix(uf) => {
+                self.uid = Some(uf.uid as u32);
+                self.gid = Some(uf.uid as u32);
+            }
+            _ => {}
+        };
     }
 }
 
-/// The contents of an entry: a directory, a file, or a symbolic link.
+/// The entry's file type: a directory, a file, or a symbolic link.
 #[derive(Debug)]
-pub enum EntryContents {
+pub enum EntryKind {
     /// The entry is a directory
     Directory,
 
@@ -279,15 +249,15 @@ pub enum EntryContents {
     Symlink,
 }
 
-impl StoredEntry {
-    /// Determine [EntryContents] of this entry based on its mode.
-    pub fn contents(&self) -> EntryContents {
+impl Entry {
+    /// Determine the kind of this entry based on its mode.
+    pub fn kind(&self) -> EntryKind {
         if self.mode.has(Mode::SYMLINK) {
-            EntryContents::Symlink
+            EntryKind::Symlink
         } else if self.mode.has(Mode::DIR) {
-            EntryContents::Directory
+            EntryKind::Directory
         } else {
-            EntryContents::File
+            EntryKind::File
         }
     }
 }
@@ -299,7 +269,9 @@ impl StoredEntry {
 ///
 /// However, in the wild, it is not too uncommon to encounter [Bzip2][Method::Bzip2],
 /// [Lzma][Method::Lzma] or others.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive, IntoOwned, ToOwned,
+)]
 #[repr(u16)]
 pub enum Method {
     /// No compression is applied
@@ -341,4 +313,11 @@ pub enum Method {
     /// A compression method that isn't recognized by this crate.
     #[num_enum(catch_all)]
     Unrecognized(u16),
+}
+
+impl Method {
+    /// Parse a method from a byte slice
+    pub fn parser(i: &mut Partial<&[u8]>) -> PResult<Self> {
+        le_u16(i).map(From::from)
+    }
 }

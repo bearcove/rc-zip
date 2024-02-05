@@ -1,14 +1,17 @@
+use std::borrow::Cow;
+
+use ownable::{IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8, length_take},
-    combinator::{cond, opt, preceded, repeat_till},
+    combinator::{opt, preceded, repeat_till},
     error::{ErrMode, ErrorKind, ParserError, StrContext},
     seq,
     token::{tag, take},
     PResult, Parser, Partial,
 };
 
-use crate::parse::{NtfsTimestamp, ZipBytes};
+use crate::parse::NtfsTimestamp;
 
 /// 4.4.28 extra field: (Variable)
 pub(crate) struct ExtraFieldRecord<'a> {
@@ -26,19 +29,30 @@ impl<'a> ExtraFieldRecord<'a> {
     }
 }
 
-// Useful because zip64 extended information extra field has fixed order *but*
-// optional fields. From the appnote:
-//
-// If one of the size or offset fields in the Local or Central directory record
-// is too small to hold the required data, a Zip64 extended information record
-// is created. The order of the fields in the zip64 extended information record
-// is fixed, but the fields MUST only appear if the corresponding Local or
-// Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
+/// Useful because zip64 extended information extra field has fixed order *but*
+/// optional fields. From the appnote:
+///
+/// If one of the size or offset fields in the Local or Central directory record
+/// is too small to hold the required data, a Zip64 extended information record
+/// is created. The order of the fields in the zip64 extended information record
+/// is fixed, but the fields MUST only appear if the corresponding Local or
+/// Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ExtraFieldSettings {
-    pub(crate) needs_uncompressed_size: bool,
-    pub(crate) needs_compressed_size: bool,
-    pub(crate) needs_header_offset: bool,
+pub struct ExtraFieldSettings {
+    /// The uncompressed size field read from a local or central directory record
+    /// If this is 0xFFFF_FFFF, then the zip64 extra field uncompressed size
+    /// field will be present.
+    pub uncompressed_size_u32: u32,
+
+    /// The compressed size field read from a local or central directory record
+    /// If this is 0xFFFF_FFFF, then the zip64 extra field compressed size
+    /// field will be present.
+    pub compressed_size_u32: u32,
+
+    /// The header offset field read from a central directory record (or zero
+    /// for local directory records). If this is 0xFFFF_FFFF, then the zip64
+    /// extra field header offset field will be present.
+    pub header_offset_u32: u32,
 }
 
 /// Information stored in the central directory header `extra` field
@@ -47,13 +61,13 @@ pub(crate) struct ExtraFieldSettings {
 ///
 /// See `extrafld.txt` in this crate's source distribution.
 #[derive(Clone)]
-pub enum ExtraField {
+pub enum ExtraField<'a> {
     /// Zip64 extended information extra field
     Zip64(ExtraZip64Field),
     /// Extended timestamp
     Timestamp(ExtraTimestampField),
     /// UNIX & Info-Zip UNIX
-    Unix(ExtraUnixField),
+    Unix(ExtraUnixField<'a>),
     /// New UNIX extra field
     NewUnix(ExtraNewUnixField),
     /// NTFS (Win9x/WinNT FileTimes)
@@ -65,14 +79,20 @@ pub enum ExtraField {
     },
 }
 
-impl ExtraField {
-    pub(crate) fn mk_parser(
+impl<'a> ExtraField<'a> {
+    /// Make a parser for extra fields, given the settings for the zip64 extra
+    /// field (which depend on whether the u32 values are 0xFFFF_FFFF or not)
+    pub fn mk_parser(
         settings: ExtraFieldSettings,
-    ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
+    ) -> impl FnMut(&mut Partial<&'a [u8]>) -> PResult<Self> {
         move |i| {
             use ExtraField as EF;
             let rec = ExtraFieldRecord::parser.parse_next(i)?;
-            trace!("parsing extra field record, tag {:04x}", rec.tag);
+            trace!(
+                "parsing extra field record, tag {:04x}, len {}",
+                rec.tag,
+                rec.payload.len()
+            );
             let payload = &mut Partial::new(rec.payload);
 
             let variant = match rec.tag {
@@ -83,7 +103,7 @@ impl ExtraField {
                     .context(StrContext::Label("timestamp"))
                     .parse_next(payload)?,
                 ExtraNtfsField::TAG => {
-                    opt(ExtraNtfsField::parse.map(EF::Ntfs)).parse_next(payload)?
+                    opt(ExtraNtfsField::parser.map(EF::Ntfs)).parse_next(payload)?
                 }
                 ExtraUnixField::TAG | ExtraUnixField::TAG_INFOZIP => {
                     opt(ExtraUnixField::parser.map(EF::Unix)).parse_next(payload)?
@@ -104,13 +124,16 @@ impl ExtraField {
 #[derive(Clone, Default)]
 pub struct ExtraZip64Field {
     /// 64-bit uncompressed size
-    pub uncompressed_size: Option<u64>,
+    pub uncompressed_size: u64,
 
     /// 64-bit compressed size
-    pub compressed_size: Option<u64>,
+    pub compressed_size: u64,
 
     /// 64-bit header offset
-    pub header_offset: Option<u64>,
+    pub header_offset: u64,
+
+    /// 32-bit disk start number
+    pub disk_start: Option<u32>,
 }
 
 impl ExtraZip64Field {
@@ -120,13 +143,29 @@ impl ExtraZip64Field {
         settings: ExtraFieldSettings,
     ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
         move |i| {
-            // N.B: we ignore "disk start number"
-            seq! {Self {
-                uncompressed_size: cond(settings.needs_uncompressed_size, le_u64),
-                compressed_size: cond(settings.needs_compressed_size, le_u64),
-                header_offset: cond(settings.needs_header_offset, le_u64),
-            }}
-            .parse_next(i)
+            let uncompressed_size = if settings.uncompressed_size_u32 == 0xFFFF_FFFF {
+                le_u64.parse_next(i)?
+            } else {
+                settings.uncompressed_size_u32 as u64
+            };
+            let compressed_size = if settings.compressed_size_u32 == 0xFFFF_FFFF {
+                le_u64.parse_next(i)?
+            } else {
+                settings.compressed_size_u32 as u64
+            };
+            let header_offset = if settings.header_offset_u32 == 0xFFFF_FFFF {
+                le_u64.parse_next(i)?
+            } else {
+                settings.header_offset_u32 as u64
+            };
+            let disk_start = opt(le_u32.complete_err()).parse_next(i)?;
+
+            Ok(Self {
+                uncompressed_size,
+                compressed_size,
+                header_offset,
+                disk_start,
+            })
         }
     }
 }
@@ -152,8 +191,8 @@ impl ExtraTimestampField {
 }
 
 /// 4.5.7 -UNIX Extra Field (0x000d):
-#[derive(Clone)]
-pub struct ExtraUnixField {
+#[derive(Clone, ToOwned, IntoOwned)]
+pub struct ExtraUnixField<'a> {
     /// file last access time
     pub atime: u32,
     /// file last modification time
@@ -163,21 +202,21 @@ pub struct ExtraUnixField {
     /// file group id
     pub gid: u16,
     /// variable length data field
-    pub data: ZipBytes,
+    pub data: Cow<'a, [u8]>,
 }
 
-impl ExtraUnixField {
+impl<'a> ExtraUnixField<'a> {
     const TAG: u16 = 0x000d;
     const TAG_INFOZIP: u16 = 0x5855;
 
-    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         let t_size = le_u16.parse_next(i)? - 12;
         seq! {Self {
             atime: le_u32,
             mtime: le_u32,
             uid: le_u16,
             gid: le_u16,
-            data: ZipBytes::parser(t_size),
+            data: take(t_size).map(Cow::Borrowed),
         }}
         .parse_next(i)
     }
@@ -247,7 +286,7 @@ pub struct ExtraNtfsField {
 impl ExtraNtfsField {
     const TAG: u16 = 0x000a;
 
-    fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let _ = take(4_usize).parse_next(i)?; // reserved (unused)
         seq! {Self {
             // from the winnow docs:
@@ -255,7 +294,7 @@ impl ExtraNtfsField {
             //   data or the end of the stream, causing them to always report
             //   Incomplete.
             // using repeat_till with eof combinator to work around this:
-            attrs: repeat_till(0.., NtfsAttr::parse, winnow::combinator::eof).map(|x| x.0),
+            attrs: repeat_till(0.., NtfsAttr::parser, winnow::combinator::eof).map(|x| x.0),
         }}
         .parse_next(i)
     }
@@ -275,7 +314,7 @@ pub enum NtfsAttr {
 }
 
 impl NtfsAttr {
-    fn parse(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
+    fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let tag = le_u16.parse_next(i)?;
         trace!("parsing NTFS attribute, tag {:04x}", tag);
         let payload = length_take(le_u16).parse_next(i)?;

@@ -20,7 +20,7 @@ where
     pub(crate) fn new(entry: &Entry, rd: R) -> Self {
         Self {
             rd,
-            fsm: Some(EntryFsm::new(Some(entry.clone()))),
+            fsm: Some(EntryFsm::new(Some(entry.clone()), None)),
         }
     }
 }

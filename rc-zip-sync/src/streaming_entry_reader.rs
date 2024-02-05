@@ -1,9 +1,10 @@
 use oval::Buffer;
 use rc_zip::{
+    error::{Error, FormatError},
     fsm::{EntryFsm, FsmResult},
     parse::Entry,
 };
-use std::io::{self, Write};
+use std::io::{self, Read};
 use tracing::trace;
 
 /// Reads a zip entry based on a local header. Some information is missing,
@@ -21,7 +22,6 @@ pub struct StreamingEntryReader<R> {
 #[allow(clippy::large_enum_variant)]
 enum State {
     Reading {
-        remain: Buffer,
         fsm: EntryFsm,
     },
     Finished {
@@ -36,14 +36,11 @@ impl<R> StreamingEntryReader<R>
 where
     R: io::Read,
 {
-    pub(crate) fn new(remain: Buffer, entry: Entry, rd: R) -> Self {
+    pub(crate) fn new(fsm: EntryFsm, entry: Entry, rd: R) -> Self {
         Self {
-            rd,
             entry,
-            state: State::Reading {
-                remain,
-                fsm: EntryFsm::new(None),
-            },
+            rd,
+            state: State::Reading { fsm },
         }
     }
 }
@@ -53,55 +50,39 @@ where
     R: io::Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        trace!("reading from streaming entry reader");
+
         match std::mem::take(&mut self.state) {
-            State::Reading {
-                mut remain,
-                mut fsm,
-            } => {
+            State::Reading { mut fsm } => {
                 if fsm.wants_read() {
                     trace!("fsm wants read");
-                    if remain.available_data() > 0 {
-                        trace!(
-                            "remain has {} data bytes available",
-                            remain.available_data(),
-                        );
-                        let n = remain.read(fsm.space())?;
-                        trace!("giving fsm {} bytes from remain", n);
-                        fsm.fill(n);
-                    } else {
-                        let n = self.rd.read(fsm.space())?;
-                        trace!("giving fsm {} bytes from rd", n);
-                        fsm.fill(n);
-                    }
+                    let n = self.rd.read(fsm.space())?;
+                    trace!("giving fsm {} bytes from rd", n);
+                    fsm.fill(n);
                 } else {
                     trace!("fsm does not want read");
                 }
 
                 match fsm.process(buf)? {
                     FsmResult::Continue((fsm, outcome)) => {
-                        self.state = State::Reading { remain, fsm };
+                        trace!("fsm wants to continue");
+                        self.state = State::Reading { fsm };
 
                         if outcome.bytes_written > 0 {
+                            trace!("bytes have been written");
                             Ok(outcome.bytes_written)
                         } else if outcome.bytes_read == 0 {
+                            trace!("no bytes have been written or read");
                             // that's EOF, baby!
                             Ok(0)
                         } else {
+                            trace!("read some bytes, hopefully will write more later");
                             // loop, it happens
                             self.read(buf)
                         }
                     }
-                    FsmResult::Done(mut fsm_remain) => {
-                        // if our remain still has remaining data, it goes after
-                        // what the fsm just gave back
-                        if remain.available_data() > 0 {
-                            fsm_remain.grow(fsm_remain.capacity() + remain.available_data());
-                            fsm_remain.write_all(remain.data())?;
-                            drop(remain)
-                        }
-
-                        // FIXME: read the next local file header here
-                        self.state = State::Finished { remain: fsm_remain };
+                    FsmResult::Done(remain) => {
+                        self.state = State::Finished { remain };
 
                         // neat!
                         Ok(0)
@@ -118,7 +99,10 @@ where
     }
 }
 
-impl<R> StreamingEntryReader<R> {
+impl<R> StreamingEntryReader<R>
+where
+    R: io::Read,
+{
     /// Return entry information for this reader
     #[inline(always)]
     pub fn entry(&self) -> &Entry {
@@ -127,13 +111,51 @@ impl<R> StreamingEntryReader<R> {
 
     /// Finish reading this entry, returning the next streaming entry reader, if
     /// any. This panics if the entry is not fully read.
-    pub fn finish(self) -> Option<StreamingEntryReader<R>> {
+    ///
+    /// If this returns None, there's no entries left.
+    pub fn finish(mut self) -> Result<Option<StreamingEntryReader<R>>, Error> {
+        trace!("finishing streaming entry reader");
+
         match self.state {
             State::Reading { .. } => {
-                panic!("finish called before entry is fully read")
+                // if there's no data left, we're okay
+                trace!("trying to finish entry reader");
+                if self.read(&mut [0u8; 1])? == 0 && matches!(&self.state, State::Finished { .. }) {
+                    // we're done
+                    self.finish()
+                } else {
+                    panic!("entry not fully read");
+                }
             }
-            State::Finished { .. } => {
-                todo!("read local file header for next entry")
+            State::Finished { remain } => {
+                // parse the next entry, if any
+                let mut fsm = EntryFsm::new(None, Some(remain));
+
+                loop {
+                    if fsm.wants_read() {
+                        let n = self.rd.read(fsm.space())?;
+                        trace!("read {} bytes into buf for first zip entry", n);
+                        fsm.fill(n);
+                    }
+
+                    match fsm.process_till_header() {
+                        Ok(Some(entry)) => {
+                            let entry = entry.clone();
+                            return Ok(Some(StreamingEntryReader::new(fsm, entry, self.rd)));
+                        }
+                        Ok(None) => {
+                            // needs more turns
+                        }
+                        Err(e) => match e {
+                            Error::Format(FormatError::InvalidLocalHeader) => {
+                                // we probably reached the end of central directory!
+                                // TODO: we should probably check for the end of central directory
+                                return Ok(None);
+                            }
+                            _ => return Err(e),
+                        },
+                    }
+                }
             }
             State::Transition => unreachable!(),
         }

@@ -380,9 +380,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                match entry_reader.finish() {
+                match entry_reader.finish()? {
                     Some(next_entry) => {
-                        println!("Found next entry!");
                         entry_reader = next_entry;
                     }
                     None => {

@@ -86,17 +86,23 @@ pub struct EntryFsm {
     state: State,
     entry: Option<Entry>,
     buffer: Buffer,
-    eof: bool,
 }
 
 impl EntryFsm {
     /// Create a new state machine for decompressing a zip entry
-    pub fn new(entry: Option<Entry>) -> Self {
+    pub fn new(entry: Option<Entry>, buffer: Option<Buffer>) -> Self {
+        const BUF_CAPACITY: usize = 256 * 1024;
+
         Self {
             state: State::ReadLocalHeader,
             entry,
-            buffer: Buffer::with_capacity(256 * 1024),
-            eof: false,
+            buffer: match buffer {
+                Some(buffer) => {
+                    assert!(buffer.capacity() >= BUF_CAPACITY, "buffer too small");
+                    buffer
+                }
+                None => Buffer::with_capacity(BUF_CAPACITY),
+            },
         }
     }
 
@@ -240,13 +246,14 @@ impl EntryFsm {
                     ?outcome,
                     compressed_bytes = *compressed_bytes,
                     uncompressed_bytes = *uncompressed_bytes,
-                    eof = self.eof,
                     "decompressed"
                 );
                 self.buffer.consume(outcome.bytes_read);
                 *compressed_bytes += outcome.bytes_read as u64;
 
-                if outcome.bytes_written == 0 && self.eof {
+                if outcome.bytes_written == 0 && *compressed_bytes == entry.compressed_size {
+                    trace!("eof and no bytes written, we're done");
+
                     // we're done, let's read the data descriptor (if there's one)
                     transition!(self.state => (S::ReadData {  has_data_descriptor, is_zip64, uncompressed_bytes, hasher, .. }) {
                         let metrics = EntryReadMetrics {
@@ -255,8 +262,10 @@ impl EntryFsm {
                         };
 
                         if has_data_descriptor {
+                            trace!("transitioning to ReadDataDescriptor");
                             S::ReadDataDescriptor { metrics, is_zip64 }
                         } else {
+                            trace!("transitioning to Validate");
                             S::Validate { metrics, descriptor: None }
                         }
                     });
@@ -344,13 +353,8 @@ impl EntryFsm {
 
     /// After having written data to [Self::space], call this to indicate how
     /// many bytes were written.
-    ///
-    /// If this is called with zero, it indicates eof
     #[inline]
     pub fn fill(&mut self, count: usize) -> usize {
-        if count == 0 {
-            self.eof = true;
-        }
         self.buffer.fill(count)
     }
 }

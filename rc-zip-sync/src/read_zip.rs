@@ -1,11 +1,10 @@
-use rc_zip::parse::Entry;
 use rc_zip::{
     error::Error,
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, LocalFileHeader},
+    parse::Archive,
 };
+use rc_zip::{fsm::EntryFsm, parse::Entry};
 use tracing::trace;
-use winnow::{error::ErrMode, Parser, Partial};
 
 use crate::entry_reader::EntryReader;
 use crate::streaming_entry_reader::StreamingEntryReader;
@@ -244,24 +243,19 @@ where
     R: Read,
 {
     fn read_first_zip_entry_streaming(mut self) -> Result<StreamingEntryReader<Self>, Error> {
-        let mut buf = oval::Buffer::with_capacity(16 * 1024);
-        let entry = loop {
-            let n = self.read(buf.space())?;
-            trace!("read {} bytes into buf for first zip entry", n);
-            buf.fill(n);
+        let mut fsm = EntryFsm::new(None, None);
 
-            let mut input = Partial::new(buf.data());
-            match LocalFileHeader::parser.parse_next(&mut input) {
-                Ok(header) => {
-                    break header.as_entry()?;
-                }
-                Err(ErrMode::Incomplete(_)) => continue,
-                Err(e) => {
-                    panic!("{e}")
-                }
+        loop {
+            if fsm.wants_read() {
+                let n = self.read(fsm.space())?;
+                trace!("read {} bytes into buf for first zip entry", n);
+                fsm.fill(n);
             }
-        };
 
-        Ok(StreamingEntryReader::new(buf, entry, self))
+            if let Some(entry) = fsm.process_till_header()? {
+                let entry = entry.clone();
+                return Ok(StreamingEntryReader::new(fsm, entry, self));
+            }
+        }
     }
 }

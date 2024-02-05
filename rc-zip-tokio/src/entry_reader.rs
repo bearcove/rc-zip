@@ -28,7 +28,7 @@ where
     {
         Self {
             rd: get_reader(entry.header_offset),
-            fsm: Some(EntryFsm::new(Some(entry.clone()))),
+            fsm: Some(EntryFsm::new(Some(entry.clone()), None)),
         }
     }
 }

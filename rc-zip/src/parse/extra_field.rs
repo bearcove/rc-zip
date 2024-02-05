@@ -88,7 +88,11 @@ impl<'a> ExtraField<'a> {
         move |i| {
             use ExtraField as EF;
             let rec = ExtraFieldRecord::parser.parse_next(i)?;
-            trace!("parsing extra field record, tag {:04x}", rec.tag);
+            trace!(
+                "parsing extra field record, tag {:04x}, len {}",
+                rec.tag,
+                rec.payload.len()
+            );
             let payload = &mut Partial::new(rec.payload);
 
             let variant = match rec.tag {
@@ -129,7 +133,7 @@ pub struct ExtraZip64Field {
     pub header_offset: u64,
 
     /// 32-bit disk start number
-    pub disk_start: u32,
+    pub disk_start: Option<u32>,
 }
 
 impl ExtraZip64Field {
@@ -154,7 +158,7 @@ impl ExtraZip64Field {
             } else {
                 settings.header_offset_u32 as u64
             };
-            let disk_start = le_u32.parse_next(i)?;
+            let disk_start = opt(le_u32.complete_err()).parse_next(i)?;
 
             Ok(Self {
                 uncompressed_size,

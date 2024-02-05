@@ -169,7 +169,10 @@ impl EntryFsm {
                         )?;
 
                         self.state = S::ReadData {
-                            entry: header.as_entry()?,
+                            entry: match &self.entry {
+                                Some(entry) => entry.clone(),
+                                None => header.as_entry()?,
+                            },
                             is_zip64: header.compressed_size == u32::MAX
                                 || header.uncompressed_size == u32::MAX,
                             has_data_descriptor: header.has_data_descriptor(),
@@ -206,12 +209,21 @@ impl EntryFsm {
                 let in_buf = &in_buf[..in_buf_max_len];
 
                 let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
-
                 let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
                     HasMoreInput::No
                 } else {
                     HasMoreInput::Yes
                 };
+
+                trace!(
+                    compressed_bytes = *compressed_bytes,
+                    uncompressed_bytes = *uncompressed_bytes,
+                    fed_bytes_after_this,
+                    in_buf_len = in_buf.len(),
+                    ?has_more_input,
+                    "decompressing"
+                );
+
                 let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
                 trace!(
                     ?outcome,
@@ -355,6 +367,8 @@ pub struct DecompressOutcome {
     pub bytes_written: usize,
 }
 
+/// Returns whether there's more input to be fed to the decompressor
+#[derive(Debug)]
 pub enum HasMoreInput {
     Yes,
     No,

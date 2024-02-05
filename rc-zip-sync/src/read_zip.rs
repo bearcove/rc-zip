@@ -91,7 +91,7 @@ impl ReadZip for Vec<u8> {
 ///
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
-/// [SyncEntry::reader].
+/// [EntryHandle::reader].
 pub struct ArchiveHandle<'a, F>
 where
     F: HasCursor,

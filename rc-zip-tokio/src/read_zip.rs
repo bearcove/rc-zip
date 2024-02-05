@@ -15,7 +15,7 @@ use crate::{entry_reader::EntryReader, StreamingEntryReader};
 
 /// A trait for reading something as a zip archive.
 ///
-/// See also [ReadZipAsync].
+/// See also [ReadZip].
 pub trait ReadZipWithSize {
     /// The type of the file to read from.
     type File: HasCursor;
@@ -29,7 +29,7 @@ pub trait ReadZipWithSize {
 ///
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
-/// [AsyncEntry::reader].
+/// [EntryHandle::reader].
 pub trait ReadZip {
     /// The type of the file to read from.
     type File: HasCursor;
@@ -176,7 +176,7 @@ where
 
 /// A sliceable I/O resource: we can ask for an [AsyncRead] at a given offset.
 pub trait HasCursor {
-    /// The type returned by [HasAsyncCursor::cursor_at].
+    /// The type returned by [HasCursor::cursor_at].
     type Cursor<'a>: AsyncRead + Unpin + 'a
     where
         Self: 'a;

@@ -3,6 +3,7 @@ use rc_zip::{
     parse::StoredEntry,
 };
 use std::io;
+use tracing::trace;
 
 pub(crate) struct EntryReader<R>
 where
@@ -35,19 +36,23 @@ where
         };
 
         if fsm.wants_read() {
-            tracing::trace!("fsm wants read");
+            trace!("fsm wants read");
             let n = self.rd.read(fsm.space())?;
-            tracing::trace!("giving fsm {} bytes", n);
+            trace!("giving fsm {} bytes", n);
             fsm.fill(n);
         } else {
-            tracing::trace!("fsm does not want read");
+            trace!("fsm does not want read");
         }
 
         match fsm.process(buf)? {
             FsmResult::Continue((fsm, outcome)) => {
                 self.fsm = Some(fsm);
+
                 if outcome.bytes_written > 0 {
                     Ok(outcome.bytes_written)
+                } else if outcome.bytes_read == 0 {
+                    // that's EOF, baby!
+                    Ok(0)
                 } else {
                     // loop, it happens
                     self.read(buf)
@@ -55,6 +60,7 @@ where
             }
             FsmResult::Done(_) => {
                 // neat!
+                trace!("fsm done");
                 Ok(0)
             }
         }

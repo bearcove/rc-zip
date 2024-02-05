@@ -81,6 +81,9 @@ where
 
                         if outcome.bytes_written > 0 {
                             Ok(outcome.bytes_written)
+                        } else if outcome.bytes_read == 0 {
+                            // that's EOF, baby!
+                            Ok(0)
                         } else {
                             // loop, it happens
                             self.read(buf)
@@ -96,7 +99,6 @@ where
                         }
 
                         // FIXME: read the next local file header here
-
                         self.state = State::Finished { remain: fsm_remain };
 
                         // neat!

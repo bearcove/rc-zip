@@ -1,8 +1,12 @@
+use rc_zip::chrono::{DateTime, TimeZone, Utc};
 use rc_zip::{
-    error::Error,
+    error::{Error, FormatError},
     fsm::{ArchiveFsm, FsmResult},
-    parse::{Archive, LocalFileHeaderRecord, StoredEntry},
+    parse::{
+        Archive, ExtraField, ExtraFieldSettings, LocalFileHeaderRecord, NtfsAttr, StoredEntry,
+    },
 };
+use tracing::trace;
 use winnow::{
     error::ErrMode,
     stream::{AsBytes, Offset},
@@ -43,14 +47,14 @@ where
     type File = F;
 
     fn read_zip_with_size(&self, size: u64) -> Result<SyncArchive<'_, F>, Error> {
-        tracing::trace!(%size, "read_zip_with_size");
+        trace!(%size, "read_zip_with_size");
         let mut fsm = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = fsm.wants_read() {
-                tracing::trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
+                trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
                 match self.cursor_at(offset).read(fsm.space()) {
                     Ok(read_bytes) => {
-                        tracing::trace!(%read_bytes, "read_zip_with_size: read");
+                        trace!(%read_bytes, "read_zip_with_size: read");
                         if read_bytes == 0 {
                             return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
                         }
@@ -62,7 +66,7 @@ where
 
             fsm = match fsm.process()? {
                 FsmResult::Done(archive) => {
-                    tracing::trace!("read_zip_with_size: done");
+                    trace!("read_zip_with_size: done");
                     return Ok(SyncArchive {
                         file: self,
                         archive,
@@ -251,17 +255,97 @@ where
 
         let header = loop {
             let n = self.read(buf.space())?;
-            tracing::trace!("read {} bytes into buf for first zip entry", n);
+            trace!("read {} bytes into buf for first zip entry", n);
             buf.fill(n);
 
             let mut input = Partial::new(buf.data());
             match LocalFileHeaderRecord::parser.parse_next(&mut input) {
                 Ok(header) => {
                     let consumed = input.as_bytes().offset_from(&buf.data());
-                    tracing::trace!(?header, %consumed, "Got local file header record!");
+                    trace!(?header, %consumed, "Got local file header record!");
                     // write extra bytes to `/tmp/extra.bin` for debugging
-                    std::fs::write("/tmp/extra.bin", input.as_bytes()).unwrap();
-                    tracing::trace!("wrote extra bytes to /tmp/extra.bin");
+                    std::fs::write("/tmp/extra.bin", &header.extra.0).unwrap();
+                    trace!("wrote extra bytes to /tmp/extra.bin");
+
+                    let mut modified: Option<DateTime<Utc>> = None;
+                    let mut created: Option<DateTime<Utc>> = None;
+                    let mut accessed: Option<DateTime<Utc>> = None;
+
+                    let mut compressed_size = header.compressed_size as u64;
+                    let mut uncompressed_size = header.uncompressed_size as u64;
+
+                    let mut uid: Option<u32> = None;
+                    let mut gid: Option<u32> = None;
+
+                    let mut extra_fields: Vec<ExtraField> = Vec::new();
+
+                    let settings = ExtraFieldSettings {
+                        needs_compressed_size: header.compressed_size == !0u32,
+                        needs_uncompressed_size: header.uncompressed_size == !0u32,
+                        needs_header_offset: false,
+                    };
+
+                    let mut slice = Partial::new(&header.extra.0[..]);
+                    while !slice.is_empty() {
+                        match ExtraField::mk_parser(settings).parse_next(&mut slice) {
+                            Ok(ef) => {
+                                match &ef {
+                                    ExtraField::Zip64(z64) => {
+                                        if let Some(n) = z64.uncompressed_size {
+                                            uncompressed_size = n;
+                                        }
+                                        if let Some(n) = z64.compressed_size {
+                                            compressed_size = n;
+                                        }
+                                    }
+                                    ExtraField::Timestamp(ts) => {
+                                        modified = Utc.timestamp_opt(ts.mtime as i64, 0).single();
+                                    }
+                                    ExtraField::Ntfs(nf) => {
+                                        for attr in &nf.attrs {
+                                            // note: other attributes are unsupported
+                                            if let NtfsAttr::Attr1(attr) = attr {
+                                                modified = attr.mtime.to_datetime();
+                                                created = attr.ctime.to_datetime();
+                                                accessed = attr.atime.to_datetime();
+                                            }
+                                        }
+                                    }
+                                    ExtraField::Unix(uf) => {
+                                        modified = Utc.timestamp_opt(uf.mtime as i64, 0).single();
+                                        if uid.is_none() {
+                                            uid = Some(uf.uid as u32);
+                                        }
+                                        if gid.is_none() {
+                                            gid = Some(uf.gid as u32);
+                                        }
+                                    }
+                                    ExtraField::NewUnix(uf) => {
+                                        uid = Some(uf.uid as u32);
+                                        gid = Some(uf.uid as u32);
+                                    }
+                                    _ => {}
+                                };
+                                extra_fields.push(ef);
+                            }
+                            Err(e) => {
+                                trace!("extra field error: {:#?}", e);
+                                return Err(FormatError::InvalidExtraField.into());
+                            }
+                        }
+                    }
+
+                    trace!(
+                        ?modified,
+                        ?created,
+                        ?accessed,
+                        ?compressed_size,
+                        ?uncompressed_size,
+                        ?uid,
+                        ?gid,
+                        "parsed extra fields"
+                    );
+
                     break header;
                 }
                 // TODO: keep reading if we don't have enough data

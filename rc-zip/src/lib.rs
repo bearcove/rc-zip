@@ -19,3 +19,6 @@ pub mod parse;
 
 #[cfg(any(test, feature = "corpus"))]
 pub mod corpus;
+
+// dependencies re-exports
+pub use chrono;

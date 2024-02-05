@@ -26,19 +26,24 @@ impl<'a> ExtraFieldRecord<'a> {
     }
 }
 
-// Useful because zip64 extended information extra field has fixed order *but*
-// optional fields. From the appnote:
-//
-// If one of the size or offset fields in the Local or Central directory record
-// is too small to hold the required data, a Zip64 extended information record
-// is created. The order of the fields in the zip64 extended information record
-// is fixed, but the fields MUST only appear if the corresponding Local or
-// Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
+/// Useful because zip64 extended information extra field has fixed order *but*
+/// optional fields. From the appnote:
+///
+/// If one of the size or offset fields in the Local or Central directory record
+/// is too small to hold the required data, a Zip64 extended information record
+/// is created. The order of the fields in the zip64 extended information record
+/// is fixed, but the fields MUST only appear if the corresponding Local or
+/// Central directory record field is set to 0xFFFF or 0xFFFFFFFF.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ExtraFieldSettings {
-    pub(crate) needs_uncompressed_size: bool,
-    pub(crate) needs_compressed_size: bool,
-    pub(crate) needs_header_offset: bool,
+pub struct ExtraFieldSettings {
+    /// Whether the "zip64 extra field" uncompressed size field is needed/present
+    pub needs_uncompressed_size: bool,
+
+    /// Whether the "zip64 extra field" compressed size field is needed/present
+    pub needs_compressed_size: bool,
+
+    /// Whether the "zip64 extra field" header offset field is needed/present
+    pub needs_header_offset: bool,
 }
 
 /// Information stored in the central directory header `extra` field
@@ -66,7 +71,9 @@ pub enum ExtraField {
 }
 
 impl ExtraField {
-    pub(crate) fn mk_parser(
+    /// Make a parser for extra fields, given the settings for the zip64 extra
+    /// field (which depend on whether the u32 values are 0xFFFF_FFFF or not)
+    pub fn mk_parser(
         settings: ExtraFieldSettings,
     ) -> impl FnMut(&mut Partial<&'_ [u8]>) -> PResult<Self> {
         move |i| {

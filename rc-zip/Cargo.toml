@@ -17,7 +17,6 @@ path = "src/lib.rs"
 
 [dependencies]
 winnow = "0.5.36"
-pretty-hex = "0.4.1"
 oval = "2.0.0"
 chrono = "0.4.33"
 encoding_rs = "0.8.33"

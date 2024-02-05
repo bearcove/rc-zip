@@ -24,7 +24,6 @@ positioned-io = { version = "0.3.3", optional = true }
 rc-zip = { version = "3.0.0", path = "../rc-zip" }
 oval = "2.0.0"
 tracing = "0.1.40"
-winnow = "0.5.36"
 
 [features]
 default = ["file", "deflate"]

@@ -26,7 +26,7 @@ different I/O models: blocking, non-blocking, and async. It has no expectations
 of the zip archive being present on disk (ie. it doesn't assume `std::fs`), just
 that random access is possible.
 
-This crate relies fully on the central directory, not on local headers:
+The recommended interface relies on the central directory rather than local headers:
 
 ```
 [local file header 1] // <---------------- ignored
@@ -43,6 +43,9 @@ entries in a zip. Archives that have been repacked may contain duplicate local
 file headers (and data), along with headers for entries that have been removed.
 Only the central directory is authoritative when it comes to the contents of a
 zip archive.
+
+However, as of v4.0.0, a streaming decompression interface was added to both
+`rc-zip-sync` and `rc-zip-tokio`, in the form of the `ReadZipStreaming` traits.
 
 This crate accepts what is known as "trailing zips" - for example, files that
 are valid ELF or PE executables, and merely have a valid zip archive appended.
@@ -85,13 +88,16 @@ The design of the API is constrained by several parameters:
   * Multiple I/O models must be supported. Whereas other crates focus on
   taking a `Read`, a `Read + Seek`, or simply a byte slice, this crate aims
   to support synchronous *and* asynchronous I/O.
+  * Not everyone wants a compliant zip reader. Some may want to rely on local
+  headers instead, completely ignoring the central directory, thus throwing
+  caution to the wind.
 
-As a result, the structs in this crate are state machines, that advertise
-their need to read (and from where), to process data, or to write. As a
-result, I/O errors are cleanly separated from the rest, and calls to this
-crate never block.
+As a result, the structs in this crate are state machines, that advertise their
+need to read (and from where), to process data, or to write. I/O errors are
+cleanly separated from the rest, and calls to this crate never block.
 
-See the inline rustdoc comments for more details on API design.
+Separate crates add specific I/O models on top of rc-zip, see the [rc-zip-sync](https://crates.io/crates/rc-zip-sync)
+and [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio) crates.
 
 ## License
 

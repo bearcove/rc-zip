@@ -9,7 +9,7 @@ use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 use crate::{
     encoding::Encoding,
     error::Error,
-    parse::{Archive, EntryContents, StoredEntry},
+    parse::{Archive, Entry, EntryKind},
 };
 
 pub struct Case {
@@ -246,14 +246,12 @@ pub fn check_case(test: &Case, archive: Result<&Archive, &Error>) {
     // then each implementation should check individual files
 }
 
-pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[u8]) {
+pub fn check_file_against(file: &CaseFile, entry: &Entry, actual_bytes: &[u8]) {
     if let Some(expected) = file.modified {
         assert_eq!(
-            expected,
-            entry.modified(),
+            expected, entry.modified,
             "entry {} should have modified = {:?}",
-            entry.name(),
-            expected
+            entry.name, expected
         )
     }
 
@@ -262,10 +260,10 @@ pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[
     }
 
     // I have honestly yet to see a zip file _entry_ with a comment.
-    assert!(entry.comment().is_none());
+    assert!(entry.comment.is_empty());
 
-    match entry.contents() {
-        EntryContents::File => {
+    match entry.kind() {
+        EntryKind::File => {
             match &file.content {
                 FileContent::Unchecked => {
                     // ah well
@@ -283,7 +281,7 @@ pub fn check_file_against(file: &CaseFile, entry: &StoredEntry, actual_bytes: &[
                 }
             }
         }
-        EntryContents::Symlink | EntryContents::Directory => {
+        EntryKind::Symlink | EntryKind::Directory => {
             assert!(matches!(file.content, FileContent::Unchecked));
         }
     }

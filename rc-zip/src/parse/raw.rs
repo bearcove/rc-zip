@@ -32,14 +32,6 @@ impl ZipString {
         let count = count.to_usize();
         move |i| (take(count).map(|slice: &[u8]| Self(slice.into()))).parse_next(i)
     }
-
-    pub(crate) fn into_option(self) -> Option<Self> {
-        if !self.0.is_empty() {
-            Some(self)
-        } else {
-            None
-        }
-    }
 }
 
 /// A raw u8 slice, with no specific structure.

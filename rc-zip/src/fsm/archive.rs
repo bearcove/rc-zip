@@ -3,8 +3,8 @@ use crate::{
     encoding::Encoding,
     error::{Error, FormatError},
     parse::{
-        Archive, DirectoryHeader, EndOfCentralDirectory, EndOfCentralDirectory64Locator,
-        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Located, StoredEntry,
+        Archive, CentralDirectoryFileHeader, EndOfCentralDirectory, EndOfCentralDirectory64Locator,
+        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Entry, Located,
     },
 };
 
@@ -66,7 +66,7 @@ enum State {
     /// Reading all headers from the central directory
     ReadCentralDirectory {
         eocd: EndOfCentralDirectory,
-        directory_headers: Vec<DirectoryHeader>,
+        directory_headers: Vec<CentralDirectoryFileHeader>,
     },
 
     #[default]
@@ -256,7 +256,7 @@ impl ArchiveFsm {
                     "initial offset & len"
                 );
                 'read_headers: while !input.is_empty() {
-                    match DirectoryHeader::parser.parse_next(&mut input) {
+                    match CentralDirectoryFileHeader::parser.parse_next(&mut input) {
                         Ok(dh) => {
                             trace!(
                                 input_empty_now = input.is_empty(),
@@ -336,9 +336,9 @@ impl ArchiveFsm {
 
                                 let is_zip64 = eocd.dir64.is_some();
                                 let global_offset = eocd.global_offset as u64;
-                                let entries: Result<Vec<StoredEntry>, Error> = directory_headers
+                                let entries: Result<Vec<Entry>, Error> = directory_headers
                                     .iter()
-                                    .map(|x| x.as_stored_entry(is_zip64, encoding, global_offset))
+                                    .map(|x| x.as_entry(is_zip64, encoding, global_offset))
                                     .collect();
                                 let entries = entries?;
 

@@ -27,7 +27,7 @@ mod zstd_dec;
 
 use crate::{
     error::{Error, FormatError, UnsupportedError},
-    parse::{DataDescriptorRecord, LocalFileHeaderRecord, Method, StoredEntryInner},
+    parse::{DataDescriptorRecord, Entry, LocalFileHeader, Method},
 };
 
 use super::FsmResult;
@@ -43,7 +43,7 @@ enum State {
 
     ReadData {
         /// The local file header for this entry
-        header: LocalFileHeaderRecord,
+        header: LocalFileHeader,
 
         /// Entry compressed size
         compressed_size: u64,
@@ -63,7 +63,7 @@ enum State {
 
     ReadDataDescriptor {
         /// The local file header for this entry
-        header: LocalFileHeaderRecord,
+        header: LocalFileHeader,
 
         /// Size we've decompressed + crc32 hash we've computed
         metrics: EntryReadMetrics,
@@ -71,7 +71,7 @@ enum State {
 
     Validate {
         /// The local file header for this entry
-        header: LocalFileHeaderRecord,
+        header: LocalFileHeader,
 
         /// Size we've decompressed + crc32 hash we've computed
         metrics: EntryReadMetrics,
@@ -87,14 +87,14 @@ enum State {
 /// A state machine that can parse a zip entry
 pub struct EntryFsm {
     state: State,
-    entry: Option<StoredEntryInner>,
+    entry: Option<Entry>,
     buffer: Buffer,
     eof: bool,
 }
 
 impl EntryFsm {
     /// Create a new state machine for decompressing a zip entry
-    pub fn new(entry: Option<StoredEntryInner>) -> Self {
+    pub fn new(entry: Option<Entry>) -> Self {
         Self {
             state: State::ReadLocalHeader,
             entry,
@@ -117,6 +117,11 @@ impl EntryFsm {
             State::Validate { .. } => false,
             State::Transition => unreachable!(),
         }
+    }
+
+    /// Like `process`, but only processes the header:
+    pub fn process_header_only(&mut self) -> Option<&LocalFileHeader> {
+        todo!()
     }
 
     /// Process the input and write the output to the given buffer
@@ -148,7 +153,7 @@ impl EntryFsm {
         match &mut self.state {
             S::ReadLocalHeader => {
                 let mut input = Partial::new(self.buffer.data());
-                match LocalFileHeaderRecord::parser.parse_next(&mut input) {
+                match LocalFileHeader::parser.parse_next(&mut input) {
                     Ok(header) => {
                         let consumed = input.as_bytes().offset_from(&self.buffer.data());
                         tracing::trace!(local_file_header = ?header, consumed, "parsed local file header");

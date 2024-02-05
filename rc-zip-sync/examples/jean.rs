@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
-use rc_zip::parse::{Archive, EntryContents, Method, Version};
+use rc_zip::parse::{Archive, EntryKind, Method, Version};
 use rc_zip_sync::{ReadZip, ReadZipEntriesStreaming};
 
 use std::{
@@ -102,14 +102,14 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         for entry in archive.entries() {
             creator_versions.insert(entry.creator_version);
             reader_versions.insert(entry.reader_version);
-            match entry.contents() {
-                EntryContents::Symlink => {
+            match entry.kind() {
+                EntryKind::Symlink => {
                     num_symlinks += 1;
                 }
-                EntryContents::Directory => {
+                EntryKind::Directory => {
                     num_dirs += 1;
                 }
-                EntryContents::File => {
+                EntryKind::File => {
                     methods.insert(entry.method());
                     num_files += 1;
                     compressed_size += entry.inner.compressed_size;
@@ -166,7 +166,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         gid = Optional(entry.gid),
                     );
 
-                    if let EntryContents::Symlink = entry.contents() {
+                    if let EntryKind::Symlink = entry.contents() {
                         let mut target = String::new();
                         entry.reader().read_to_string(&mut target).unwrap();
                         print!("\t{target}", target = target);
@@ -193,7 +193,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let mut num_symlinks = 0;
             let mut uncompressed_size: u64 = 0;
             for entry in reader.entries() {
-                if let EntryContents::File = entry.contents() {
+                if let EntryKind::File = entry.contents() {
                     uncompressed_size += entry.inner.uncompressed_size;
                 }
             }
@@ -220,7 +220,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
                 pbar.set_message(entry_name.to_string());
                 match entry.contents() {
-                    EntryContents::Symlink => {
+                    EntryKind::Symlink => {
                         num_symlinks += 1;
 
                         cfg_if! {
@@ -256,7 +256,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                    EntryContents::Directory => {
+                    EntryKind::Directory => {
                         num_dirs += 1;
                         let path = dir.join(entry_name);
                         std::fs::create_dir_all(
@@ -264,7 +264,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 .expect("all full entry paths should have parent paths"),
                         )?;
                     }
-                    EntryContents::File => {
+                    EntryKind::File => {
                         num_files += 1;
                         let path = dir.join(entry_name);
                         std::fs::create_dir_all(

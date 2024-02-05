@@ -1,7 +1,7 @@
 use oval::Buffer;
 use rc_zip::{
     fsm::{EntryFsm, FsmResult},
-    parse::LocalFileHeaderRecord,
+    parse::LocalFileHeader,
 };
 use std::{
     io::{self, Write},
@@ -10,7 +10,7 @@ use std::{
 use tracing::trace;
 
 pub struct StreamingEntryReader<R> {
-    header: LocalFileHeaderRecord,
+    header: LocalFileHeader,
     rd: R,
     state: State,
 }
@@ -34,7 +34,7 @@ impl<R> StreamingEntryReader<R>
 where
     R: io::Read,
 {
-    pub(crate) fn new(remain: Buffer, header: LocalFileHeaderRecord, rd: R) -> Self {
+    pub(crate) fn new(remain: Buffer, header: LocalFileHeader, rd: R) -> Self {
         Self {
             rd,
             header,

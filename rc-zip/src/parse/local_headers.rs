@@ -14,7 +14,7 @@ use winnow::{
 
 #[derive(Debug)]
 /// 4.3.7 Local file header
-pub struct LocalFileHeaderRecord {
+pub struct LocalFileHeader {
     /// version needed to extract
     pub reader_version: Version,
 
@@ -56,7 +56,7 @@ pub enum MethodSpecific {
     Lzma(LzmaProperties),
 }
 
-impl LocalFileHeaderRecord {
+impl LocalFileHeader {
     /// The signature for a local file header
     pub const SIGNATURE: &'static str = "PK\x03\x04";
 

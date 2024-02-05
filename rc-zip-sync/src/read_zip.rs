@@ -2,9 +2,7 @@ use rc_zip::chrono::{DateTime, TimeZone, Utc};
 use rc_zip::{
     error::{Error, FormatError},
     fsm::{ArchiveFsm, FsmResult},
-    parse::{
-        Archive, ExtraField, ExtraFieldSettings, LocalFileHeaderRecord, NtfsAttr, StoredEntry,
-    },
+    parse::{Archive, ExtraField, ExtraFieldSettings, LocalFileHeader, NtfsAttr, StoredEntry},
 };
 use tracing::trace;
 use winnow::{
@@ -123,8 +121,8 @@ where
     F: HasCursor,
 {
     /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = SyncStoredEntry<'_, F>> {
-        self.archive.entries().map(move |entry| SyncStoredEntry {
+    pub fn entries(&self) -> impl Iterator<Item = SyncEntry<'_, F>> {
+        self.archive.entries().map(move |entry| SyncEntry {
             file: self.file,
             entry,
         })
@@ -132,11 +130,11 @@ where
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
     /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<SyncStoredEntry<'_, F>> {
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<SyncEntry<'_, F>> {
         self.archive
             .entries()
             .find(|&x| x.name() == name.as_ref())
-            .map(|entry| SyncStoredEntry {
+            .map(|entry| SyncEntry {
                 file: self.file,
                 entry,
             })
@@ -144,12 +142,12 @@ where
 }
 
 /// A zip entry, read synchronously from a file or other I/O resource.
-pub struct SyncStoredEntry<'a, F> {
+pub struct SyncEntry<'a, F> {
     file: &'a F,
     entry: &'a StoredEntry,
 }
 
-impl<F> Deref for SyncStoredEntry<'_, F> {
+impl<F> Deref for SyncEntry<'_, F> {
     type Target = StoredEntry;
 
     fn deref(&self) -> &Self::Target {
@@ -157,7 +155,7 @@ impl<F> Deref for SyncStoredEntry<'_, F> {
     }
 }
 
-impl<'a, F> SyncStoredEntry<'a, F>
+impl<'a, F> SyncEntry<'a, F>
 where
     F: HasCursor,
 {
@@ -259,7 +257,7 @@ where
             buf.fill(n);
 
             let mut input = Partial::new(buf.data());
-            match LocalFileHeaderRecord::parser.parse_next(&mut input) {
+            match LocalFileHeader::parser.parse_next(&mut input) {
                 Ok(header) => {
                     let consumed = input.as_bytes().offset_from(&buf.data());
                     trace!(?header, %consumed, "Got local file header record!");

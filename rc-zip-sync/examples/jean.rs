@@ -2,7 +2,7 @@ use cfg_if::cfg_if;
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use rc_zip::parse::{Archive, EntryKind, Method, Version};
-use rc_zip_sync::{ReadZip, ReadZipEntriesStreaming};
+use rc_zip_sync::{ReadZip, ReadZipStreaming};
 
 use std::{
     borrow::Cow,
@@ -305,7 +305,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
             let start_time = std::time::SystemTime::now();
 
-            let mut entry_reader = zipfile.read_first_zip_entry_streaming()?;
+            let mut entry_reader = zipfile.stream_zip_entries_throwing_caution_to_the_wind()?;
             loop {
                 let entry_name = match entry_reader.entry().sanitized_name() {
                     Some(name) => name,

@@ -3,9 +3,9 @@ use rc_zip::{
     error::Error,
     parse::Archive,
 };
-use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip};
+use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming};
 
-use std::fs::File;
+use std::{fs::File, io::Read};
 
 fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
     corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
@@ -51,6 +51,30 @@ fn real_world_files() {
         let file = File::open(&guarded_path.path).unwrap();
         let archive = file.read_zip().map_err(Error::from);
         check_case(&case, archive);
+        drop(guarded_path)
+    }
+}
+
+#[test_log::test]
+fn streaming() {
+    for case in corpus::streaming_test_cases() {
+        let guarded_path = case.absolute_path();
+        let file = File::open(&guarded_path.path).unwrap();
+
+        let mut entry = file
+            .stream_zip_entries_throwing_caution_to_the_wind()
+            .unwrap();
+        loop {
+            let mut v = vec![];
+            let n = entry.read_to_end(&mut v).unwrap();
+            tracing::trace!("entry {} read {} bytes", entry.entry().name, n);
+
+            match entry.finish().unwrap() {
+                Some(next) => entry = next,
+                None => break,
+            }
+        }
+
         drop(guarded_path)
     }
 }

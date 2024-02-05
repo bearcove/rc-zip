@@ -259,6 +259,14 @@ pub fn test_cases() -> Vec<Case> {
     ]
 }
 
+pub fn streaming_test_cases() -> Vec<Case> {
+    vec![Case {
+        name: "meta.zip",
+        files: Files::NumFiles(0),
+        ..Default::default()
+    }]
+}
+
 pub fn check_case(case: &Case, archive: Result<&Archive, &Error>) {
     let case_bytes = case.bytes();
 

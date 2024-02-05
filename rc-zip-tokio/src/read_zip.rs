@@ -296,27 +296,28 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
 /// based only on local headers. THIS IS NOT RECOMMENDED, as correctly
 /// reading zip files requires reading the central directory (located at
 /// the end of the file).
-///
-/// Using local headers only involves a lot of guesswork and is only really
-/// useful if you have some level of control over your input.
-pub trait ReadZipEntriesStreaming<R>
+pub trait ReadZipStreaming<R>
 where
     R: AsyncRead,
 {
     /// Get the first zip entry from the stream as a [StreamingEntryReader].
     ///
-    /// See [ReadZipEntriesStreaming]'s documentation for why using this is
+    /// See the trait's documentation for why using this is
     /// generally a bad idea: you might want to use [ReadZip] or
     /// [ReadZipWithSize] instead.
     #[allow(async_fn_in_trait)]
-    async fn read_first_zip_entry_streaming(self) -> Result<StreamingEntryReader<R>, Error>;
+    async fn stream_zip_entries_throwing_caution_to_the_wind(
+        self,
+    ) -> Result<StreamingEntryReader<R>, Error>;
 }
 
-impl<R> ReadZipEntriesStreaming<R> for R
+impl<R> ReadZipStreaming<R> for R
 where
     R: AsyncRead + Unpin,
 {
-    async fn read_first_zip_entry_streaming(mut self) -> Result<StreamingEntryReader<Self>, Error> {
+    async fn stream_zip_entries_throwing_caution_to_the_wind(
+        mut self,
+    ) -> Result<StreamingEntryReader<Self>, Error> {
         let mut fsm = EntryFsm::new(None, None);
 
         loop {

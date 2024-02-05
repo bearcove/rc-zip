@@ -4,7 +4,8 @@ use rc_zip::{
     error::Error,
     parse::Archive,
 };
-use rc_zip_tokio::{ArchiveHandle, HasCursor, ReadZip};
+use rc_zip_tokio::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming};
+use tokio::io::AsyncReadExt;
 
 use std::sync::Arc;
 
@@ -50,6 +51,31 @@ async fn real_world_files() {
         let file = Arc::new(RandomAccessFile::open(&guarded_path.path).unwrap());
         let archive = file.read_zip().await;
         check_case(&case, archive).await;
+        drop(guarded_path)
+    }
+}
+
+#[test_log::test(tokio::test)]
+async fn streaming() {
+    for case in corpus::streaming_test_cases() {
+        let guarded_path = case.absolute_path();
+        let file = tokio::fs::File::open(&guarded_path.path).await.unwrap();
+
+        let mut entry = file
+            .stream_zip_entries_throwing_caution_to_the_wind()
+            .await
+            .unwrap();
+        loop {
+            let mut v = vec![];
+            let n = entry.read_to_end(&mut v).await.unwrap();
+            tracing::trace!("entry {} read {} bytes", entry.entry().name, n);
+
+            match entry.finish().await.unwrap() {
+                Some(next) => entry = next,
+                None => break,
+            }
+        }
+
         drop(guarded_path)
     }
 }

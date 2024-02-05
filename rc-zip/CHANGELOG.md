@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-v3.0.0...rc-zip-v4.0.0) - 2024-02-05
+
+### Added
+- [**breaking**] Introduce `ReadZipStreaming` trait ([#62](https://github.com/fasterthanlime/rc-zip/pull/62))
+
+### Other
+- Remove unused dependencies
+
 ## [3.0.0](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-v2.0.1...rc-zip-v3.0.0) - 2024-02-02
 
 ### Other

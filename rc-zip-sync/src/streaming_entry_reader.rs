@@ -8,7 +8,7 @@ use std::{
     str::Utf8Error,
 };
 
-pub(crate) struct StreamingEntryReader<R> {
+pub struct StreamingEntryReader<R> {
     header: LocalFileHeaderRecord,
     rd: R,
     state: State,

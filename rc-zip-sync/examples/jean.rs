@@ -331,86 +331,100 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 pbar.set_message(entry_name.to_string());
-                match entry.contents() {
-                    EntryContents::Symlink => {
-                        num_symlinks += 1;
+                let mut buf = vec![];
+                entry.read_to_end(&mut buf)?;
 
-                        cfg_if! {
-                            if #[cfg(windows)] {
-                                let path = dir.join(entry_name);
-                                std::fs::create_dir_all(
-                                    path.parent()
-                                        .expect("all full entry paths should have parent paths"),
-                                )?;
-                                let mut entry_writer = File::create(path)?;
-                                let mut entry_reader = entry.reader();
-                                std::io::copy(&mut entry_reader, &mut entry_writer)?;
-                            } else {
-                                let path = dir.join(entry_name);
-                                std::fs::create_dir_all(
-                                    path.parent()
-                                        .expect("all full entry paths should have parent paths"),
-                                )?;
-                                if let Ok(metadata) = std::fs::symlink_metadata(&path) {
-                                    if metadata.is_file() {
-                                        std::fs::remove_file(&path)?;
-                                    }
-                                }
-
-                                let mut src = String::new();
-                                entry.reader().read_to_string(&mut src)?;
-
-                                // validate pointing path before creating a symbolic link
-                                if src.contains("..") {
-                                    continue;
-                                }
-                                std::os::unix::fs::symlink(src, &path)?;
-                            }
-                        }
+                match entry.finish() {
+                    Some(next_entry) => {
+                        println!("Found next entry!");
+                        entry = next_entry;
                     }
-                    EntryContents::Directory => {
-                        num_dirs += 1;
-                        let path = dir.join(entry_name);
-                        std::fs::create_dir_all(
-                            path.parent()
-                                .expect("all full entry paths should have parent paths"),
-                        )?;
-                    }
-                    EntryContents::File => {
-                        num_files += 1;
-                        let path = dir.join(entry_name);
-                        std::fs::create_dir_all(
-                            path.parent()
-                                .expect("all full entry paths should have parent paths"),
-                        )?;
-                        let mut entry_writer = File::create(path)?;
-                        let entry_reader = entry.reader();
-                        let before_entry_bytes = done_bytes;
-                        let mut progress_reader = ProgressRead::new(
-                            entry_reader,
-                            entry.inner.uncompressed_size,
-                            |prog| {
-                                pbar.set_position(before_entry_bytes + prog.done);
-                            },
-                        );
-
-                        let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
-                        done_bytes = before_entry_bytes + copied_bytes;
+                    None => {
+                        println!("End of archive!");
+                        break;
                     }
                 }
+
+                // match entry.contents() {
+                //     EntryContents::Symlink => {
+                //         num_symlinks += 1;
+
+                //         cfg_if! {
+                //             if #[cfg(windows)] {
+                //                 let path = dir.join(entry_name);
+                //                 std::fs::create_dir_all(
+                //                     path.parent()
+                //                         .expect("all full entry paths should have parent paths"),
+                //                 )?;
+                //                 let mut entry_writer = File::create(path)?;
+                //                 let mut entry_reader = entry.reader();
+                //                 std::io::copy(&mut entry_reader, &mut entry_writer)?;
+                //             } else {
+                //                 let path = dir.join(entry_name);
+                //                 std::fs::create_dir_all(
+                //                     path.parent()
+                //                         .expect("all full entry paths should have parent paths"),
+                //                 )?;
+                //                 if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+                //                     if metadata.is_file() {
+                //                         std::fs::remove_file(&path)?;
+                //                     }
+                //                 }
+
+                //                 let mut src = String::new();
+                //                 entry.reader().read_to_string(&mut src)?;
+
+                //                 // validate pointing path before creating a symbolic link
+                //                 if src.contains("..") {
+                //                     continue;
+                //                 }
+                //                 std::os::unix::fs::symlink(src, &path)?;
+                //             }
+                //         }
+                //     }
+                //     EntryContents::Directory => {
+                //         num_dirs += 1;
+                //         let path = dir.join(entry_name);
+                //         std::fs::create_dir_all(
+                //             path.parent()
+                //                 .expect("all full entry paths should have parent paths"),
+                //         )?;
+                //     }
+                //     EntryContents::File => {
+                //         num_files += 1;
+                //         let path = dir.join(entry_name);
+                //         std::fs::create_dir_all(
+                //             path.parent()
+                //                 .expect("all full entry paths should have parent paths"),
+                //         )?;
+                //         let mut entry_writer = File::create(path)?;
+                //         let entry_reader = entry.reader();
+                //         let before_entry_bytes = done_bytes;
+                //         let mut progress_reader = ProgressRead::new(
+                //             entry_reader,
+                //             entry.inner.uncompressed_size,
+                //             |prog| {
+                //                 pbar.set_position(before_entry_bytes + prog.done);
+                //             },
+                //         );
+
+                //         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
+                //         done_bytes = before_entry_bytes + copied_bytes;
+                //     }
+                // }
             }
             pbar.finish();
-            let duration = start_time.elapsed()?;
-            println!(
-                "Extracted {} (in {} files, {} dirs, {} symlinks)",
-                format_size(uncompressed_size, BINARY),
-                num_files,
-                num_dirs,
-                num_symlinks
-            );
-            let seconds = (duration.as_millis() as f64) / 1000.0;
-            let bps = (uncompressed_size as f64 / seconds) as u64;
-            println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
+            // let duration = start_time.elapsed()?;
+            // println!(
+            //     "Extracted {} (in {} files, {} dirs, {} symlinks)",
+            //     format_size(uncompressed_size, BINARY),
+            //     num_files,
+            //     num_dirs,
+            //     num_symlinks
+            // );
+            // let seconds = (duration.as_millis() as f64) / 1000.0;
+            // let bps = (uncompressed_size as f64 / seconds) as u64;
+            // println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
         }
     }
 

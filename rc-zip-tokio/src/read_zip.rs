@@ -6,25 +6,23 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use rc_zip::{
     error::Error,
-    fsm::{ArchiveFsm, FsmResult},
+    fsm::{ArchiveFsm, EntryFsm, FsmResult},
     parse::{Archive, Entry},
 };
+use tracing::trace;
 
-use crate::entry_reader::EntryReader;
+use crate::{entry_reader::EntryReader, StreamingEntryReader};
 
 /// A trait for reading something as a zip archive.
 ///
 /// See also [ReadZipAsync].
-pub trait ReadZipWithSizeAsync {
+pub trait ReadZipWithSize {
     /// The type of the file to read from.
-    type File: HasAsyncCursor;
+    type File: HasCursor;
 
     /// Reads self as a zip archive.
     #[allow(async_fn_in_trait)]
-    async fn read_zip_with_size_async(
-        &self,
-        size: u64,
-    ) -> Result<AsyncArchive<'_, Self::File>, Error>;
+    async fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, Self::File>, Error>;
 }
 
 /// A zip archive, read asynchronously from a file or other I/O resource.
@@ -32,22 +30,22 @@ pub trait ReadZipWithSizeAsync {
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
 /// [AsyncEntry::reader].
-pub trait ReadZipAsync {
+pub trait ReadZip {
     /// The type of the file to read from.
-    type File: HasAsyncCursor;
+    type File: HasCursor;
 
     /// Reads self as a zip archive.
     #[allow(async_fn_in_trait)]
-    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error>;
+    async fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error>;
 }
 
-impl<F> ReadZipWithSizeAsync for F
+impl<F> ReadZipWithSize for F
 where
-    F: HasAsyncCursor,
+    F: HasCursor,
 {
     type File = F;
 
-    async fn read_zip_with_size_async(&self, size: u64) -> Result<AsyncArchive<'_, F>, Error> {
+    async fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, F>, Error> {
         let mut fsm = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = fsm.wants_read() {
@@ -64,7 +62,7 @@ where
 
             fsm = match fsm.process()? {
                 FsmResult::Done(archive) => {
-                    return Ok(AsyncArchive {
+                    return Ok(ArchiveHandle {
                         file: self,
                         archive,
                     })
@@ -75,43 +73,43 @@ where
     }
 }
 
-impl ReadZipAsync for &[u8] {
+impl ReadZip for &[u8] {
     type File = Self;
 
-    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
-        self.read_zip_with_size_async(self.len() as u64).await
+    async fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
+        self.read_zip_with_size(self.len() as u64).await
     }
 }
 
-impl ReadZipAsync for Vec<u8> {
+impl ReadZip for Vec<u8> {
     type File = Self;
 
-    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
-        self.read_zip_with_size_async(self.len() as u64).await
+    async fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
+        self.read_zip_with_size(self.len() as u64).await
     }
 }
 
-impl ReadZipAsync for Arc<RandomAccessFile> {
+impl ReadZip for Arc<RandomAccessFile> {
     type File = Self;
 
-    async fn read_zip_async(&self) -> Result<AsyncArchive<'_, Self::File>, Error> {
+    async fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
         let size = self.size()?.unwrap_or_default();
-        self.read_zip_with_size_async(size).await
+        self.read_zip_with_size(size).await
     }
 }
 
 /// A zip archive, read asynchronously from a file or other I/O resource.
-pub struct AsyncArchive<'a, F>
+pub struct ArchiveHandle<'a, F>
 where
-    F: HasAsyncCursor,
+    F: HasCursor,
 {
     file: &'a F,
     archive: Archive,
 }
 
-impl<F> Deref for AsyncArchive<'_, F>
+impl<F> Deref for ArchiveHandle<'_, F>
 where
-    F: HasAsyncCursor,
+    F: HasCursor,
 {
     type Target = Archive;
 
@@ -120,13 +118,13 @@ where
     }
 }
 
-impl<F> AsyncArchive<'_, F>
+impl<F> ArchiveHandle<'_, F>
 where
-    F: HasAsyncCursor,
+    F: HasCursor,
 {
     /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = AsyncEntry<'_, F>> {
-        self.archive.entries().map(move |entry| AsyncEntry {
+    pub fn entries(&self) -> impl Iterator<Item = EntryHandle<'_, F>> {
+        self.archive.entries().map(move |entry| EntryHandle {
             file: self.file,
             entry,
         })
@@ -134,11 +132,11 @@ where
 
     /// Attempts to look up an entry by name. This is usually a bad idea,
     /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<AsyncEntry<'_, F>> {
+    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<EntryHandle<'_, F>> {
         self.archive
             .entries()
             .find(|&x| x.name == name.as_ref())
-            .map(|entry| AsyncEntry {
+            .map(|entry| EntryHandle {
                 file: self.file,
                 entry,
             })
@@ -146,12 +144,12 @@ where
 }
 
 /// A single entry in a zip archive, read asynchronously from a file or other I/O resource.
-pub struct AsyncEntry<'a, F> {
+pub struct EntryHandle<'a, F> {
     file: &'a F,
     entry: &'a Entry,
 }
 
-impl<F> Deref for AsyncEntry<'_, F> {
+impl<F> Deref for EntryHandle<'_, F> {
     type Target = Entry;
 
     fn deref(&self) -> &Self::Target {
@@ -159,9 +157,9 @@ impl<F> Deref for AsyncEntry<'_, F> {
     }
 }
 
-impl<'a, F> AsyncEntry<'a, F>
+impl<'a, F> EntryHandle<'a, F>
 where
-    F: HasAsyncCursor,
+    F: HasCursor,
 {
     /// Returns a reader for the entry.
     pub fn reader(&self) -> impl AsyncRead + Unpin + '_ {
@@ -177,7 +175,7 @@ where
 }
 
 /// A sliceable I/O resource: we can ask for an [AsyncRead] at a given offset.
-pub trait HasAsyncCursor {
+pub trait HasCursor {
     /// The type returned by [HasAsyncCursor::cursor_at].
     type Cursor<'a>: AsyncRead + Unpin + 'a
     where
@@ -187,7 +185,7 @@ pub trait HasAsyncCursor {
     fn cursor_at(&self, offset: u64) -> Self::Cursor<'_>;
 }
 
-impl HasAsyncCursor for &[u8] {
+impl HasCursor for &[u8] {
     type Cursor<'a> = &'a [u8]
     where
         Self: 'a;
@@ -197,7 +195,7 @@ impl HasAsyncCursor for &[u8] {
     }
 }
 
-impl HasAsyncCursor for Vec<u8> {
+impl HasCursor for Vec<u8> {
     type Cursor<'a> = &'a [u8]
     where
         Self: 'a;
@@ -207,7 +205,7 @@ impl HasAsyncCursor for Vec<u8> {
     }
 }
 
-impl HasAsyncCursor for Arc<RandomAccessFile> {
+impl HasCursor for Arc<RandomAccessFile> {
     type Cursor<'a> = AsyncRandomAccessFileCursor
     where
         Self: 'a;
@@ -290,6 +288,48 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
                 }
             }
             ARAFCState::Transitioning => unreachable!(),
+        }
+    }
+}
+
+/// Allows reading zip entries in a streaming fashion, without seeking,
+/// based only on local headers. THIS IS NOT RECOMMENDED, as correctly
+/// reading zip files requires reading the central directory (located at
+/// the end of the file).
+///
+/// Using local headers only involves a lot of guesswork and is only really
+/// useful if you have some level of control over your input.
+pub trait ReadZipEntriesStreaming<R>
+where
+    R: AsyncRead,
+{
+    /// Get the first zip entry from the stream as a [StreamingEntryReader].
+    ///
+    /// See [ReadZipEntriesStreaming]'s documentation for why using this is
+    /// generally a bad idea: you might want to use [ReadZip] or
+    /// [ReadZipWithSize] instead.
+    #[allow(async_fn_in_trait)]
+    async fn read_first_zip_entry_streaming(self) -> Result<StreamingEntryReader<R>, Error>;
+}
+
+impl<R> ReadZipEntriesStreaming<R> for R
+where
+    R: AsyncRead + Unpin,
+{
+    async fn read_first_zip_entry_streaming(mut self) -> Result<StreamingEntryReader<Self>, Error> {
+        let mut fsm = EntryFsm::new(None, None);
+
+        loop {
+            if fsm.wants_read() {
+                let n = self.read(fsm.space()).await?;
+                trace!("read {} bytes into buf for first zip entry", n);
+                fsm.fill(n);
+            }
+
+            if let Some(entry) = fsm.process_till_header()? {
+                let entry = entry.clone();
+                return Ok(StreamingEntryReader::new(fsm, entry, self));
+            }
         }
     }
 }

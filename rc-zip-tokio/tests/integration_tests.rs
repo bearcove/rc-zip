@@ -4,11 +4,11 @@ use rc_zip::{
     error::Error,
     parse::Archive,
 };
-use rc_zip_tokio::{AsyncArchive, HasAsyncCursor, ReadZipAsync};
+use rc_zip_tokio::{ArchiveHandle, HasCursor, ReadZip};
 
 use std::sync::Arc;
 
-async fn check_case<F: HasAsyncCursor>(test: &Case, archive: Result<AsyncArchive<'_, F>, Error>) {
+async fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
     corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
     let archive = match archive {
         Ok(archive) => archive,
@@ -30,14 +30,14 @@ async fn check_case<F: HasAsyncCursor>(test: &Case, archive: Result<AsyncArchive
 async fn read_from_slice() {
     let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
     let slice = &bytes[..];
-    let archive = slice.read_zip_async().await.unwrap();
+    let archive = slice.read_zip().await.unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
 #[test_log::test(tokio::test)]
 async fn read_from_file() {
     let f = Arc::new(RandomAccessFile::open(zips_dir().join("test.zip")).unwrap());
-    let archive = f.read_zip_async().await.unwrap();
+    let archive = f.read_zip().await.unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
@@ -48,7 +48,7 @@ async fn real_world_files() {
 
         let guarded_path = case.absolute_path();
         let file = Arc::new(RandomAccessFile::open(&guarded_path.path).unwrap());
-        let archive = file.read_zip_async().await;
+        let archive = file.read_zip().await;
         check_case(&case, archive).await;
         drop(guarded_path)
     }

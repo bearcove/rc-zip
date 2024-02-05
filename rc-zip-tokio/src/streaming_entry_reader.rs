@@ -1,21 +1,26 @@
 use oval::Buffer;
+use pin_project_lite::pin_project;
 use rc_zip::{
     error::{Error, FormatError},
     fsm::{EntryFsm, FsmResult},
     parse::Entry,
 };
-use std::io::{self, Read};
+use std::{io, pin::Pin, task};
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tracing::trace;
 
-/// Reads a zip entry based on a local header. Some information is missing,
-/// not all name encodings may work, and only by reading it in its entirety
-/// can you move on to the next entry.
-///
-/// However, it only requires an [io::Read], and does not need to seek.
-pub struct StreamingEntryReader<R> {
-    entry: Entry,
-    rd: R,
-    state: State,
+pin_project! {
+    /// Reads a zip entry based on a local header. Some information is missing,
+    /// not all name encodings may work, and only by reading it in its entirety
+    /// can you move on to the next entry.
+    ///
+    /// However, it only requires an [AsyncRead], and does not need to seek.
+    pub struct StreamingEntryReader<R> {
+        entry: Entry,
+        #[pin]
+        rd: R,
+        state: State,
+    }
 }
 
 #[derive(Default)]
@@ -34,7 +39,7 @@ enum State {
 
 impl<R> StreamingEntryReader<R>
 where
-    R: io::Read,
+    R: AsyncRead,
 {
     pub(crate) fn new(fsm: EntryFsm, entry: Entry, rd: R) -> Self {
         Self {
@@ -45,63 +50,76 @@ where
     }
 }
 
-impl<R> io::Read for StreamingEntryReader<R>
+impl<R> AsyncRead for StreamingEntryReader<R>
 where
-    R: io::Read,
+    R: AsyncRead,
 {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> task::Poll<io::Result<()>> {
+        let this = self.as_mut().project();
+
         trace!("reading from streaming entry reader");
 
-        match std::mem::take(&mut self.state) {
+        match std::mem::take(this.state) {
             State::Reading { mut fsm } => {
                 if fsm.wants_read() {
                     trace!("fsm wants read");
-                    let n = self.rd.read(fsm.space())?;
+                    let mut buf = ReadBuf::new(fsm.space());
+                    match this.rd.poll_read(cx, &mut buf) {
+                        task::Poll::Ready(res) => res?,
+                        task::Poll::Pending => {
+                            *this.state = State::Reading { fsm };
+                            return task::Poll::Pending;
+                        }
+                    }
+                    let n = buf.filled().len();
+
                     trace!("giving fsm {} bytes from rd", n);
                     fsm.fill(n);
                 } else {
                     trace!("fsm does not want read");
                 }
 
-                match fsm.process(buf)? {
+                match fsm.process(buf.initialize_unfilled())? {
                     FsmResult::Continue((fsm, outcome)) => {
                         trace!("fsm wants to continue");
-                        self.state = State::Reading { fsm };
+                        *this.state = State::Reading { fsm };
 
                         if outcome.bytes_written > 0 {
                             trace!("bytes have been written");
-                            Ok(outcome.bytes_written)
+                            buf.advance(outcome.bytes_written);
                         } else if outcome.bytes_read == 0 {
                             trace!("no bytes have been written or read");
                             // that's EOF, baby!
-                            Ok(0)
                         } else {
                             trace!("read some bytes, hopefully will write more later");
                             // loop, it happens
-                            self.read(buf)
+                            return self.poll_read(cx, buf);
                         }
                     }
                     FsmResult::Done(remain) => {
-                        self.state = State::Finished { remain };
+                        *this.state = State::Finished { remain };
 
                         // neat!
-                        Ok(0)
                     }
                 }
             }
             State::Finished { remain } => {
                 // wait for them to call finish
-                self.state = State::Finished { remain };
-                Ok(0)
+                *this.state = State::Finished { remain };
             }
             State::Transition => unreachable!(),
         }
+        Ok(()).into()
     }
 }
 
 impl<R> StreamingEntryReader<R>
 where
-    R: io::Read,
+    R: AsyncRead + Unpin,
 {
     /// Return entry information for this reader
     #[inline(always)]
@@ -113,12 +131,12 @@ where
     /// any. This panics if the entry is not fully read.
     ///
     /// If this returns None, there's no entries left.
-    pub fn finish(mut self) -> Result<Option<StreamingEntryReader<R>>, Error> {
+    pub async fn finish(mut self) -> Result<Option<StreamingEntryReader<R>>, Error> {
         trace!("finishing streaming entry reader");
 
         if matches!(self.state, State::Reading { .. }) {
             // this should transition to finished if there's no data
-            _ = self.read(&mut [0u8; 1])?;
+            _ = self.read(&mut [0u8; 1]).await?;
         }
 
         match self.state {
@@ -131,7 +149,7 @@ where
 
                 loop {
                     if fsm.wants_read() {
-                        let n = self.rd.read(fsm.space())?;
+                        let n = self.rd.read(fsm.space()).await?;
                         trace!("read {} bytes into buf for first zip entry", n);
                         fsm.fill(n);
                     }

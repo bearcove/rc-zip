@@ -3,11 +3,11 @@ use rc_zip::{
     error::Error,
     parse::Archive,
 };
-use rc_zip_sync::{HasCursor, ReadZip, SyncArchive};
+use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip};
 
 use std::fs::File;
 
-fn check_case<F: HasCursor>(test: &Case, archive: Result<SyncArchive<'_, F>, Error>) {
+fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
     corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
     let archive = match archive {
         Ok(archive) => archive,

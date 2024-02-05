@@ -73,6 +73,8 @@ where
                 if outcome.bytes_written > 0 {
                     tracing::trace!("wrote {} bytes", outcome.bytes_written);
                     buf.advance(outcome.bytes_written);
+                } else if outcome.bytes_read == 0 {
+                    // that's EOF, baby!
                 } else {
                     // loop, it happens
                     return self.poll_read(cx, buf);

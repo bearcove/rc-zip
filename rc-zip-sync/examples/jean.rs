@@ -325,7 +325,6 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                         .expect("all full entry paths should have parent paths"),
                                 )?;
                                 let mut entry_writer = File::create(path)?;
-                                let mut entry_reader = entry.reader();
                                 std::io::copy(&mut entry_reader, &mut entry_writer)?;
                             } else {
                                 let path = dir.join(entry_name);

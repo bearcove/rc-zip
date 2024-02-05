@@ -223,7 +223,7 @@ pub fn check_case(test: &Case, archive: Result<&Archive, &Error>) {
         assert_eq!(expected, actual);
         return;
     }
-    let archive = archive.unwrap();
+    let archive = archive.unwrap_or_else(|_| panic!("{} should have succeeded", test.name));
 
     assert_eq!(case_bytes.len() as u64, archive.size());
 

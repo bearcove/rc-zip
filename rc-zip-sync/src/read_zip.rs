@@ -259,6 +259,9 @@ where
                 Ok(header) => {
                     let consumed = input.as_bytes().offset_from(&buf.data());
                     tracing::trace!(?header, %consumed, "Got local file header record!");
+                    // write extra bytes to `/tmp/extra.bin` for debugging
+                    std::fs::write("/tmp/extra.bin", input.as_bytes()).unwrap();
+                    tracing::trace!("wrote extra bytes to /tmp/extra.bin");
                     break header;
                 }
                 // TODO: keep reading if we don't have enough data

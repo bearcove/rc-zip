@@ -30,11 +30,11 @@ pub enum Encoding {
 
 impl fmt::Display for Encoding {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Encoding as T;
+        use Encoding::*;
         match self {
-            T::Utf8 => write!(f, "utf-8"),
-            T::Cp437 => write!(f, "cp-437"),
-            T::ShiftJis => write!(f, "shift-jis"),
+            Utf8 => write!(f, "utf-8"),
+            Cp437 => write!(f, "cp-437"),
+            ShiftJis => write!(f, "shift-jis"),
         }
     }
 }

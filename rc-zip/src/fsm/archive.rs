@@ -136,10 +136,11 @@ impl ArchiveFsm {
                     return Ok(FsmResult::Continue(self));
                 }
 
-                match {
+                let res = {
                     let haystack = &self.buffer.data()[..haystack_size as usize];
                     EndOfCentralDirectoryRecord::find_in_block(haystack)
-                } {
+                };
+                match res {
                     None => Err(FormatError::DirectoryEndSignatureNotFound.into()),
                     Some(eocdr) => {
                         trace!(

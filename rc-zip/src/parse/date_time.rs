@@ -43,7 +43,7 @@ impl MsdosTimestamp {
     /// Attempts to convert to a chrono UTC date time
     pub fn to_datetime(&self) -> Option<DateTime<Utc>> {
         // see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-dosdatetimetofiletime
-        let date = match {
+        let res = {
             // bits 0-4: day of the month (1-31)
             let d = (self.date & 0b1_1111) as u32;
             // bits 5-8: month (1 = january, 2 = february and so on)
@@ -51,7 +51,9 @@ impl MsdosTimestamp {
             // bits 9-15: year offset from 1980
             let y = ((self.date >> 9) + 1980) as i32;
             Utc.with_ymd_and_hms(y, m, d, 0, 0, 0)
-        } {
+        };
+
+        let date = match res {
             LocalResult::Single(date) => date,
             _ => return None,
         };

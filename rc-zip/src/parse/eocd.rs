@@ -245,7 +245,10 @@ impl<'a> EndOfCentralDirectory<'a> {
         // 0                   directory_offset - woops!                   directory_end_offset
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        let computed_directory_offset = res.located_directory_offset() - res.directory_size();
+        let computed_directory_offset = res
+            .located_directory_offset()
+            .checked_sub(res.directory_size())
+            .ok_or(FormatError::DirectoryOffsetPointsOutsideFile)?;
 
         // did we find a valid offset?
         if (0..size).contains(&computed_directory_offset) {

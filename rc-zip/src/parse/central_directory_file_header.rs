@@ -148,7 +148,9 @@ impl CentralDirectoryFileHeader<'_> {
             modified: self.modified.to_datetime().unwrap_or_else(zero_datetime),
             created: None,
             accessed: None,
-            header_offset: self.header_offset as u64 + global_offset,
+            header_offset: (self.header_offset as u64)
+                .checked_add(global_offset)
+                .ok_or(FormatError::InvalidHeaderOffset)?,
             reader_version: self.reader_version,
             flags: self.flags,
             uid: None,

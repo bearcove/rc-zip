@@ -38,7 +38,7 @@ jobs:
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true

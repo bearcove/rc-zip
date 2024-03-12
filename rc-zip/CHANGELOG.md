@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.1](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-v5.0.0...rc-zip-v5.0.1) - 2024-03-12
+
+### Other
+- Point rc-zip crate's README to its own README? release-plz is confused
+
 ## [5.0.0](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-v4.0.0...rc-zip-v5.0.0) - 2024-03-12
 
 ### Added

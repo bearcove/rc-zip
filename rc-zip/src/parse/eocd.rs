@@ -43,7 +43,7 @@ impl<'a> EndOfCentralDirectoryRecord<'a> {
 
     /// Find the end of central directory record in a block of data
     pub fn find_in_block(b: &'a [u8]) -> Option<Located<Self>> {
-        for i in (0..(b.len() - Self::MIN_LENGTH + 1)).rev() {
+        for i in (0..(b.len().saturating_sub(Self::MIN_LENGTH + 1))).rev() {
             let mut input = Partial::new(&b[i..]);
             if let Ok(directory) = Self::parser.parse_next(&mut input) {
                 return Some(Located {
@@ -245,7 +245,10 @@ impl<'a> EndOfCentralDirectory<'a> {
         // 0                   directory_offset - woops!                   directory_end_offset
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        let computed_directory_offset = res.located_directory_offset() - res.directory_size();
+        let computed_directory_offset = res
+            .located_directory_offset()
+            .checked_sub(res.directory_size())
+            .ok_or(FormatError::DirectoryOffsetPointsOutsideFile)?;
 
         // did we find a valid offset?
         if (0..size).contains(&computed_directory_offset) {

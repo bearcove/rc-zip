@@ -5,3 +5,6 @@ members = [
 	"rc-zip-sync",
 	"rc-zip-tokio",
 ]
+exclude = [
+    "fuzz"
+]

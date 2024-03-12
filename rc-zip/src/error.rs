@@ -120,7 +120,13 @@ pub enum FormatError {
     #[error("could not decode extra field")]
     InvalidExtraField,
 
-    /// End of central directory record claims an impossible number of file.
+    /// The header offset of an entry is invalid.
+    ///
+    /// This can indicate an invalid zip archive, or an invalid user-provided global offset
+    #[error("invalid header offset")]
+    InvalidHeaderOffset,
+
+    /// End of central directory record claims an impossible number of files.
     ///
     /// Each entry takes a minimum amount of size, so if the overall archive size is smaller than
     /// claimed_records_count * minimum_entry_size, we know it's not a valid zip file.

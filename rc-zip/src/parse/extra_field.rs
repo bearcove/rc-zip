@@ -210,7 +210,13 @@ impl<'a> ExtraUnixField<'a> {
     const TAG_INFOZIP: u16 = 0x5855;
 
     fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
-        let t_size = le_u16.parse_next(i)? - 12;
+        let t_size = le_u16.parse_next(i)?;
+
+        // t_size includes the size of the atime .. gid fields, totalling 12 bytes.
+        let t_size = t_size
+            .checked_sub(12)
+            .ok_or(ErrMode::from_error_kind(i, ErrorKind::Verify))?;
+
         seq! {Self {
             atime: le_u32,
             mtime: le_u32,

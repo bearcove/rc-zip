@@ -821,7 +821,7 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "rc-zip"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "bzip2",
  "cfg-if",

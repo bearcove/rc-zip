@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-tokio"
-version = "4.0.0"
+version = "4.0.1"
 description = "Asynchronous zip reading on top of rc-zip (for tokio I/O traits)"
 repository = "https://github.com/fasterthanlime/rc-zip"
 license = "Apache-2.0 OR MIT"
@@ -17,7 +17,7 @@ name = "rc_zip_tokio"
 path = "src/lib.rs"
 
 [dependencies]
-rc-zip = { version = "4.0.0", path = "../rc-zip" }
+rc-zip = { version = "5.0.0", path = "../rc-zip" }
 positioned-io = { version = "0.3.3" }
 tokio = { version = "1.35.1", features = ["fs", "io-util", "rt-multi-thread"] }
 futures = { version = "0.3.30" }
@@ -36,5 +36,5 @@ zstd = ["rc-zip/zstd"]
 [dev-dependencies]
 test-log = { version = "0.2.14", default-features = false, features = ["tracing-subscriber", "trace"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-rc-zip = { version = "4.0.0", path = "../rc-zip", features = ["corpus"] }
+rc-zip = { version = "5.0.0", path = "../rc-zip", features = ["corpus"] }
 tokio = { version = "1.35.1", features = ["rt", "macros"] }

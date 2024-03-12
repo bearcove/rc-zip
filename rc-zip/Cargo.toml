@@ -6,7 +6,7 @@ repository = "https://github.com/fasterthanlime/rc-zip"
 license = "Apache-2.0 OR MIT"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
 edition = "2021"
-readme = "../README.md"
+readme = "README.md"
 
 keywords = ["zip", "unzip"]
 categories = ["compression"]

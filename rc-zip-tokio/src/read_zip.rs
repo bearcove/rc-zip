@@ -3,7 +3,7 @@ use std::{
     ops::Deref,
     pin::Pin,
     sync::Arc,
-    task::{self, Context, Poll},
+    task::{Context, Poll},
 };
 
 use futures::future::BoxFuture;
@@ -67,18 +67,23 @@ where
                     Some(cstate) => {
                         if cstate.offset == offset {
                             // all good, re-using
+                            trace!(%offset, "read_zip_with_size: re-using cursor");
                             cstate
                         } else {
+                            trace!(%offset, %cstate.offset, "read_zip_with_size: making new cursor (had wrong offset)");
                             CursorState {
                                 cursor: self.cursor_at(offset),
                                 offset,
                             }
                         }
                     }
-                    None => CursorState {
-                        cursor: self.cursor_at(offset),
-                        offset,
-                    },
+                    None => {
+                        trace!(%offset, "read_zip_with_size: making new cursor (had none)");
+                        CursorState {
+                            cursor: self.cursor_at(offset),
+                            offset,
+                        }
+                    }
                 };
 
                 match cstate_next.cursor.read(fsm.space()).await {
@@ -248,9 +253,12 @@ impl HasCursor for Arc<RandomAccessFile> {
 
     fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
         AsyncRandomAccessFileCursor {
-            pos: offset,
             state: ARAFCState::Idle(ARAFCCore {
+                file_offset: offset,
                 inner_buf: vec![0u8; 128 * 1024],
+                // inner_buf: vec![0u8; 128],
+                inner_buf_len: 0,
+                inner_buf_offset: 0,
                 file: self.clone(),
             }),
         }
@@ -258,7 +266,18 @@ impl HasCursor for Arc<RandomAccessFile> {
 }
 
 struct ARAFCCore {
+    // offset we're reading from in the file
+    file_offset: u64,
+
+    // note: the length of this vec is the inner buffer capacity
     inner_buf: Vec<u8>,
+
+    // the start of data we haven't returned put to caller buffets yet
+    inner_buf_offset: usize,
+
+    // the end of data we haven't returned put to caller buffets yet
+    inner_buf_len: usize,
+
     file: Arc<RandomAccessFile>,
 }
 
@@ -268,7 +287,7 @@ type JoinResult<T> = Result<T, tokio::task::JoinError>;
 enum ARAFCState {
     Idle(ARAFCCore),
     Reading {
-        fut: BoxFuture<'static, JoinResult<(Result<usize, io::Error>, ARAFCCore)>>,
+        fut: BoxFuture<'static, JoinResult<Result<ARAFCCore, io::Error>>>,
     },
 
     #[default]
@@ -277,7 +296,6 @@ enum ARAFCState {
 
 /// A cursor for reading from a [RandomAccessFile] asynchronously.
 pub struct AsyncRandomAccessFileCursor {
-    pos: u64,
     state: ARAFCState,
 }
 
@@ -288,40 +306,64 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         match &mut self.state {
-            ARAFCState::Idle { .. } => {
-                let mut core = match std::mem::take(&mut self.state) {
-                    ARAFCState::Idle(core) => core,
-                    _ => unreachable!(),
+            ARAFCState::Idle(core) => {
+                if core.inner_buf_offset < core.inner_buf_len {
+                    trace!(inner_buf_offset = %core.inner_buf_offset, inner_buf_len = %core.inner_buf_len, avail = %(core.inner_buf_len - core.inner_buf_offset), "poll_read: have data in inner buffer");
+
+                    // we have data in the inner buffer, don't even need
+                    // to spawn a blocking task
+                    let read_len =
+                        cmp::min(buf.remaining(), core.inner_buf_len - core.inner_buf_offset);
+                    trace!(%read_len, "poll_read: putting slice");
+
+                    buf.put_slice(&core.inner_buf[core.inner_buf_offset..][..read_len]);
+                    core.inner_buf_offset += read_len;
+                    trace!(inner_buf_offset = %core.inner_buf_offset, inner_buf_len = %core.inner_buf_len, "poll_read: after put_slice");
+
+                    return Poll::Ready(Ok(()));
+                }
+
+                trace!("will have to issue a read call");
+
+                // this is just used to shadow core
+                #[allow(unused_variables, clippy::let_unit_value)]
+                let core = ();
+
+                let (file_offset, file, mut inner_buf) = {
+                    let core = match std::mem::take(&mut self.state) {
+                        ARAFCState::Idle(core) => core,
+                        _ => unreachable!(),
+                    };
+                    (core.file_offset, core.file, core.inner_buf)
                 };
-                let read_len = cmp::min(buf.remaining(), core.inner_buf.len());
-                let pos = self.pos;
+
                 let fut = Box::pin(tokio::task::spawn_blocking(move || {
-                    let read = core.file.read_at(pos, &mut core.inner_buf[..read_len]);
-                    (read, core)
+                    let read_bytes = file.read_at(file_offset, &mut inner_buf)?;
+                    trace!("read {} bytes", read_bytes);
+                    Ok(ARAFCCore {
+                        file_offset: file_offset + read_bytes as u64,
+                        file,
+                        inner_buf,
+                        inner_buf_len: read_bytes,
+                        inner_buf_offset: 0,
+                    })
                 }));
                 self.state = ARAFCState::Reading { fut };
                 self.poll_read(cx, buf)
             }
             ARAFCState::Reading { fut } => {
-                let (read, core) = match fut.as_mut().poll(cx) {
-                    Poll::Ready(Ok(r)) => r,
-                    Poll::Ready(Err(e)) => {
-                        return Poll::Ready(Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            e.to_string(),
-                        )))
-                    }
-                    Poll::Pending => return Poll::Pending,
-                };
-                match read {
-                    Ok(read) => {
-                        self.pos += read as u64;
-                        buf.put_slice(&core.inner_buf[..read]);
-                        self.state = ARAFCState::Idle(core);
-                        Poll::Ready(Ok(()))
-                    }
-                    Err(e) => Poll::Ready(Err(e)),
+                let core = futures::ready!(fut
+                    .as_mut()
+                    .poll(cx)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))??);
+                let is_eof = core.inner_buf_len == 0;
+                self.state = ARAFCState::Idle(core);
+
+                if is_eof {
+                    // we're at EOF
+                    return Poll::Ready(Ok(()));
                 }
+                self.poll_read(cx, buf)
             }
             ARAFCState::Transitioning => unreachable!(),
         }

@@ -202,141 +202,152 @@ impl EntryFsm {
         );
 
         use State as S;
-        match &mut self.state {
-            S::ReadLocalHeader => {
-                self.internal_process_local_header()?;
-                self.process(out)
-            }
-            S::ReadData {
-                compressed_bytes,
-                uncompressed_bytes,
-                hasher,
-                decompressor,
-                ..
-            } => {
-                let in_buf = self.buffer.data();
-
-                // don't feed the decompressor bytes beyond the entry's compressed size
-
-                let entry = self.entry.as_ref().unwrap();
-                let in_buf_max_len = cmp::min(
-                    in_buf.len(),
-                    entry.compressed_size as usize - *compressed_bytes as usize,
-                );
-                let in_buf = &in_buf[..in_buf_max_len];
-
-                let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
-                let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
-                    HasMoreInput::No
-                } else {
-                    HasMoreInput::Yes
-                };
-
-                trace!(
-                    compressed_bytes = *compressed_bytes,
-                    uncompressed_bytes = *uncompressed_bytes,
-                    fed_bytes_after_this,
-                    in_buf_len = in_buf.len(),
-                    ?has_more_input,
-                    "decompressing"
-                );
-
-                let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
-                trace!(
-                    ?outcome,
-                    compressed_bytes = *compressed_bytes,
-                    uncompressed_bytes = *uncompressed_bytes,
-                    "decompressed"
-                );
-                self.buffer.consume(outcome.bytes_read);
-                *compressed_bytes += outcome.bytes_read as u64;
-
-                if outcome.bytes_written == 0 && *compressed_bytes == entry.compressed_size {
-                    trace!("eof and no bytes written, we're done");
-
-                    // we're done, let's read the data descriptor (if there's one)
-                    transition!(self.state => (S::ReadData {  has_data_descriptor, is_zip64, uncompressed_bytes, hasher, .. }) {
-                        let metrics = EntryReadMetrics {
-                            uncompressed_size: uncompressed_bytes,
-                            crc32: hasher.finalize(),
+        'process_state: loop {
+            return match &mut self.state {
+                S::ReadLocalHeader => {
+                    if self.internal_process_local_header()? {
+                        // the local header was completed, let's keep going
+                        continue 'process_state;
+                    } else {
+                        // no buffer were touched, the local header wasn't complete
+                        let outcome = DecompressOutcome {
+                            bytes_read: 0,
+                            bytes_written: 0,
                         };
-
-                        if has_data_descriptor {
-                            trace!("transitioning to ReadDataDescriptor");
-                            S::ReadDataDescriptor { metrics, is_zip64 }
-                        } else {
-                            trace!("transitioning to Validate");
-                            S::Validate { metrics, descriptor: None }
-                        }
-                    });
-                    return self.process(out);
+                        Ok(FsmResult::Continue((self, outcome)))
+                    }
                 }
+                S::ReadData {
+                    compressed_bytes,
+                    uncompressed_bytes,
+                    hasher,
+                    decompressor,
+                    ..
+                } => {
+                    let in_buf = self.buffer.data();
 
-                // write the decompressed data to the hasher
-                hasher.update(&out[..outcome.bytes_written]);
-                // update the number of bytes we've decompressed
-                *uncompressed_bytes += outcome.bytes_written as u64;
+                    // don't feed the decompressor bytes beyond the entry's compressed size
 
-                trace!(
-                    compressed_bytes = *compressed_bytes,
-                    uncompressed_bytes = *uncompressed_bytes,
-                    "updated hasher"
-                );
+                    let entry = self.entry.as_ref().unwrap();
+                    let in_buf_max_len = cmp::min(
+                        in_buf.len(),
+                        entry.compressed_size as usize - *compressed_bytes as usize,
+                    );
+                    let in_buf = &in_buf[..in_buf_max_len];
 
-                Ok(FsmResult::Continue((self, outcome)))
-            }
-            S::ReadDataDescriptor { is_zip64, .. } => {
-                let mut input = Partial::new(self.buffer.data());
+                    let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
+                    let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
+                        HasMoreInput::No
+                    } else {
+                        HasMoreInput::Yes
+                    };
 
-                match DataDescriptorRecord::mk_parser(*is_zip64).parse_next(&mut input) {
-                    Ok(descriptor) => {
-                        self.buffer
-                            .consume(input.as_bytes().offset_from(&self.buffer.data()));
-                        trace!("data descriptor = {:#?}", descriptor);
-                        transition!(self.state => (S::ReadDataDescriptor { metrics, .. }) {
-                            S::Validate { metrics, descriptor: Some(descriptor) }
+                    trace!(
+                        compressed_bytes = *compressed_bytes,
+                        uncompressed_bytes = *uncompressed_bytes,
+                        fed_bytes_after_this,
+                        in_buf_len = in_buf.len(),
+                        ?has_more_input,
+                        "decompressing"
+                    );
+
+                    let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
+                    trace!(
+                        ?outcome,
+                        compressed_bytes = *compressed_bytes,
+                        uncompressed_bytes = *uncompressed_bytes,
+                        "decompressed"
+                    );
+                    self.buffer.consume(outcome.bytes_read);
+                    *compressed_bytes += outcome.bytes_read as u64;
+
+                    if outcome.bytes_written == 0 && *compressed_bytes == entry.compressed_size {
+                        trace!("eof and no bytes written, we're done");
+
+                        // we're done, let's read the data descriptor (if there's one)
+                        transition!(self.state => (S::ReadData {  has_data_descriptor, is_zip64, uncompressed_bytes, hasher, .. }) {
+                            let metrics = EntryReadMetrics {
+                                uncompressed_size: uncompressed_bytes,
+                                crc32: hasher.finalize(),
+                            };
+
+                            if has_data_descriptor {
+                                trace!("transitioning to ReadDataDescriptor");
+                                S::ReadDataDescriptor { metrics, is_zip64 }
+                            } else {
+                                trace!("transitioning to Validate");
+                                S::Validate { metrics, descriptor: None }
+                            }
                         });
-                        self.process(out)
+                        return self.process(out);
                     }
-                    Err(ErrMode::Incomplete(_)) => {
-                        Ok(FsmResult::Continue((self, Default::default())))
+
+                    // write the decompressed data to the hasher
+                    hasher.update(&out[..outcome.bytes_written]);
+                    // update the number of bytes we've decompressed
+                    *uncompressed_bytes += outcome.bytes_written as u64;
+
+                    trace!(
+                        compressed_bytes = *compressed_bytes,
+                        uncompressed_bytes = *uncompressed_bytes,
+                        "updated hasher"
+                    );
+
+                    Ok(FsmResult::Continue((self, outcome)))
+                }
+                S::ReadDataDescriptor { is_zip64, .. } => {
+                    let mut input = Partial::new(self.buffer.data());
+
+                    match DataDescriptorRecord::mk_parser(*is_zip64).parse_next(&mut input) {
+                        Ok(descriptor) => {
+                            self.buffer
+                                .consume(input.as_bytes().offset_from(&self.buffer.data()));
+                            trace!("data descriptor = {:#?}", descriptor);
+                            transition!(self.state => (S::ReadDataDescriptor { metrics, .. }) {
+                                S::Validate { metrics, descriptor: Some(descriptor) }
+                            });
+                            self.process(out)
+                        }
+                        Err(ErrMode::Incomplete(_)) => {
+                            Ok(FsmResult::Continue((self, Default::default())))
+                        }
+                        Err(_e) => Err(Error::Format(FormatError::InvalidDataDescriptor)),
                     }
-                    Err(_e) => Err(Error::Format(FormatError::InvalidDataDescriptor)),
                 }
-            }
-            S::Validate {
-                metrics,
-                descriptor,
-            } => {
-                let entry = self.entry.as_ref().unwrap();
+                S::Validate {
+                    metrics,
+                    descriptor,
+                } => {
+                    let entry = self.entry.as_ref().unwrap();
 
-                let expected_crc32 = if entry.crc32 != 0 {
-                    entry.crc32
-                } else if let Some(descriptor) = descriptor.as_ref() {
-                    descriptor.crc32
-                } else {
-                    0
-                };
+                    let expected_crc32 = if entry.crc32 != 0 {
+                        entry.crc32
+                    } else if let Some(descriptor) = descriptor.as_ref() {
+                        descriptor.crc32
+                    } else {
+                        0
+                    };
 
-                if entry.uncompressed_size != metrics.uncompressed_size {
-                    return Err(Error::Format(FormatError::WrongSize {
-                        expected: entry.uncompressed_size,
-                        actual: metrics.uncompressed_size,
-                    }));
+                    if entry.uncompressed_size != metrics.uncompressed_size {
+                        return Err(Error::Format(FormatError::WrongSize {
+                            expected: entry.uncompressed_size,
+                            actual: metrics.uncompressed_size,
+                        }));
+                    }
+
+                    if expected_crc32 != 0 && expected_crc32 != metrics.crc32 {
+                        return Err(Error::Format(FormatError::WrongChecksum {
+                            expected: expected_crc32,
+                            actual: metrics.crc32,
+                        }));
+                    }
+
+                    Ok(FsmResult::Done(self.buffer))
                 }
-
-                if expected_crc32 != 0 && expected_crc32 != metrics.crc32 {
-                    return Err(Error::Format(FormatError::WrongChecksum {
-                        expected: expected_crc32,
-                        actual: metrics.crc32,
-                    }));
+                S::Transition => {
+                    unreachable!("the state machine should never be in the transition state")
                 }
-
-                Ok(FsmResult::Done(self.buffer))
-            }
-            S::Transition => {
-                unreachable!("the state machine should never be in the transition state")
-            }
+            };
         }
     }
 

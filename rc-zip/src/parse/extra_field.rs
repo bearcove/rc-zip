@@ -7,7 +7,7 @@ use winnow::{
     combinator::{opt, preceded, repeat_till},
     error::{ErrMode, ErrorKind, ParserError, StrContext},
     seq,
-    token::{tag, take},
+    token::{literal, take},
     PResult, Parser, Partial,
 };
 
@@ -258,7 +258,7 @@ impl ExtraNewUnixField {
     const TAG: u16 = 0x7875;
 
     fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        let _ = tag("\x01").parse_next(i)?;
+        let _ = literal("\x01").parse_next(i)?;
         seq! {Self {
             uid: Self::parse_variable_length_integer,
             gid: Self::parse_variable_length_integer,

@@ -105,8 +105,5 @@ impl NtfsTimestamp {
 }
 
 pub(crate) fn zero_datetime() -> chrono::DateTime<chrono::offset::Utc> {
-    chrono::DateTime::from_naive_utc_and_offset(
-        chrono::naive::NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
-        chrono::offset::Utc,
-    )
+    chrono::DateTime::<Utc>::from_timestamp_millis(0).unwrap()
 }

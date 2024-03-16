@@ -5,7 +5,7 @@ use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32},
     prelude::PResult,
-    token::{tag, take},
+    token::{literal, take},
     Parser, Partial,
 };
 
@@ -75,7 +75,7 @@ impl<'a> CentralDirectoryFileHeader<'a> {
 
     /// Parser for the central directory file header
     pub fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
-        _ = tag(Self::SIGNATURE).parse_next(i)?;
+        _ = literal(Self::SIGNATURE).parse_next(i)?;
         let creator_version = Version::parser.parse_next(i)?;
         let reader_version = Version::parser.parse_next(i)?;
         let flags = le_u16.parse_next(i)?;

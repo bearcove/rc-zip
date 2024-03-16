@@ -13,7 +13,7 @@ use winnow::{
     combinator::opt,
     error::{ContextError, ErrMode, ErrorKind, FromExternalError},
     seq,
-    token::{tag, take},
+    token::{literal, take},
     PResult, Parser, Partial,
 };
 
@@ -69,7 +69,7 @@ impl<'a> LocalFileHeader<'a> {
 
     /// Parser for the local file header
     pub fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
-        let _ = tag(Self::SIGNATURE).parse_next(i)?;
+        let _ = literal(Self::SIGNATURE).parse_next(i)?;
 
         let reader_version = Version::parser.parse_next(i)?;
         let flags = le_u16.parse_next(i)?;
@@ -204,7 +204,7 @@ impl DataDescriptorRecord {
             // MAY be encountered with or without this signature marking data
             // descriptors and SHOULD account for either case when reading ZIP files
             // to ensure compatibility.
-            let _ = opt(tag(Self::SIGNATURE)).parse_next(i)?;
+            let _ = opt(literal(Self::SIGNATURE)).parse_next(i)?;
 
             if is_zip64 {
                 seq! {Self {

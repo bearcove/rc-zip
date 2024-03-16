@@ -40,13 +40,40 @@ where
     type File = F;
 
     fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, F>, Error> {
-        trace!(%size, "read_zip_with_size");
+        struct CursorState<'a, F: HasCursor + 'a> {
+            cursor: <F as HasCursor>::Cursor<'a>,
+            offset: u64,
+        }
+        let mut cstate: Option<CursorState<'_, F>> = None;
+
         let mut fsm = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = fsm.wants_read() {
                 trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
-                match self.cursor_at(offset).read(fsm.space()) {
+
+                let mut cstate_next = match cstate.take() {
+                    Some(cstate) => {
+                        if cstate.offset == offset {
+                            // all good, re-using
+                            cstate
+                        } else {
+                            CursorState {
+                                cursor: self.cursor_at(offset),
+                                offset,
+                            }
+                        }
+                    }
+                    None => CursorState {
+                        cursor: self.cursor_at(offset),
+                        offset,
+                    },
+                };
+
+                match cstate_next.cursor.read(fsm.space()) {
                     Ok(read_bytes) => {
+                        cstate_next.offset += read_bytes as u64;
+                        cstate = Some(cstate_next);
+
                         trace!(%read_bytes, "read_zip_with_size: read");
                         if read_bytes == 0 {
                             return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));

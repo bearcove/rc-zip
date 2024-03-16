@@ -1,4 +1,10 @@
-use std::{cmp, io, ops::Deref, pin::Pin, sync::Arc, task};
+use std::{
+    cmp, io,
+    ops::Deref,
+    pin::Pin,
+    sync::Arc,
+    task::{self, Context, Poll},
+};
 
 use futures::future::BoxFuture;
 use positioned_io::{RandomAccessFile, ReadAt, Size};
@@ -278,9 +284,9 @@ pub struct AsyncRandomAccessFileCursor {
 impl AsyncRead for AsyncRandomAccessFileCursor {
     fn poll_read(
         mut self: Pin<&mut Self>,
-        cx: &mut task::Context<'_>,
+        cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> task::Poll<io::Result<()>> {
+    ) -> Poll<io::Result<()>> {
         match &mut self.state {
             ARAFCState::Idle { .. } => {
                 let mut core = match std::mem::take(&mut self.state) {
@@ -298,23 +304,23 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
             }
             ARAFCState::Reading { fut } => {
                 let (read, core) = match fut.as_mut().poll(cx) {
-                    task::Poll::Ready(Ok(r)) => r,
-                    task::Poll::Ready(Err(e)) => {
-                        return task::Poll::Ready(Err(io::Error::new(
+                    Poll::Ready(Ok(r)) => r,
+                    Poll::Ready(Err(e)) => {
+                        return Poll::Ready(Err(io::Error::new(
                             io::ErrorKind::Other,
                             e.to_string(),
                         )))
                     }
-                    task::Poll::Pending => return task::Poll::Pending,
+                    Poll::Pending => return Poll::Pending,
                 };
                 match read {
                     Ok(read) => {
                         self.pos += read as u64;
                         buf.put_slice(&core.inner_buf[..read]);
                         self.state = ARAFCState::Idle(core);
-                        task::Poll::Ready(Ok(()))
+                        Poll::Ready(Ok(()))
                     }
-                    Err(e) => task::Poll::Ready(Err(e)),
+                    Err(e) => Poll::Ready(Err(e)),
                 }
             }
             ARAFCState::Transitioning => unreachable!(),

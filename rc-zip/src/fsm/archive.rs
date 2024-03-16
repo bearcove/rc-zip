@@ -489,8 +489,9 @@ impl Buffer {
         self.buffer.consume(size);
     }
 
-    /// computes an absolute offset, given an offset relative
-    /// to the current read position
+    /// adds already-read bytes to the given offset. this is useful in
+    /// [ArchiveFsm], when we read records at fixed offsets within the file,
+    /// that possibly take several reads to fully parse.
     pub(crate) fn read_offset(&self, offset: u64) -> u64 {
         self.read_bytes + offset
     }

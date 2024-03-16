@@ -5,7 +5,7 @@ use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, length_take},
     seq,
-    token::tag,
+    token::literal,
     PResult, Parser, Partial,
 };
 
@@ -57,7 +57,7 @@ impl<'a> EndOfCentralDirectoryRecord<'a> {
 
     /// Parser for the end of central directory record
     pub fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
-        let _ = tag(Self::SIGNATURE).parse_next(i)?;
+        let _ = literal(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
             disk_nbr: le_u16,
             dir_disk_nbr: le_u16,
@@ -89,7 +89,7 @@ impl EndOfCentralDirectory64Locator {
 
     /// Parser for the zip64 end of central directory locator
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        _ = tag(Self::SIGNATURE).parse_next(i)?;
+        _ = literal(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
             dir_disk_number: le_u32,
             directory_offset: le_u64,
@@ -136,7 +136,7 @@ impl EndOfCentralDirectory64Record {
 
     /// Parser for the zip64 end of central directory record
     pub fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        _ = tag(Self::SIGNATURE).parse_next(i)?;
+        _ = literal(Self::SIGNATURE).parse_next(i)?;
         seq! {Self {
             record_size: le_u64,
             creator_version: le_u16,

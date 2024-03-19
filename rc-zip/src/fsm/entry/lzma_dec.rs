@@ -54,6 +54,7 @@ impl Decompressor for LzmaDec {
                 ?outcome,
                 "decompress",
             );
+
             self.copy_to_out(out, &mut outcome);
             if outcome.bytes_written > 0 {
                 trace!(
@@ -74,22 +75,15 @@ impl Decompressor for LzmaDec {
                     outcome.bytes_read += n;
                     in_buf = &in_buf[n..];
 
-                    // if we wrote some (but not all) of the input, and we haven't
-                    // gotten any output, then we need to loop
-                    if n != 0 && n < in_buf.len() && self.internal_buf_mut().is_empty() {
-                        // note: the n != 0 here is because apparently there can be a 10-byte
-                        // trailer after LZMA compressed data? and the decoder will _refuse_
-                        // to let us write them, so when we have just these 10 bytes left,
-                        // it's good to just let the decoder finish up.
-                        trace!("didn't write all output AND no output yet, so keep going");
-                        // FIXME: that's wrong! bytes_read is reset when we recurse.
-                        // use a loop instead.
+                    // if we wrote some of the input, and we haven't gotten any
+                    // output, then we need to loop
+                    if n > 0 && n < in_buf.len() && self.internal_buf_mut().is_empty() {
+                        trace!("fed _some_ to the decoder and no output yet, keep going");
                         continue;
                     }
 
                     match has_more_input {
                         HasMoreInput::Yes => {
-                            // keep going
                             trace!("more input to come");
                         }
                         HasMoreInput::No => {

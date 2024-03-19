@@ -34,7 +34,6 @@ bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
 
 [dev-dependencies]
-test-log = { version = "0.2.14", default-features = false, features = ["tracing-subscriber", "trace"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 rc-zip = { version = "5.0.1", path = "../rc-zip", features = ["corpus"] }
 tokio = { version = "1.35.1", features = ["rt", "macros"] }

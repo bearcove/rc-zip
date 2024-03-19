@@ -27,23 +27,29 @@ async fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_,
     }
 }
 
-#[test_log::test(tokio::test)]
+#[tokio::test]
 async fn read_from_slice() {
+    corpus::install_test_subscriber();
+
     let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
     let slice = &bytes[..];
     let archive = slice.read_zip().await.unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
-#[test_log::test(tokio::test)]
+#[tokio::test]
 async fn read_from_file() {
+    corpus::install_test_subscriber();
+
     let f = Arc::new(RandomAccessFile::open(zips_dir().join("test.zip")).unwrap());
     let archive = f.read_zip().await.unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
-#[test_log::test(tokio::test)]
+#[tokio::test]
 async fn real_world_files() {
+    corpus::install_test_subscriber();
+
     for case in corpus::test_cases() {
         tracing::info!("============ testing {}", case.name);
 
@@ -62,8 +68,10 @@ async fn real_world_files() {
     }
 }
 
-#[test_log::test(tokio::test)]
+#[tokio::test]
 async fn streaming() {
+    corpus::install_test_subscriber();
+
     for case in corpus::streaming_test_cases() {
         let guarded_path = case.absolute_path();
         let file = tokio::fs::File::open(&guarded_path.path).await.unwrap();

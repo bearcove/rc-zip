@@ -30,23 +30,29 @@ fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, E
     }
 }
 
-#[test_log::test]
+#[test]
 fn read_from_slice() {
+    corpus::install_test_subscriber();
+
     let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
     let slice = &bytes[..];
     let archive = slice.read_zip().unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
-#[test_log::test]
+#[test]
 fn read_from_file() {
+    corpus::install_test_subscriber();
+
     let f = File::open(zips_dir().join("test.zip")).unwrap();
     let archive = f.read_zip().unwrap();
     assert_eq!(archive.entries().count(), 2);
 }
 
-#[test_log::test]
+#[test]
 fn real_world_files() {
+    corpus::install_test_subscriber();
+
     for case in corpus::test_cases() {
         tracing::info!("============ testing {}", case.name);
 
@@ -65,8 +71,10 @@ fn real_world_files() {
     }
 }
 
-#[test_log::test]
+#[test]
 fn streaming() {
+    corpus::install_test_subscriber();
+
     for case in corpus::streaming_test_cases() {
         let guarded_path = case.absolute_path();
         let file = File::open(&guarded_path.path).unwrap();

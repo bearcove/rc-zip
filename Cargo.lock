@@ -785,9 +785,9 @@ dependencies = [
  "oval",
  "ownable",
  "temp-dir",
- "test-log",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
  "winnow",
  "zstd",
 ]
@@ -804,7 +804,6 @@ dependencies = [
  "oval",
  "positioned-io",
  "rc-zip",
- "test-log",
  "tracing",
  "tracing-subscriber",
 ]
@@ -818,7 +817,6 @@ dependencies = [
  "pin-project-lite",
  "positioned-io",
  "rc-zip",
- "test-log",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -963,27 +961,6 @@ name = "temp-dir"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd16aa9ffe15fe021c6ee3766772132c6e98dfa395a167e16864f61a9cfb71d6"
-
-[[package]]
-name = "test-log"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b319995299c65d522680decf80f2c108d85b861d81dfe340a10d16cee29d9e6"
-dependencies = [
- "test-log-macros",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "test-log-macros"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8f546451eaa38373f549093fe9fd05e7d2bade739e2ddf834b9968621d60107"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "thiserror"

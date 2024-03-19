@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-v5.0.1...rc-zip-v5.1.0) - 2024-03-19
+
+### Added
+- Measure code coverage differently ([#79](https://github.com/fasterthanlime/rc-zip/pull/79))
+- Run one-byte-read tests in CI in release ([#77](https://github.com/fasterthanlime/rc-zip/pull/77))
+- Resolve winnow + chrono deprecations ([#70](https://github.com/fasterthanlime/rc-zip/pull/70))
+
+### Fixed
+- lzma_dec: count all input in outcome.bytes_read
+- In Entry FSM, don't recurse infinitely if buffer doesn't contain full local header
+- Fix doc comment for read_offset
+
+### Other
+- Fix zstd bug similar to lzma bug
+
 ## [5.0.1](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-v5.0.0...rc-zip-v5.0.1) - 2024-03-12
 
 ### Other

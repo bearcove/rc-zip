@@ -87,6 +87,7 @@ impl Decompressor for DeflateDec {
             self.out_pos,
             flags,
         );
+        trace!(%bytes_read, %bytes_written, ?status, "decompress returned");
         outcome.bytes_read += bytes_read;
         self.remain_in_internal_buffer += bytes_written;
 
@@ -115,6 +116,7 @@ impl Decompressor for DeflateDec {
 			},
         }
 
+        trace!("calling copy_to_out");
         self.copy_to_out(out, &mut outcome);
         Ok(outcome)
     }

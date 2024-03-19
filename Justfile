@@ -24,9 +24,9 @@ ci-test:
 	cargo llvm-cov clean --workspace
 
 	export RUST_LOG=trace
-	cargo nextest run --all-features --profile ci
+	cargo nextest run --release --all-features --profile ci
 	export ONE_BYTE_READ=1
-	cargo nextest run --all-features --profile ci
+	cargo nextest run --release --all-features --profile ci
 
-	cargo llvm-cov report --ignore-filename-regex 'corpus/mod\.rs$' --lcov --output-path coverage.lcov
-	cargo llvm-cov report --ignore-filename-regex 'corpus/mod\.rs$' --html
+	cargo llvm-cov report --release --ignore-filename-regex 'corpus/mod\.rs$' --lcov --output-path coverage.lcov
+	cargo llvm-cov report --release --ignore-filename-regex 'corpus/mod\.rs$' --html

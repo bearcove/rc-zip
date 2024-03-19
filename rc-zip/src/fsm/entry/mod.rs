@@ -225,15 +225,21 @@ impl EntryFsm {
                     ..
                 } => {
                     let in_buf = self.buffer.data();
+                    let entry = self.entry.as_ref().unwrap();
+
+                    // do we have more input to feed to the decompressor?
+                    // if so, don't give it an empty read
+                    if in_buf.is_empty() && *compressed_bytes < entry.compressed_size {
+                        return Ok(FsmResult::Continue((self, Default::default())));
+                    }
 
                     // don't feed the decompressor bytes beyond the entry's compressed size
-
-                    let entry = self.entry.as_ref().unwrap();
                     let in_buf_max_len = cmp::min(
                         in_buf.len(),
                         entry.compressed_size as usize - *compressed_bytes as usize,
                     );
                     let in_buf = &in_buf[..in_buf_max_len];
+                    let bytes_fed_this_turn = in_buf.len();
 
                     let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
                     let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
@@ -282,7 +288,14 @@ impl EntryFsm {
                         });
                         return self.process(out);
                     } else if outcome.bytes_written == 0 && outcome.bytes_read == 0 {
-                        panic!("decompressor didn't read anything and didn't write anything?")
+                        if bytes_fed_this_turn == 0 {
+                            return Err(Error::IO(std::io::Error::new(
+                                std::io::ErrorKind::UnexpectedEof,
+                                "decompressor made no progress: this is probably an rc-zip bug",
+                            )));
+                        } else {
+                            // ok fine, continue
+                        }
                     }
 
                     // write the decompressed data to the hasher

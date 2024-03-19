@@ -89,7 +89,7 @@ fn streaming() {
     }
 }
 
-// This helps find bug in state machines!
+// This helps find bugs in state machines!
 
 struct OneByteReadWrapper<R>(R);
 

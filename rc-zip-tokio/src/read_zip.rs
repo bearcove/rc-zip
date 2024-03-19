@@ -61,13 +61,10 @@ where
         let mut fsm = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = fsm.wants_read() {
-                trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
-
                 let mut cstate_next = match cstate.take() {
                     Some(cstate) => {
                         if cstate.offset == offset {
                             // all good, re-using
-                            trace!(%offset, "read_zip_with_size: re-using cursor");
                             cstate
                         } else {
                             trace!(%offset, %cstate.offset, "read_zip_with_size: making new cursor (had wrong offset)");
@@ -91,7 +88,7 @@ where
                         cstate_next.offset += read_bytes as u64;
                         cstate = Some(cstate_next);
 
-                        trace!(%read_bytes, "read_zip_with_size: read");
+                        trace!(%read_bytes, "filling fsm");
                         if read_bytes == 0 {
                             return Err(Error::IO(io::ErrorKind::UnexpectedEof.into()));
                         }
@@ -308,22 +305,17 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
         match &mut self.state {
             ARAFCState::Idle(core) => {
                 if core.inner_buf_offset < core.inner_buf_len {
-                    trace!(inner_buf_offset = %core.inner_buf_offset, inner_buf_len = %core.inner_buf_len, avail = %(core.inner_buf_len - core.inner_buf_offset), "poll_read: have data in inner buffer");
-
                     // we have data in the inner buffer, don't even need
                     // to spawn a blocking task
                     let read_len =
                         cmp::min(buf.remaining(), core.inner_buf_len - core.inner_buf_offset);
-                    trace!(%read_len, "poll_read: putting slice");
 
                     buf.put_slice(&core.inner_buf[core.inner_buf_offset..][..read_len]);
                     core.inner_buf_offset += read_len;
-                    trace!(inner_buf_offset = %core.inner_buf_offset, inner_buf_len = %core.inner_buf_len, "poll_read: after put_slice");
+                    trace!(inner_buf_offset = %core.inner_buf_offset, inner_buf_len = %core.inner_buf_len, "read from inner buffer");
 
                     return Poll::Ready(Ok(()));
                 }
-
-                trace!("will have to issue a read call");
 
                 // this is just used to shadow core
                 #[allow(unused_variables, clippy::let_unit_value)]
@@ -339,7 +331,7 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
 
                 let fut = Box::pin(tokio::task::spawn_blocking(move || {
                     let read_bytes = file.read_at(file_offset, &mut inner_buf)?;
-                    trace!("read {} bytes", read_bytes);
+                    trace!(%read_bytes, "read from file");
                     Ok(ARAFCCore {
                         file_offset: file_offset + read_bytes as u64,
                         file,

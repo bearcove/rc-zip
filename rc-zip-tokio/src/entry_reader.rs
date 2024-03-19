@@ -42,48 +42,53 @@ where
         cx: &mut task::Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> task::Poll<std::io::Result<()>> {
-        let this = self.as_mut().project();
+        let mut this = self.as_mut().project();
 
-        let mut fsm = match this.fsm.take() {
-            Some(fsm) => fsm,
-            None => return Ok(()).into(),
-        };
+        loop {
+            let mut fsm = match this.fsm.take() {
+                Some(fsm) => fsm,
+                None => return Ok(()).into(),
+            };
 
-        if fsm.wants_read() {
-            tracing::trace!(space_avail = fsm.space().len(), "fsm wants read");
-            let mut buf = ReadBuf::new(fsm.space());
-            match this.rd.poll_read(cx, &mut buf) {
-                task::Poll::Ready(res) => res?,
-                task::Poll::Pending => {
+            let filled_bytes;
+            if fsm.wants_read() {
+                tracing::trace!(space_avail = fsm.space().len(), "fsm wants read");
+                let mut buf = ReadBuf::new(fsm.space());
+                match this.rd.as_mut().poll_read(cx, &mut buf) {
+                    task::Poll::Ready(res) => res?,
+                    task::Poll::Pending => {
+                        *this.fsm = Some(fsm);
+                        return task::Poll::Pending;
+                    }
+                }
+                let n = buf.filled().len();
+
+                tracing::trace!("read {} bytes", n);
+                fsm.fill(n);
+                filled_bytes = n;
+            } else {
+                tracing::trace!("fsm does not want read");
+                filled_bytes = 0;
+            }
+
+            match fsm.process(buf.initialize_unfilled())? {
+                FsmResult::Continue((fsm, outcome)) => {
                     *this.fsm = Some(fsm);
-                    return task::Poll::Pending;
+                    if outcome.bytes_written > 0 {
+                        tracing::trace!("wrote {} bytes", outcome.bytes_written);
+                        buf.advance(outcome.bytes_written);
+                    } else if filled_bytes > 0 {
+                        // keep reading
+                        continue;
+                    } else {
+                        // that's EOF, baby!
+                    }
+                }
+                FsmResult::Done(_) => {
+                    // neat!
                 }
             }
-            let n = buf.filled().len();
-
-            tracing::trace!("read {} bytes", n);
-            fsm.fill(n);
-        } else {
-            tracing::trace!("fsm does not want read");
+            return Ok(()).into();
         }
-
-        match fsm.process(buf.initialize_unfilled())? {
-            FsmResult::Continue((fsm, outcome)) => {
-                *this.fsm = Some(fsm);
-                if outcome.bytes_written > 0 {
-                    tracing::trace!("wrote {} bytes", outcome.bytes_written);
-                    buf.advance(outcome.bytes_written);
-                } else if outcome.bytes_read == 0 {
-                    // that's EOF, baby!
-                } else {
-                    // loop, it happens
-                    return self.poll_read(cx, buf);
-                }
-            }
-            FsmResult::Done(_) => {
-                // neat!
-            }
-        }
-        Ok(()).into()
     }
 }

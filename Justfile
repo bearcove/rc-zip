@@ -23,4 +23,5 @@ ci-test:
 	source <(cargo llvm-cov show-env --export-prefix)
 	cargo llvm-cov clean --workspace
 	cargo nextest run --all-features --profile ci
+	ONE_BYTE_READ=1 cargo nextest run --all-features --release --profile ci
 	cargo llvm-cov report --lcov --output-path coverage.lcov

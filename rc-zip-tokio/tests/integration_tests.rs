@@ -101,7 +101,7 @@ where
         buf: &mut ReadBuf<'_>,
     ) -> task::Poll<std::io::Result<()>> {
         let mut inner_buf = buf.take(1);
-        futures::ready!(
+        futures_util::ready!(
             unsafe { self.map_unchecked_mut(|s| &mut s.0) }.poll_read(cx, &mut inner_buf)
         )?;
         let n = inner_buf.filled().len();

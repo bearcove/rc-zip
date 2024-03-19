@@ -20,7 +20,7 @@ path = "src/lib.rs"
 rc-zip = { version = "5.0.1", path = "../rc-zip" }
 positioned-io = { version = "0.3.3" }
 tokio = { version = "1.35.1", features = ["fs", "io-util", "rt-multi-thread"] }
-futures = { version = "0.3.30" }
+futures-util = { version = "0.3.30" }
 pin-project-lite = { version = "0.2.13" }
 oval = "2.0.0"
 tracing = "0.1.40"

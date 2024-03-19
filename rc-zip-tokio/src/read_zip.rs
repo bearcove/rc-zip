@@ -6,7 +6,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::future::BoxFuture;
+use futures_util::future::BoxFuture;
 use positioned_io::{RandomAccessFile, ReadAt, Size};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
@@ -344,7 +344,7 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
                 self.poll_read(cx, buf)
             }
             ARAFCState::Reading { fut } => {
-                let core = futures::ready!(fut
+                let core = futures_util::ready!(fut
                     .as_mut()
                     .poll(cx)
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))??);

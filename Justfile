@@ -22,6 +22,11 @@ ci-test:
 	#!/bin/bash -eux
 	source <(cargo llvm-cov show-env --export-prefix)
 	cargo llvm-cov clean --workspace
+
+	export RUST_LOG=trace
 	cargo nextest run --all-features --profile ci
-	ONE_BYTE_READ=1 cargo nextest run --all-features --release --profile ci
-	cargo llvm-cov report --lcov --output-path coverage.lcov
+	export ONE_BYTE_READ=1
+	cargo nextest run --all-features --profile ci
+
+	cargo llvm-cov report --ignore-filename-regex 'corpus/mod\.rs$' --lcov --output-path coverage.lcov
+	cargo llvm-cov report --ignore-filename-regex 'corpus/mod\.rs$' --html

@@ -6,6 +6,7 @@ use std::{fs::File, path::PathBuf};
 
 use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 use temp_dir::TempDir;
+use tracing::span;
 
 use crate::{
     encoding::Encoding,
@@ -346,5 +347,58 @@ pub fn check_file_against(file: &CaseFile, entry: &Entry, actual_bytes: &[u8]) {
         EntryKind::Symlink | EntryKind::Directory => {
             assert!(matches!(file.content, FileContent::Unchecked));
         }
+    }
+}
+
+// This test subscriber is used to suppress trace-level logs (yet executes
+// the code, for coverage reasons)
+pub fn install_test_subscriber() {
+    let env_filter = tracing_subscriber::EnvFilter::builder().from_env_lossy();
+    let sub = tracing_subscriber::FmtSubscriber::builder()
+        .with_env_filter(env_filter)
+        .with_test_writer()
+        .finish();
+    let sub = DebugOnlySubscriber { inner: sub };
+    tracing::subscriber::set_global_default(sub).unwrap()
+}
+
+struct DebugOnlySubscriber<S> {
+    inner: S,
+}
+
+impl<S> tracing::Subscriber for DebugOnlySubscriber<S>
+where
+    S: tracing::Subscriber,
+{
+    fn enabled(&self, _metadata: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, span: &span::Attributes<'_>) -> span::Id {
+        self.inner.new_span(span)
+    }
+
+    fn record(&self, span: &span::Id, values: &span::Record<'_>) {
+        self.inner.record(span, values)
+    }
+
+    fn record_follows_from(&self, span: &span::Id, follows: &span::Id) {
+        self.inner.record_follows_from(span, follows)
+    }
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        if *event.metadata().level() == tracing::Level::TRACE {
+            return;
+        }
+
+        self.inner.event(event)
+    }
+
+    fn enter(&self, span: &span::Id) {
+        self.inner.enter(span)
+    }
+
+    fn exit(&self, span: &span::Id) {
+        self.inner.exit(span)
     }
 }

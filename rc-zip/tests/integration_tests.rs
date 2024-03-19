@@ -5,8 +5,10 @@ use rc_zip::{
     fsm::{ArchiveFsm, FsmResult},
 };
 
-#[test_log::test]
+#[test]
 fn state_machine() {
+    corpus::install_test_subscriber();
+
     let cases = corpus::test_cases();
     let case = cases.iter().find(|x| x.name == "zip64.zip").unwrap();
     let bytes = case.bytes();

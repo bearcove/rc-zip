@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-sync-v4.0.1...rc-zip-sync-v4.1.0) - 2024-03-19
+
+### Added
+- Measure code coverage differently ([#79](https://github.com/fasterthanlime/rc-zip/pull/79))
+- Run one-byte-read tests in CI in release ([#77](https://github.com/fasterthanlime/rc-zip/pull/77))
+- rc-zip-tokio: Re-use cursor if it's at the right offset already ([#71](https://github.com/fasterthanlime/rc-zip/pull/71))
+
+### Fixed
+- lzma_dec: count all input in outcome.bytes_read
+
+### Other
+- release ([#68](https://github.com/fasterthanlime/rc-zip/pull/68))
+
 ## [4.0.1](https://github.com/fasterthanlime/rc-zip/compare/rc-zip-sync-v4.0.0...rc-zip-sync-v4.0.1) - 2024-03-12
 
 ### Other

@@ -30,38 +30,45 @@ where
     R: io::Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut fsm = match self.fsm.take() {
-            Some(fsm) => fsm,
-            None => return Ok(0),
-        };
+        loop {
+            let mut fsm = match self.fsm.take() {
+                Some(fsm) => fsm,
+                None => return Ok(0),
+            };
 
-        if fsm.wants_read() {
-            trace!("fsm wants read");
-            let n = self.rd.read(fsm.space())?;
-            trace!("giving fsm {} bytes", n);
-            fsm.fill(n);
-        } else {
-            trace!("fsm does not want read");
-        }
-
-        match fsm.process(buf)? {
-            FsmResult::Continue((fsm, outcome)) => {
-                self.fsm = Some(fsm);
-
-                if outcome.bytes_written > 0 {
-                    Ok(outcome.bytes_written)
-                } else if outcome.bytes_read == 0 {
-                    // that's EOF, baby!
-                    Ok(0)
-                } else {
-                    // loop, it happens
-                    self.read(buf)
-                }
+            #[allow(clippy::needless_late_init)] // don't tell me what to do
+            let filled_bytes;
+            if fsm.wants_read() {
+                tracing::trace!(space_avail = fsm.space().len(), "fsm wants read");
+                let n = self.rd.read(fsm.space())?;
+                fsm.fill(n);
+                filled_bytes = n;
+            } else {
+                trace!("fsm does not want read");
+                filled_bytes = 0;
             }
-            FsmResult::Done(_) => {
-                // neat!
-                trace!("fsm done");
-                Ok(0)
+
+            match fsm.process(buf)? {
+                FsmResult::Continue((fsm, outcome)) => {
+                    self.fsm = Some(fsm);
+
+                    if outcome.bytes_written > 0 {
+                        tracing::trace!("wrote {} bytes", outcome.bytes_written);
+                        return Ok(outcome.bytes_written);
+                    } else if filled_bytes > 0 || outcome.bytes_read > 0 {
+                        // progress was made, keep reading
+                        continue;
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "entry reader: no progress",
+                        ));
+                    }
+                }
+                FsmResult::Done(_) => {
+                    // neat!
+                    return Ok(0);
+                }
             }
         }
     }

@@ -252,14 +252,15 @@ impl EntryFsm {
                     );
 
                     let outcome = decompressor.decompress(in_buf, out, has_more_input)?;
-                    trace!(
-                        ?outcome,
-                        compressed_bytes = *compressed_bytes,
-                        uncompressed_bytes = *uncompressed_bytes,
-                        "decompressed"
-                    );
                     self.buffer.consume(outcome.bytes_read);
                     *compressed_bytes += outcome.bytes_read as u64;
+                    trace!(
+                        compressed_bytes = *compressed_bytes,
+                        uncompressed_bytes = *uncompressed_bytes,
+                        entry_compressed_size = %entry.compressed_size,
+                        ?outcome,
+                        "decompressed"
+                    );
 
                     if outcome.bytes_written == 0 && *compressed_bytes == entry.compressed_size {
                         trace!("eof and no bytes written, we're done");
@@ -280,6 +281,8 @@ impl EntryFsm {
                             }
                         });
                         return self.process(out);
+                    } else if outcome.bytes_written == 0 && outcome.bytes_read == 0 {
+                        panic!("decompressor didn't read anything and didn't write anything?")
                     }
 
                     // write the decompressed data to the hasher

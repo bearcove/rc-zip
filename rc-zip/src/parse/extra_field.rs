@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use ownable::{IntoOwned, ToOwned};
-use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8, length_take},
     combinator::{opt, preceded, repeat_till},
@@ -88,11 +87,6 @@ impl<'a> ExtraField<'a> {
         move |i| {
             use ExtraField as EF;
             let rec = ExtraFieldRecord::parser.parse_next(i)?;
-            trace!(
-                "parsing extra field record, tag {:04x}, len {}",
-                rec.tag,
-                rec.payload.len()
-            );
             let payload = &mut Partial::new(rec.payload);
 
             let variant = match rec.tag {
@@ -322,7 +316,6 @@ pub enum NtfsAttr {
 impl NtfsAttr {
     fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
         let tag = le_u16.parse_next(i)?;
-        trace!("parsing NTFS attribute, tag {:04x}", tag);
         let payload = length_take(le_u16).parse_next(i)?;
 
         match tag {
@@ -349,7 +342,6 @@ pub struct NtfsAttr1 {
 
 impl NtfsAttr1 {
     fn parser(i: &mut Partial<&'_ [u8]>) -> PResult<Self> {
-        trace!("parsing NTFS attr 1, input len is {}", i.len());
         seq! {Self {
             mtime: NtfsTimestamp::parser,
             atime: NtfsTimestamp::parser,

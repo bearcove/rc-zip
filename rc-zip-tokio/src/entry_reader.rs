@@ -1,4 +1,4 @@
-use std::{pin::Pin, task};
+use std::{io, pin::Pin, task};
 
 use pin_project_lite::pin_project;
 use rc_zip::{
@@ -77,11 +77,15 @@ where
                     if outcome.bytes_written > 0 {
                         tracing::trace!("wrote {} bytes", outcome.bytes_written);
                         buf.advance(outcome.bytes_written);
-                    } else if filled_bytes > 0 {
-                        // keep reading
+                    } else if filled_bytes > 0 || outcome.bytes_read > 0 {
+                        // progress was made, keep reading
                         continue;
                     } else {
-                        // that's EOF, baby!
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "entry reader: no progress",
+                        ))
+                        .into();
                     }
                 }
                 FsmResult::Done(_) => {

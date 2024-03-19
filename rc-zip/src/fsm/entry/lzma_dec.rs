@@ -40,75 +40,98 @@ impl LzmaDec {
 impl Decompressor for LzmaDec {
     fn decompress(
         &mut self,
-        in_buf: &[u8],
+        mut in_buf: &[u8],
         out: &mut [u8],
         has_more_input: HasMoreInput,
     ) -> Result<DecompressOutcome, Error> {
-        tracing::trace!(
-            in_buf_len = in_buf.len(),
-            out_len = out.len(),
-            remain_in_internal_buffer = self.internal_buf_mut().len(),
-            "decompress",
-        );
-
         let mut outcome: DecompressOutcome = Default::default();
 
-        self.copy_to_out(out, &mut outcome);
-        if outcome.bytes_written > 0 {
-            trace!(
-                "still draining internal buffer, just copied {} bytes",
-                outcome.bytes_written
+        loop {
+            tracing::trace!(
+                in_buf_len = in_buf.len(),
+                out_len = out.len(),
+                remain_in_internal_buffer = self.internal_buf_mut().len(),
+                ?outcome,
+                "decompress",
             );
-            return Ok(outcome);
-        }
-
-        match &mut self.state {
-            State::Writing(stream) => {
-                let n = stream.write(in_buf).map_err(dec_err)?;
+            self.copy_to_out(out, &mut outcome);
+            if outcome.bytes_written > 0 {
                 trace!(
-                    "wrote {} bytes to decompressor (of {} available)",
-                    n,
-                    in_buf.len()
+                    "still draining internal buffer, just copied {} bytes",
+                    outcome.bytes_written
                 );
-                outcome.bytes_read = n;
+                return Ok(outcome);
+            }
 
-                // if we haven't written all the input, and we haven't gotten
-                // any output, then we need to keep going
-                if n != 0 && n < in_buf.len() && self.internal_buf_mut().is_empty() {
-                    // note: the n != 0 here is because apparently there can be a 10-byte
-                    // trailer after LZMA compressed data? and the decoder will _refuse_
-                    // to let us write them, so when we have just these 10 bytes left,
-                    // it's good to just let the decoder finish up.
-                    trace!("didn't write all output AND no output yet, so keep going");
-                    return self.decompress(&in_buf[n..], out, has_more_input);
-                }
+            match &mut self.state {
+                State::Writing(stream) => {
+                    let n = stream.write(in_buf).map_err(dec_err)?;
+                    trace!(
+                        "wrote {} bytes to decompressor (of {} available)",
+                        n,
+                        in_buf.len()
+                    );
+                    outcome.bytes_read += n;
+                    in_buf = &in_buf[n..];
 
-                match has_more_input {
-                    HasMoreInput::Yes => {
-                        // keep going
-                        trace!("more input to come");
+                    // if we wrote some (but not all) of the input, and we haven't
+                    // gotten any output, then we need to loop
+                    if n != 0 && n < in_buf.len() && self.internal_buf_mut().is_empty() {
+                        // note: the n != 0 here is because apparently there can be a 10-byte
+                        // trailer after LZMA compressed data? and the decoder will _refuse_
+                        // to let us write them, so when we have just these 10 bytes left,
+                        // it's good to just let the decoder finish up.
+                        trace!("didn't write all output AND no output yet, so keep going");
+                        // FIXME: that's wrong! bytes_read is reset when we recurse.
+                        // use a loop instead.
+                        continue;
                     }
-                    HasMoreInput::No => {
-                        trace!("no more input to come");
-                        match std::mem::take(&mut self.state) {
-                            State::Writing(stream) => {
-                                trace!("finishing...");
-                                self.state = State::Draining(stream.finish().map_err(dec_err)?);
+
+                    match has_more_input {
+                        HasMoreInput::Yes => {
+                            // keep going
+                            trace!("more input to come");
+                        }
+                        HasMoreInput::No => {
+                            trace!("no more input to come");
+
+                            // this happens when we hit the 10-byte trailer mentioned above
+                            // in this case, we just pretend we wrote everything
+                            match in_buf.len() {
+                                0 => {
+                                    // trailer is not present, that's okay
+                                }
+                                10 => {
+                                    trace!("eating LZMA trailer");
+                                    outcome.bytes_read += 10;
+                                }
+                                _ => {
+                                    return Err(Error::Decompression { method: Method::Lzma, msg: format!("expected LZMA trailer or no LZMA trailer, but not a {}-byte trailer", in_buf.len()) });
+                                }
                             }
-                            _ => unreachable!(),
+
+                            match std::mem::take(&mut self.state) {
+                                State::Writing(stream) => {
+                                    trace!("finishing...");
+                                    self.state = State::Draining(stream.finish().map_err(dec_err)?);
+                                    continue;
+                                }
+                                _ => unreachable!(),
+                            }
                         }
                     }
                 }
+                State::Draining(_) => {
+                    // keep going
+                    trace!("draining");
+                }
+                State::Transition => unreachable!(),
             }
-            State::Draining(_) => {
-                // keep going
-            }
-            State::Transition => unreachable!(),
-        }
 
-        self.copy_to_out(out, &mut outcome);
-        trace!("decompressor gave us {} bytes", outcome.bytes_written);
-        Ok(outcome)
+            self.copy_to_out(out, &mut outcome);
+            trace!("decompressor gave us {} bytes", outcome.bytes_written);
+            return Ok(outcome);
+        }
     }
 }
 

@@ -50,10 +50,6 @@
         version = "latest";
         strictDeps = true;
         dontStrip = true;
-        # workaround for https://github.com/NixOS/nixpkgs/issues/166205
-        env = with pkgs; lib.optionalAttrs stdenv.cc.isClang {
-          NIX_LDFLAGS = "-l${stdenv.cc.libcxx.cxxabi.libName}";
-        };
         inherit src buildInputs nativeBuildInputs;
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
@@ -68,8 +64,7 @@
         default = bin;
       };
       devShells.default = mkShell {
-        inputsFrom = [ bin ];
-        packages = with pkgs; [ just nixpkgs-fmt ];
+        packages = with pkgs; [ just nixpkgs-fmt mold libiconv ];
       };
     }
     );

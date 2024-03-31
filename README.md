@@ -2,6 +2,7 @@
 
 [![test pipeline](https://github.com/bearcove/rc-zip/actions/workflows/test.yml/badge.svg)](https://github.com/bearcove/rc-zip/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage Status (codecov.io)](https://codecov.io/gh/bearcove/rc-zip/branch/main/graph/badge.svg)](https://codecov.io/gh/bearcove/rc-zip/)
+[![MIT OR Apache-2.0 licensed](https://img.shields.io/badge/license-MIT+Apache_2.0-blue.svg)](./LICENSE)
 
 ### Motivation
 

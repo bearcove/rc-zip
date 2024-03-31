@@ -3,3 +3,4 @@
 **/*.rs.bk
 *.lcov
 .direnv
+.DS_Store

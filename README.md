@@ -14,7 +14,7 @@ writing library.
 
 Thanks to these companies for contracting work on rc-zip:
 
-[![Row Zero](./static/row-zero-b.svg)](https://rowzero.io)
+[![Row Zero](./static/row-zero-c.svg)](https://rowzero.io)
 
 And thanks to all my [individual sponsors](https://fasterthanli.me/donate).
 

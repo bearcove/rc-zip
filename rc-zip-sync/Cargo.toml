@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-sync"
-version = "4.1.0"
+version = "4.2.0"
 description = "Synchronous zip reading on top of rc-zip"
 repository = "https://github.com/fasterthanlime/rc-zip"
 license = "Apache-2.0 OR MIT"
@@ -21,7 +21,7 @@ path = "examples/jean.rs"
 
 [dependencies]
 positioned-io = { version = "0.3.3", optional = true }
-rc-zip = { version = "5.1.0", path = "../rc-zip" }
+rc-zip = { version = "5.1.1", path = "../rc-zip" }
 oval = "2.0.0"
 tracing = "0.1.40"
 
@@ -40,5 +40,5 @@ clap = { version = "4.4.18", features = ["derive"] }
 humansize = "2.1.3"
 indicatif = "0.17.7"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-rc-zip = { version = "5.1.0", path = "../rc-zip", features = ["corpus"] }
+rc-zip = { version = "5.1.1", path = "../rc-zip", features = ["corpus"] }
 cfg-if = "1.0.0"

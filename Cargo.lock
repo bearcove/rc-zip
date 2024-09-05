@@ -769,7 +769,7 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "rc-zip"
-version = "5.1.1"
+version = "5.1.2"
 dependencies = [
  "bzip2",
  "cfg-if",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-sync"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "cfg-if",
  "chrono",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-tokio"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "futures-util",
  "oval",

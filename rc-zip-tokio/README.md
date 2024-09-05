@@ -6,7 +6,7 @@
 
 ![The rc-zip logo: a person with long hair and nice brows being opened from the bottom up with a zipper. On dark backgrounds, you can see a skull being revealed. On light backgrounds you cannot.](https://github.com/user-attachments/assets/5fecd286-9518-4a72-b544-56675d7f31f6)
 
-_Logo by [MisiasArt](https://www.deviantart.com/misiasart)_
+_Logo by [MisiasArt](https://misiasart.carrd.co)_
 
 This crate implements zip archive reading using tokio (asynchronous) I/O traits,
 like `tokio:io::AsyncRead`.

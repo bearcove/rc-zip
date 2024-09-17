@@ -13,10 +13,6 @@ doc:
 test *args:
 	cargo nextest run {{args}} --all-features
 
-# Report unused dependencies:
-udeps:
-	RUSTC_BOOTSTRAP=1 cargo udeps --all-targets
-
 # Run all tests with nextest and cargo-llvm-cov
 ci-test:
     #!/bin/bash -eux

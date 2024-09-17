@@ -772,7 +772,6 @@ name = "rc-zip"
 version = "5.1.2"
 dependencies = [
  "bzip2",
- "cfg-if",
  "chardetng",
  "chrono",
  "crc32fast",
@@ -797,7 +796,6 @@ name = "rc-zip-sync"
 version = "4.2.1"
 dependencies = [
  "cfg-if",
- "chrono",
  "clap",
  "humansize",
  "indicatif",
@@ -819,7 +817,6 @@ dependencies = [
  "rc-zip",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.2](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.1...rc-zip-tokio-v4.2.2) - 2024-09-17
+
+### Other
+
+- Remove unnecessary deps
+- Add/fix logo attribution
+
 ## [4.2.1](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.0...rc-zip-tokio-v4.2.1) - 2024-09-05
 
 ### Other

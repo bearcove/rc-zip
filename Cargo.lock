@@ -438,19 +438,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 
 [[package]]
-name = "jean"
-version = "1.0.0"
-dependencies = [
- "cfg-if",
- "clap",
- "humansize",
- "indicatif",
- "rc-zip",
- "rc-zip-sync",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "jobserver"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -802,6 +789,19 @@ dependencies = [
  "tracing-subscriber",
  "winnow",
  "zstd",
+]
+
+[[package]]
+name = "rc-zip-cli"
+version = "1.0.0"
+dependencies = [
+ "cfg-if",
+ "clap",
+ "humansize",
+ "indicatif",
+ "rc-zip",
+ "rc-zip-sync",
+ "tracing-subscriber",
 ]
 
 [[package]]

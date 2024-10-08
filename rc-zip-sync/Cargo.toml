@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-sync"
-version = "4.2.2"
+version = "4.2.3"
 description = "Synchronous zip reading on top of rc-zip"
 repository = "https://github.com/fasterthanlime/rc-zip"
 license = "Apache-2.0 OR MIT"

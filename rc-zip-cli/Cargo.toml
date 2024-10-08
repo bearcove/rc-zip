@@ -8,6 +8,12 @@ edition = "2021"
 readme = "README.md"
 repository = "https://github.com/bearcove/rc-zip"
 
+[package.metadata.wix]
+upgrade-guid = "18C89328-5D29-4BB1-AC1F-4EF72F9AA12C"
+path-guid = "8CFB1019-2508-41C8-9BC6-A59CF0F11449"
+license = false
+eula = false
+
 [[bin]]
 name = "rc-zip"
 path = "src/main.rs"

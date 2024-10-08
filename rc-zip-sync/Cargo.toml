@@ -33,11 +33,3 @@ deflate64 = ["rc-zip/deflate64"]
 lzma = ["rc-zip/lzma"]
 bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
-
-[dev-dependencies]
-clap = { version = "4.4.18", features = ["derive"] }
-humansize = "2.1.3"
-indicatif = "0.17.7"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-rc-zip = { version = "5.1.3", path = "../rc-zip", features = ["corpus"] }
-cfg-if = "1.0.0"

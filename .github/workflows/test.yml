@@ -67,7 +67,7 @@ jobs:
         run: |
           cargo nextest run --profile ci --all-features
   test-macos:
-    runs-on: macos-12
+    runs-on: macos-15
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0

@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.0](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.1.3...rc-zip-v5.2.0) - 2024-12-17
+
+### Added
+
+- Export DecompressOutcome
+
 ## [5.1.3](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.1.2...rc-zip-v5.1.3) - 2024-09-17
 
 ### Other

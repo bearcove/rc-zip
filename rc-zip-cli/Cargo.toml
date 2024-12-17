@@ -15,7 +15,7 @@ license = false
 eula = false
 
 [[bin]]
-name = "rc-zip"
+name = "rc-zip-cli"
 path = "src/main.rs"
 
 [dependencies]

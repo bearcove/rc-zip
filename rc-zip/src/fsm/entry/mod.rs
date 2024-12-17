@@ -400,6 +400,7 @@ enum AnyDecompressor {
     Zstd(zstd_dec::ZstdDec),
 }
 
+/// Outcome of [EntryFsm::process]
 #[derive(Default, Debug)]
 pub struct DecompressOutcome {
     /// Number of bytes read from input

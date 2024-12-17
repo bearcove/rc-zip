@@ -23,7 +23,7 @@ mod archive;
 pub use archive::ArchiveFsm;
 
 mod entry;
-pub use entry::EntryFsm;
+pub use entry::{DecompressOutcome, EntryFsm};
 
 /// Indicates whether or not the state machine has completed its work
 pub enum FsmResult<M, R> {

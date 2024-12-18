@@ -15,8 +15,8 @@ use rc_zip::{
 
 macro_rules! dbgln {
     ($($tt:tt)*) => {
-        eprintln!($($tt)*);
-    }
+        // eprintln!($($tt)*);
+    };
 }
 
 pub async fn read_zip_from_file(file: &File) -> Result<Archive, Error> {

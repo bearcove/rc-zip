@@ -15,20 +15,19 @@ use rc_zip::{
 
 pub async fn read_zip_from_file(file: &File) -> Result<Archive, Error> {
     let meta = file.metadata().await?;
-
+    let size = meta.len();
     let mut buf = vec![0u8; 128 * 1024];
-    let mut fsm = ArchiveFsm::new(meta.len());
+
+    let mut fsm = ArchiveFsm::new(size);
     loop {
         if let Some(offset) = fsm.wants_read() {
             let dst = fsm.space();
-            let max_read = dst.len();
+            let max_read = dst.len().min(buf.len());
             let slice = IoBufMut::slice_mut(buf, 0..max_read);
+
             let (res, slice) = file.read_at(slice, offset).await;
             let n = res?;
-
-            let src = &slice[..n];
-            let dst = &mut dst[..n];
-            dst.copy_from_slice(src);
+            (dst[..n]).copy_from_slice(&slice[..n]);
 
             fsm.fill(n);
             buf = slice.into_inner();

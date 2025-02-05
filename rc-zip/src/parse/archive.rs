@@ -237,7 +237,7 @@ impl Entry {
 }
 
 /// The entry's file type: a directory, a file, or a symbolic link.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum EntryKind {
     /// The entry is a directory
     Directory,

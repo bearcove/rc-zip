@@ -17,6 +17,10 @@ test *args:
 ci-test:
     #!/bin/bash -eux
     export RUSTUP_TOOLCHAIN=nightly
+    rustup target add wasm32-unknown-unknown
+    cargo test --no-run -p rc-zip --all-features --features 'bzip2/libbz2-rs-sys' --target wasm32-unknown-unknown
+    wasmtime target/wasm32-unknown-unknown/debug/deps/integration_tests-*.wasm
+
     rustup component add llvm-tools
     cargo llvm-cov --version
 
@@ -35,3 +39,4 @@ ci-test:
 
     cargo llvm-cov report --release --ignore-filename-regex 'corpus/mod\.rs$' --lcov --output-path coverage.lcov
     cargo llvm-cov report --release --ignore-filename-regex 'corpus/mod\.rs$' --html
+

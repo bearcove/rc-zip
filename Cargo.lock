@@ -718,7 +718,7 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "rc-zip"
-version = "5.3.0"
+version = "5.3.1"
 dependencies = [
  "bzip2",
  "chardetng",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-cli"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "cfg-if",
  "clap",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-sync"
-version = "4.2.5"
+version = "4.2.6"
 dependencies = [
  "oval",
  "positioned-io",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "rc-zip-tokio"
-version = "4.2.4"
+version = "4.2.5"
 dependencies = [
  "futures-util",
  "oval",

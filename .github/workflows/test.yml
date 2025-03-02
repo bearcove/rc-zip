@@ -24,10 +24,10 @@ jobs:
         run: rustup show
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.4
-      - name: Install just, nextest, cargo-llvm-cov, and cargo-hack
+      - name: Install just, nextest, cargo-llvm-cov, cargo-hack, and wasmtime
         uses: taiki-e/install-action@v2
         with:
-          tool: just,nextest,cargo-llvm-cov,cargo-hack
+          tool: just,nextest,cargo-llvm-cov,cargo-hack,wasmtime
       - name: Run cargo doc, deny warnings
         run: |
           export RUSTDOCFLAGS="-D warnings"

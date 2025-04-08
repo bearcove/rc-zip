@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.6](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.5...rc-zip-tokio-v4.2.6) - 2025-04-08
+
+### Other
+
+- *(deps)* bump tokio in the cargo group across 1 directory
+
 ## [4.2.5](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.4...rc-zip-tokio-v4.2.5) - 2025-03-02
 
 ### Other

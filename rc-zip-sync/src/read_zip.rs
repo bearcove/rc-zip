@@ -182,7 +182,7 @@ where
     F: HasCursor,
 {
     /// Returns a reader for the entry.
-    pub fn reader(&self) -> impl Read + 'a {
+    pub fn reader(&self) -> EntryReader<<F as HasCursor>::Cursor<'a>> {
         EntryReader::new(self.entry, self.file.cursor_at(self.entry.header_offset))
     }
 

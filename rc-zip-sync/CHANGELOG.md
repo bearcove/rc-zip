@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.2.6...rc-zip-sync-v4.3.0) - 2025-04-18
+
+### Added
+
+- *(rc-zip-sync)* make EntryReader public
+
 ## [4.2.6](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.2.5...rc-zip-sync-v4.2.6) - 2025-03-02
 
 ### Other

@@ -5,7 +5,8 @@ use rc_zip::{
 use std::io;
 use tracing::trace;
 
-pub(crate) struct EntryReader<R>
+/// Reader for an entry inside an archive
+pub struct EntryReader<R>
 where
     R: io::Read,
 {

@@ -15,6 +15,7 @@ pub use streaming_entry_reader::StreamingEntryReader;
 
 // re-exports
 pub use rc_zip;
+pub use entry_reader::EntryReader;
 pub use read_zip::{
     ArchiveHandle, EntryHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize,
 };

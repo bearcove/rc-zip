@@ -23,7 +23,7 @@ jobs:
       - name: Install Rust specified toolchain
         run: rustup show
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.7
+        uses: mozilla-actions/sccache-action@v0.0.8
       - name: Install just, nextest, cargo-llvm-cov, cargo-hack, and wasmtime
         uses: taiki-e/install-action@v2
         with:

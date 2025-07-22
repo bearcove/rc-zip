@@ -2,7 +2,7 @@
 name = "rc-zip-sync"
 version = "4.3.0"
 description = "Synchronous zip reading on top of rc-zip"
-repository = "https://github.com/fasterthanlime/rc-zip"
+repository = "https://github.com/bearcove/rc-zip"
 license = "Apache-2.0 OR MIT"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
 edition = "2021"

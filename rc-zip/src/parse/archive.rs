@@ -10,12 +10,12 @@ use crate::{
 
 use super::{zero_datetime, ExtraField, NtfsAttr};
 
-/// An Archive contains general information about a zip files, along with a list
+/// An Archive contains general information about a zip file, along with a list
 /// of [entries][Entry].
 ///
 /// It is obtained through a state machine like
 /// [ArchiveFsm](crate::fsm::ArchiveFsm), although end-users tend to use
-/// higher-levelr interfaces like
+/// higher-level interfaces like
 /// [rc-zip-sync](https://crates.io/crates/rc-zip-sync) or
 /// [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio).
 pub struct Archive {

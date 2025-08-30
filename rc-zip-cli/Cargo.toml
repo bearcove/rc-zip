@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-cli"
-version = "1.1.3"
+version = "1.1.4"
 description = "A sample zip decompressor based on rc-zip"
 license = "Apache-2.0 OR MIT"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]
@@ -19,8 +19,8 @@ name = "rc-zip-cli"
 path = "src/main.rs"
 
 [dependencies]
-rc-zip = { version = "5.3.1", path = "../rc-zip", features = ["corpus"] }
-rc-zip-sync = { version = "4.3.0", path = "../rc-zip-sync", features = [
+rc-zip = { version = "5.3.2", path = "../rc-zip", features = ["corpus"] }
+rc-zip-sync = { version = "4.3.1", path = "../rc-zip-sync", features = [
     "bzip2",
     "deflate64",
     "lzma",

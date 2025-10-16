@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Other
+
+- Replace `num_enum` with a manual implementation ([#120](https://github.com/bearcove/rc-zip/pull/120))
+
 ## [5.3.2](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.1...rc-zip-v5.3.2) - 2025-08-30
 
 ### Other

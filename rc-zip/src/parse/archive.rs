@@ -1,5 +1,4 @@
 use chrono::{offset::Utc, DateTime, TimeZone};
-use num_enum::{FromPrimitive, IntoPrimitive};
 use ownable::{IntoOwned, ToOwned};
 use winnow::{binary::le_u16, PResult, Partial};
 
@@ -270,54 +269,106 @@ impl Entry {
 /// However, in the wild, it is not too uncommon to encounter [Bzip2][Method::Bzip2],
 /// [Lzma][Method::Lzma] or others.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive, IntoOwned, ToOwned,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoOwned, ToOwned,
 )]
 #[repr(u16)]
 pub enum Method {
     /// No compression is applied
-    Store = 0,
+    Store = Self::STORE,
 
     /// [DEFLATE (RFC 1951)](https://www.ietf.org/rfc/rfc1951.txt)
-    Deflate = 8,
+    Deflate = Self::DEFLATE,
 
     /// [DEFLATE64](https://deflate64.com/)
-    Deflate64 = 9,
+    Deflate64 = Self::DEFLATE64,
 
     /// [BZIP-2](https://github.com/dsnet/compress/blob/master/doc/bzip2-format.pdf)
-    Bzip2 = 12,
+    Bzip2 = Self::BZIP2,
 
     /// [LZMA](https://github.com/jljusten/LZMA-SDK/blob/master/DOC/lzma-specification.txt)
-    Lzma = 14,
+    Lzma = Self::LZMA,
 
     /// [zstd](https://datatracker.ietf.org/doc/html/rfc8878)
-    Zstd = 93,
+    Zstd = Self::ZSTD,
 
     /// [MP3](https://www.iso.org/obp/ui/#iso:std:iso-iec:11172:-3:ed-1:v1:en)
-    Mp3 = 94,
+    Mp3 = Self::MP3,
 
     /// [XZ](https://tukaani.org/xz/xz-file-format.txt)
-    Xz = 95,
+    Xz = Self::XZ,
 
     /// [JPEG](https://jpeg.org/jpeg/)
-    Jpeg = 96,
+    Jpeg = Self::JPEG,
 
     /// [WavPack](https://www.wavpack.com/)
-    WavPack = 97,
+    WavPack = Self::WAV_PACK,
 
     /// [PPMd](https://en.wikipedia.org/wiki/Prediction_by_partial_matching)
-    Ppmd = 98,
+    Ppmd = Self::PPMD,
 
     /// AE-x encryption marker (see Appendix E of appnote)
-    Aex = 99,
+    Aex = Self::AEX,
 
     /// A compression method that isn't recognized by this crate.
-    #[num_enum(catch_all)]
     Unrecognized(u16),
 }
 
 impl Method {
+    const STORE: u16 = 0;
+    const DEFLATE: u16 = 8;
+    const DEFLATE64: u16 = 9;
+    const BZIP2: u16 = 12;
+    const LZMA: u16 = 14;
+    const ZSTD: u16 = 93;
+    const MP3: u16 = 94;
+    const XZ: u16 = 95;
+    const JPEG: u16 = 96;
+    const WAV_PACK: u16 = 97;
+    const PPMD: u16 = 98;
+    const AEX: u16 = 99;
+
     /// Parse a method from a byte slice
     pub fn parser(i: &mut Partial<&[u8]>) -> PResult<Self> {
         le_u16(i).map(From::from)
+    }
+}
+
+impl From<u16> for Method {
+    fn from(u: u16) -> Self {
+        match u {
+            Self::STORE => Self::Store,
+            Self::DEFLATE => Self::Deflate,
+            Self::DEFLATE64 => Self::Deflate64,
+            Self::BZIP2 => Self::Bzip2,
+            Self::LZMA => Self::Lzma,
+            Self::ZSTD => Self::Zstd,
+            Self::MP3 => Self::Mp3,
+            Self::XZ => Self::Xz,
+            Self::JPEG => Self::Jpeg,
+            Self::WAV_PACK => Self::WavPack,
+            Self::PPMD => Self::Ppmd,
+            Self::AEX => Self::Aex,
+            u => Self::Unrecognized(u),
+        }
+    }
+}
+
+impl From<Method> for u16 {
+    fn from(method: Method) -> Self {
+        match method {
+            Method::Store => Method::STORE,
+            Method::Deflate => Method::DEFLATE,
+            Method::Deflate64 => Method::DEFLATE64,
+            Method::Bzip2 => Method::BZIP2,
+            Method::Lzma => Method::LZMA,
+            Method::Zstd => Method::ZSTD,
+            Method::Mp3 => Method::MP3,
+            Method::Xz => Method::XZ,
+            Method::Jpeg => Method::JPEG,
+            Method::WavPack => Method::WAV_PACK,
+            Method::Ppmd => Method::PPMD,
+            Method::Aex => Method::AEX,
+            Method::Unrecognized(u) => u,
+        }
     }
 }

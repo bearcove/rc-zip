@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.2](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.3.1...rc-zip-sync-v4.3.2) - 2025-10-17
+
+### Other
+
+- updated the following local packages: rc-zip
+
 ## [4.3.1](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.3.0...rc-zip-sync-v4.3.1) - 2025-08-30
 
 ### Other

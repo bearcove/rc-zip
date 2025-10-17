@@ -1,4 +1,3 @@
-use num_enum::{FromPrimitive, IntoPrimitive};
 use ownable::{IntoOwned, ToOwned};
 use std::fmt;
 use winnow::{binary::le_u8, seq, PResult, Parser, Partial};
@@ -39,75 +38,151 @@ impl Version {
 /// System on which an archive was created, as encoded into a version u16.
 ///
 /// See APPNOTE, section 4.4.2.2
-#[derive(
-    Debug, Clone, Copy, IntoPrimitive, FromPrimitive, ToOwned, IntoOwned, PartialEq, Eq, Hash,
-)]
+#[derive(Debug, Clone, Copy, ToOwned, IntoOwned, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum HostSystem {
     /// MS-DOS and OS/2 (FAT / VFAT / FAT32 file systems)
-    MsDos = 0,
+    MsDos = Self::MS_DOS,
 
     /// Amiga
-    Amiga = 1,
+    Amiga = Self::AMIGA,
 
     /// OpenVMS
-    OpenVms = 2,
+    OpenVms = Self::OPEN_VMS,
 
     /// UNIX
-    Unix = 3,
+    Unix = Self::UNIX,
 
     /// VM/CMS
-    VmCms = 4,
+    VmCms = Self::VM_CMS,
 
     /// Atari ST
-    AtariSt = 5,
+    AtariSt = Self::ATARI_ST,
 
     /// OS/2 H.P.F.S
-    Os2Hpfs = 6,
+    Os2Hpfs = Self::OS2_HPFS,
 
     /// Macintosh (see `Osx`)
-    Macintosh = 7,
+    Macintosh = Self::MACINTOSH,
 
     /// Z-System
-    ZSystem = 8,
+    ZSystem = Self::Z_SYSTEM,
 
     /// CP/M
-    CpM = 9,
+    CpM = Self::CP_M,
 
     /// Windows NTFS
-    WindowsNtfs = 10,
+    WindowsNtfs = Self::WINDOWS_NTFS,
 
     /// MVS (OS/390 - Z/OS)
-    Mvs = 11,
+    Mvs = Self::MVS,
 
     /// VSE
-    Vse = 12,
+    Vse = Self::VSE,
 
     /// Acorn Risc
-    AcornRisc = 13,
+    AcornRisc = Self::ACORN_RISC,
 
     /// VFAT
-    Vfat = 14,
+    Vfat = Self::VFAT,
 
     /// alternate MVS
-    AlternateMvs = 15,
+    AlternateMvs = Self::ALTERNATE_MVS,
 
     /// BeOS
-    BeOs = 16,
+    BeOs = Self::BE_OS,
 
     /// Tandem
-    Tandem = 17,
+    Tandem = Self::TANDEM,
 
     /// OS/400
-    Os400 = 18,
+    Os400 = Self::OS400,
 
     /// OS X (Darwin)
-    Osx = 19,
+    Osx = Self::OSX,
 
     /// Unknown host system
     ///
     /// Values 20 through 255 are currently unused, as of
     /// APPNOTE.TXT 6.3.10
-    #[num_enum(catch_all)]
     Unknown(u8),
+}
+
+impl HostSystem {
+    const MS_DOS: u8 = 0;
+    const AMIGA: u8 = 1;
+    const OPEN_VMS: u8 = 2;
+    const UNIX: u8 = 3;
+    const VM_CMS: u8 = 4;
+    const ATARI_ST: u8 = 5;
+    const OS2_HPFS: u8 = 6;
+    const MACINTOSH: u8 = 7;
+    const Z_SYSTEM: u8 = 8;
+    const CP_M: u8 = 9;
+    const WINDOWS_NTFS: u8 = 10;
+    const MVS: u8 = 11;
+    const VSE: u8 = 12;
+    const ACORN_RISC: u8 = 13;
+    const VFAT: u8 = 14;
+    const ALTERNATE_MVS: u8 = 15;
+    const BE_OS: u8 = 16;
+    const TANDEM: u8 = 17;
+    const OS400: u8 = 18;
+    const OSX: u8 = 19;
+}
+
+impl From<u8> for HostSystem {
+    fn from(u: u8) -> Self {
+        match u {
+            Self::MS_DOS => Self::MsDos,
+            Self::AMIGA => Self::Amiga,
+            Self::OPEN_VMS => Self::OpenVms,
+            Self::UNIX => Self::Unix,
+            Self::VM_CMS => Self::VmCms,
+            Self::ATARI_ST => Self::AtariSt,
+            Self::OS2_HPFS => Self::Os2Hpfs,
+            Self::MACINTOSH => Self::Macintosh,
+            Self::Z_SYSTEM => Self::ZSystem,
+            Self::CP_M => Self::CpM,
+            Self::WINDOWS_NTFS => Self::WindowsNtfs,
+            Self::MVS => Self::Mvs,
+            Self::VSE => Self::Vse,
+            Self::ACORN_RISC => Self::AcornRisc,
+            Self::VFAT => Self::Vfat,
+            Self::ALTERNATE_MVS => Self::AlternateMvs,
+            Self::BE_OS => Self::BeOs,
+            Self::TANDEM => Self::Tandem,
+            Self::OS400 => Self::Os400,
+            Self::OSX => Self::Osx,
+            u => Self::Unknown(u),
+        }
+    }
+}
+
+impl From<HostSystem> for u8 {
+    fn from(host_system: HostSystem) -> Self {
+        match host_system {
+            HostSystem::MsDos => HostSystem::MS_DOS,
+            HostSystem::Amiga => HostSystem::AMIGA,
+            HostSystem::OpenVms => HostSystem::OPEN_VMS,
+            HostSystem::Unix => HostSystem::UNIX,
+            HostSystem::VmCms => HostSystem::VM_CMS,
+            HostSystem::AtariSt => HostSystem::ATARI_ST,
+            HostSystem::Os2Hpfs => HostSystem::OS2_HPFS,
+            HostSystem::Macintosh => HostSystem::MACINTOSH,
+            HostSystem::ZSystem => HostSystem::Z_SYSTEM,
+            HostSystem::CpM => HostSystem::CP_M,
+            HostSystem::WindowsNtfs => HostSystem::WINDOWS_NTFS,
+            HostSystem::Mvs => HostSystem::MVS,
+            HostSystem::Vse => HostSystem::VSE,
+            HostSystem::AcornRisc => HostSystem::ACORN_RISC,
+            HostSystem::Vfat => HostSystem::VFAT,
+            HostSystem::AlternateMvs => HostSystem::ALTERNATE_MVS,
+            HostSystem::BeOs => HostSystem::BE_OS,
+            HostSystem::Tandem => HostSystem::TANDEM,
+            HostSystem::Os400 => HostSystem::OS400,
+            HostSystem::Osx => HostSystem::OSX,
+            HostSystem::Unknown(u) => u,
+        }
+    }
 }

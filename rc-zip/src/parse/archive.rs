@@ -268,9 +268,7 @@ impl Entry {
 ///
 /// However, in the wild, it is not too uncommon to encounter [Bzip2][Method::Bzip2],
 /// [Lzma][Method::Lzma] or others.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoOwned, ToOwned,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoOwned, ToOwned)]
 #[repr(u16)]
 pub enum Method {
     /// No compression is applied

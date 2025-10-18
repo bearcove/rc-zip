@@ -22,7 +22,6 @@ chrono.workspace = true
 encoding_rs.workspace = true
 tracing.workspace = true
 oem_cp.workspace = true
-thiserror.workspace = true
 chardetng.workspace = true
 crc32fast.workspace = true
 miniz_oxide = { workspace = true, optional = true }

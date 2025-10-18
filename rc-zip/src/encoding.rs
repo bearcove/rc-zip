@@ -40,21 +40,18 @@ impl fmt::Display for Encoding {
 }
 
 /// Errors encountered while converting text to UTF-8.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum DecodingError {
     /// Text claimed to be UTF-8, but wasn't (as far as we can tell).
-    #[error("invalid utf-8: {0}")]
     Utf8Error(std::str::Utf8Error),
 
     /// Text is too large to be converted.
     ///
     /// In practice, this happens if the text's length is larger than
     /// [usize::MAX], which seems unlikely.
-    #[error("text too large to be converted")]
     StringTooLarge,
 
     /// Text is not valid in the given encoding.
-    #[error("encoding error: {0}")]
     EncodingError(&'static str),
 }
 
@@ -63,6 +60,18 @@ impl From<std::str::Utf8Error> for DecodingError {
         DecodingError::Utf8Error(e)
     }
 }
+
+impl fmt::Display for DecodingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Utf8Error(utf8) => write!(f, "invalid utf-8: {utf8}"),
+            Self::StringTooLarge => f.write_str("text too large to be converted"),
+            Self::EncodingError(enc) => write!(f, "encoding error: {enc}"),
+        }
+    }
+}
+
+impl std::error::Error for DecodingError {}
 
 impl Encoding {
     pub(crate) fn decode(&self, i: &[u8]) -> Result<String, DecodingError> {

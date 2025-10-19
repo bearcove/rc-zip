@@ -29,3 +29,6 @@ deflate64 = ["rc-zip/deflate64"]
 lzma = ["rc-zip/lzma"]
 bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
+
+[dev-dependencies]
+rc-zip = { version = "5.3.3", path = "../rc-zip", features = ["corpus"] }

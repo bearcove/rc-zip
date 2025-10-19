@@ -17,7 +17,7 @@ pub mod error;
 pub mod fsm;
 pub mod parse;
 
-#[cfg(any(test, feature = "corpus"))]
+#[cfg(feature = "corpus")]
 pub mod corpus;
 
 // dependencies re-exports

@@ -20,7 +20,7 @@ winnow = "0.5.36"
 oval = "2.0.0"
 chrono = { version = "0.4.33", default-features = false }
 encoding_rs = "0.8.33"
-tracing = "0.1.40"
+tracing = { version = "0.1.40", default-features = false }
 oem_cp = "2.0.0"
 thiserror = "1.0.56"
 chardetng = "0.1.17"

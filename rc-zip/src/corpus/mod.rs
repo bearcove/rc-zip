@@ -359,7 +359,9 @@ pub fn install_test_subscriber() {
         .with_test_writer()
         .finish();
     let sub = DebugOnlySubscriber { inner: sub };
-    tracing::subscriber::set_global_default(sub).unwrap()
+    // fails when called multiple times from the same process (like in `cargo test`), so ignore
+    // errors
+    let _ = tracing::subscriber::set_global_default(sub);
 }
 
 struct DebugOnlySubscriber<S> {

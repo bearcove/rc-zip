@@ -19,7 +19,7 @@ path = "src/lib.rs"
 positioned-io = { version = "0.3.3", optional = true }
 rc-zip = { version = "5.3.3", path = "../rc-zip" }
 oval = "2.0.0"
-tracing = "0.1.40"
+tracing = { version = "0.1.40", default-features = false }
 
 [features]
 default = ["file", "deflate"]
@@ -29,3 +29,6 @@ deflate64 = ["rc-zip/deflate64"]
 lzma = ["rc-zip/lzma"]
 bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
+
+[dev-dependencies]
+rc-zip = { version = "5.3.3", path = "../rc-zip", features = ["corpus"] }

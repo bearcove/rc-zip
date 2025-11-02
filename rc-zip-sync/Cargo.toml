@@ -16,10 +16,10 @@ name = "rc_zip_sync"
 path = "src/lib.rs"
 
 [dependencies]
-positioned-io = { version = "0.3.3", optional = true }
-rc-zip = { version = "5.3.3", path = "../rc-zip" }
-oval = "2.0.0"
-tracing = { version = "0.1.40", default-features = false }
+positioned-io = { workspace = true, optional = true }
+rc-zip.workspace = true
+oval.workspace = true
+tracing.workspace = true
 
 [features]
 default = ["file", "deflate"]
@@ -31,4 +31,4 @@ bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
 
 [dev-dependencies]
-rc-zip = { version = "5.3.3", path = "../rc-zip", features = ["corpus"] }
+rc-zip = { workspace = true, features = ["corpus"] }

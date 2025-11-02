@@ -17,13 +17,13 @@ name = "rc_zip_tokio"
 path = "src/lib.rs"
 
 [dependencies]
-rc-zip = { version = "5.3.3", path = "../rc-zip" }
-positioned-io = { version = "0.3.3" }
-tokio = { version = "1.43.1", features = ["fs", "io-util", "rt"] }
-futures-util = { version = "0.3.30" }
-pin-project-lite = { version = "0.2.13" }
-oval = "2.0.0"
-tracing = { version = "0.1.40", default-features = false }
+rc-zip.workspace = true
+positioned-io.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+pin-project-lite.workspace = true
+oval.workspace = true
+tracing.workspace = true
 
 [features]
 default = ["deflate"]
@@ -34,5 +34,5 @@ bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
 
 [dev-dependencies]
-rc-zip = { version = "5.3.3", path = "../rc-zip", features = ["corpus"] }
-tokio = { version = "1.43.1", features = ["rt-multi-thread", "macros"] }
+rc-zip = { workspace = true, features = ["corpus"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

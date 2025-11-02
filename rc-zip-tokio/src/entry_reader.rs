@@ -81,11 +81,7 @@ where
                         // progress was made, keep reading
                         continue;
                     } else {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "entry reader: no progress",
-                        ))
-                        .into();
+                        return Err(io::Error::other("entry reader: no progress")).into();
                     }
                 }
                 FsmResult::Done(_) => {

@@ -206,7 +206,8 @@ pub trait HasCursor {
 }
 
 impl HasCursor for &[u8] {
-    type Cursor<'a> = &'a [u8]
+    type Cursor<'a>
+        = &'a [u8]
     where
         Self: 'a;
 
@@ -216,7 +217,8 @@ impl HasCursor for &[u8] {
 }
 
 impl HasCursor for Vec<u8> {
-    type Cursor<'a> = &'a [u8]
+    type Cursor<'a>
+        = &'a [u8]
     where
         Self: 'a;
 
@@ -227,7 +229,8 @@ impl HasCursor for Vec<u8> {
 
 #[cfg(feature = "file")]
 impl HasCursor for std::fs::File {
-    type Cursor<'a> = positioned_io::Cursor<&'a std::fs::File>
+    type Cursor<'a>
+        = positioned_io::Cursor<&'a std::fs::File>
     where
         Self: 'a;
 

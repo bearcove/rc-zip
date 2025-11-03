@@ -224,7 +224,8 @@ pub trait HasCursor {
 }
 
 impl HasCursor for &[u8] {
-    type Cursor<'a> = &'a [u8]
+    type Cursor<'a>
+        = &'a [u8]
     where
         Self: 'a;
 
@@ -234,7 +235,8 @@ impl HasCursor for &[u8] {
 }
 
 impl HasCursor for Vec<u8> {
-    type Cursor<'a> = &'a [u8]
+    type Cursor<'a>
+        = &'a [u8]
     where
         Self: 'a;
 
@@ -244,7 +246,8 @@ impl HasCursor for Vec<u8> {
 }
 
 impl HasCursor for Arc<RandomAccessFile> {
-    type Cursor<'a> = AsyncRandomAccessFileCursor
+    type Cursor<'a>
+        = AsyncRandomAccessFileCursor
     where
         Self: 'a;
 

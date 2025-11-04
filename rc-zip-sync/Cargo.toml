@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-sync"
-version = "4.3.0"
+version = "4.3.3"
 description = "Synchronous zip reading on top of rc-zip"
 repository = "https://github.com/bearcove/rc-zip"
 license = "Apache-2.0 OR MIT"
@@ -16,10 +16,10 @@ name = "rc_zip_sync"
 path = "src/lib.rs"
 
 [dependencies]
-positioned-io = { version = "0.3.3", optional = true }
-rc-zip = { version = "5.3.1", path = "../rc-zip" }
-oval = "2.0.0"
-tracing = "0.1.40"
+positioned-io = { workspace = true, optional = true }
+rc-zip.workspace = true
+oval.workspace = true
+tracing.workspace = true
 
 [features]
 default = ["file", "deflate"]
@@ -29,3 +29,6 @@ deflate64 = ["rc-zip/deflate64"]
 lzma = ["rc-zip/lzma"]
 bzip2 = ["rc-zip/bzip2"]
 zstd = ["rc-zip/zstd"]
+
+[dev-dependencies]
+rc-zip = { workspace = true, features = ["corpus"] }

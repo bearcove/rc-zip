@@ -224,7 +224,8 @@ pub trait HasCursor {
 }
 
 impl HasCursor for &[u8] {
-    type Cursor<'a> = &'a [u8]
+    type Cursor<'a>
+        = &'a [u8]
     where
         Self: 'a;
 
@@ -234,7 +235,8 @@ impl HasCursor for &[u8] {
 }
 
 impl HasCursor for Vec<u8> {
-    type Cursor<'a> = &'a [u8]
+    type Cursor<'a>
+        = &'a [u8]
     where
         Self: 'a;
 
@@ -244,7 +246,8 @@ impl HasCursor for Vec<u8> {
 }
 
 impl HasCursor for Arc<RandomAccessFile> {
-    type Cursor<'a> = AsyncRandomAccessFileCursor
+    type Cursor<'a>
+        = AsyncRandomAccessFileCursor
     where
         Self: 'a;
 
@@ -344,10 +347,8 @@ impl AsyncRead for AsyncRandomAccessFileCursor {
                 self.poll_read(cx, buf)
             }
             ARAFCState::Reading { fut } => {
-                let core = futures_util::ready!(fut
-                    .as_mut()
-                    .poll(cx)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))??);
+                let core =
+                    futures_util::ready!(fut.as_mut().poll(cx).map_err(io::Error::other)??);
                 let is_eof = core.inner_buf_len == 0;
                 self.state = ARAFCState::Idle(core);
 

@@ -122,7 +122,10 @@ impl<R> HasCursor for OneByteReadWrapper<R>
 where
     R: HasCursor,
 {
-    type Cursor<'a> = OneByteReadWrapper<<R as HasCursor>::Cursor<'a>> where R: 'a;
+    type Cursor<'a>
+        = OneByteReadWrapper<<R as HasCursor>::Cursor<'a>>
+    where
+        R: 'a;
 
     fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
         OneByteReadWrapper(self.0.cursor_at(offset))

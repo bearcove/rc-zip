@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.9](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.8...rc-zip-tokio-v4.2.9) - 2025-11-04
+
+### Other
+
+- Merge pull request #126 from CosmicHorrorDev/workspace-deps
+- Merge pull request #127 from CosmicHorrorDev/placate-clippy
+- `$ cargo fmt`
+- turn off `tracing`s default features
+- *(rc-zip-tokio)* flip dev/non-dev `tokio` runtime feature
+
+## [4.2.8](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.7...rc-zip-tokio-v4.2.8) - 2025-10-17
+
+### Other
+
+- updated the following local packages: rc-zip, rc-zip
+
+## [4.2.7](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.6...rc-zip-tokio-v4.2.7) - 2025-08-30
+
+### Other
+
+- updated the following local packages: rc-zip, rc-zip
+
 ## [4.2.6](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.5...rc-zip-tokio-v4.2.6) - 2025-04-08
 
 ### Other

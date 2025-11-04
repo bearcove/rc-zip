@@ -9,8 +9,8 @@ inherits = "release"
 lto = "thin"
 
 [workspace.dependencies]
-rc-zip = { version = "5.3.3", path = "./rc-zip" }
-rc-zip-sync = { version = "4.3.2", path = "./rc-zip-sync" }
+rc-zip = { version = "5.3.4", path = "./rc-zip" }
+rc-zip-sync = { version = "4.3.3", path = "./rc-zip-sync" }
 
 bzip2 = "0.6.0"
 cfg-if = "1.0.0"

@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.4](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.3...rc-zip-v5.3.4) - 2025-11-04
+
+### Fixed
+
+- *(rc-zip/corpus)* ignore failures when installing global subscriber
+
+### Other
+
+- Merge pull request #126 from CosmicHorrorDev/workspace-deps
+- Merge pull request #127 from CosmicHorrorDev/placate-clippy
+- `$ cargo fmt`
+- turn off `tracing`s default features
+- *(rc-zip)* gate tests on `corpus` feature
+
 ## [5.3.3](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.2...rc-zip-v5.3.3) - 2025-10-17
 
 ### Other

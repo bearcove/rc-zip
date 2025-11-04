@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.6](https://github.com/bearcove/rc-zip/compare/rc-zip-cli-v1.1.5...rc-zip-cli-v1.1.6) - 2025-11-04
+
+### Other
+
+- switch to workspace deps
+- *(rc-zip-cli)* doesn't need `rc-zip/corpus`
+
 ## [1.1.5](https://github.com/bearcove/rc-zip/compare/rc-zip-cli-v1.1.4...rc-zip-cli-v1.1.5) - 2025-10-17
 
 ### Other

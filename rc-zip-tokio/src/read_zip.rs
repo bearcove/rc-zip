@@ -45,6 +45,25 @@ pub trait ReadZip {
     async fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error>;
 }
 
+struct CursorState<'a, F: HasCursor + 'a> {
+    cursor: <F as HasCursor>::Cursor<'a>,
+    offset: u64,
+}
+
+impl<'a, F: HasCursor + 'a> CursorState<'a, F> {
+    /// Constructs a cursor only _after_ doing a bounds check with `offset` and `size`
+    fn try_new(has_cursor: &'a F, offset: u64, size: u64) -> Result<Self, Error> {
+        if offset > size {
+            return Err(std::io::Error::other(format!(
+                "archive tried reading beyond zip archive end. {offset} goes beyond {size}"
+            ))
+            .into());
+        }
+        let cursor = has_cursor.cursor_at(offset);
+        Ok(Self { cursor, offset })
+    }
+}
+
 impl<F> ReadZipWithSize for F
 where
     F: HasCursor,
@@ -52,34 +71,21 @@ where
     type File = F;
 
     async fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, F>, Error> {
-        struct CursorState<'a, F: HasCursor + 'a> {
-            cursor: <F as HasCursor>::Cursor<'a>,
-            offset: u64,
-        }
         let mut cstate: Option<CursorState<'_, F>> = None;
 
         let mut fsm = ArchiveFsm::new(size);
         loop {
             if let Some(offset) = fsm.wants_read() {
                 let mut cstate_next = match cstate.take() {
+                    // all good, re-using
+                    Some(cstate) if cstate.offset == offset => cstate,
                     Some(cstate) => {
-                        if cstate.offset == offset {
-                            // all good, re-using
-                            cstate
-                        } else {
-                            trace!(%offset, %cstate.offset, "read_zip_with_size: making new cursor (had wrong offset)");
-                            CursorState {
-                                cursor: self.cursor_at(offset),
-                                offset,
-                            }
-                        }
+                        trace!(%offset, %cstate.offset, "read_zip_with_size: making new cursor (had wrong offset)");
+                        CursorState::try_new(self, offset, size)?
                     }
                     None => {
                         trace!(%offset, "read_zip_with_size: making new cursor (had none)");
-                        CursorState {
-                            cursor: self.cursor_at(offset),
-                            offset,
-                        }
+                        CursorState::try_new(self, offset, size)?
                     }
                 };
 

@@ -24,7 +24,7 @@ futures-util = "0.3.30"
 humansize = "2.1.3"
 indicatif = "0.17.7"
 lzma-rs = { version = "0.3.0", features = ["stream"] }
-miniz_oxide = "0.7.1"
+miniz_oxide = "0.8.9"
 oem_cp = "2.0.0"
 oval = "2.0.0"
 ownable = "0.6.2"

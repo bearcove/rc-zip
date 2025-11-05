@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.4](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.3.3...rc-zip-sync-v4.3.4) - 2025-11-05
+
+### Other
+
+- Merge pull request #124 from CosmicHorrorDev/archive-oob
+- Merge branch 'main' into chore/cargo_toml_repository
+
 ## [4.3.3](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.3.2...rc-zip-sync-v4.3.3) - 2025-11-04
 
 ### Other

@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.5](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.4...rc-zip-v5.3.5) - 2025-11-05
+
+### Other
+
+- Merge branch 'main' into chore/cargo_toml_repository
+
 ## [5.3.4](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.3...rc-zip-v5.3.4) - 2025-11-04
 
 ### Fixed

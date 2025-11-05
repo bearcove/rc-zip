@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.10](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.9...rc-zip-tokio-v4.2.10) - 2025-11-05
+
+### Other
+
+- Merge pull request #124 from CosmicHorrorDev/archive-oob
+- Merge branch 'main' into chore/cargo_toml_repository
+
 ## [4.2.9](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.8...rc-zip-tokio-v4.2.9) - 2025-11-04
 
 ### Other

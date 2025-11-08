@@ -207,6 +207,14 @@ pub fn test_cases() -> Vec<Case> {
             files: Files::NumFiles(11372),
             ..Default::default()
         },
+        Case {
+            name: "info-zip-unix-extra.zip",
+            files: Files::ExhaustiveList(vec![CaseFile {
+                name: "bun-darwin-x64/",
+                ..Default::default()
+            }]),
+            ..Default::default()
+        },
         #[cfg(feature = "lzma")]
         Case {
             name: "found-me-lzma.zip",
@@ -261,11 +269,18 @@ pub fn test_cases() -> Vec<Case> {
 }
 
 pub fn streaming_test_cases() -> Vec<Case> {
-    vec![Case {
-        name: "meta.zip",
-        files: Files::NumFiles(0),
-        ..Default::default()
-    }]
+    vec![
+        Case {
+            name: "meta.zip",
+            files: Files::NumFiles(0),
+            ..Default::default()
+        },
+        Case {
+            name: "info-zip-unix-extra.zip",
+            files: Files::NumFiles(0),
+            ..Default::default()
+        },
+    ]
 }
 
 pub fn check_case(case: &Case, archive: Result<&Archive, &Error>) {

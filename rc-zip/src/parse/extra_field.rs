@@ -99,7 +99,7 @@ impl<'a> ExtraField<'a> {
                 ExtraNtfsField::TAG => {
                     opt(ExtraNtfsField::parser.map(EF::Ntfs)).parse_next(payload)?
                 }
-                ExtraUnixField::TAG | ExtraUnixField::TAG_INFOZIP => {
+                ExtraUnixField::TAG => {
                     opt(ExtraUnixField::parser.map(EF::Unix)).parse_next(payload)?
                 }
                 ExtraNewUnixField::TAG => {
@@ -201,7 +201,11 @@ pub struct ExtraUnixField<'a> {
 
 impl<'a> ExtraUnixField<'a> {
     const TAG: u16 = 0x000d;
-    const TAG_INFOZIP: u16 = 0x5855;
+    // FIXME(cosmic): add support after `ExtraUnixField`'s structure accounts for info-zip storing
+    // less information than with `::TAG`. the smaller variant stores just atime and mtime while
+    // the larger additionally store a `uid` and `gid` as well. the variant is determined based off
+    // of `t_size`, with no additional variable data
+    const _TAG_INFOZIP: u16 = 0x5855;
 
     fn parser(i: &mut Partial<&'a [u8]>) -> PResult<Self> {
         let t_size = le_u16.parse_next(i)?;

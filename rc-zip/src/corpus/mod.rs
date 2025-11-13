@@ -215,6 +215,14 @@ pub fn test_cases() -> Vec<Case> {
             }]),
             ..Default::default()
         },
+        Case {
+            name: "readme.trailingzip",
+            files: Files::ExhaustiveList(vec![CaseFile {
+                name: "README",
+                ..Default::default()
+            }]),
+            ..Default::default()
+        },
         #[cfg(feature = "lzma")]
         Case {
             name: "found-me-lzma.zip",

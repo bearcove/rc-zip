@@ -735,12 +735,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rc-zip-corpus"
+version = "0.1.0"
+dependencies = [
+ "bzip2",
+ "chrono",
+ "rc-zip",
+ "temp-dir",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rc-zip-sync"
 version = "4.3.4"
 dependencies = [
  "oval",
  "positioned-io",
  "rc-zip",
+ "rc-zip-corpus",
  "tracing",
 ]
 
@@ -753,6 +766,7 @@ dependencies = [
  "pin-project-lite",
  "positioned-io",
  "rc-zip",
+ "rc-zip-corpus",
  "tokio",
  "tracing",
 ]

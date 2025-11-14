@@ -18,6 +18,7 @@ pub mod fsm;
 pub mod parse;
 
 #[cfg(feature = "corpus")]
+#[deprecated(since = "5.3.7", note = "Please use the `rc-zip-corpus` crate instead")]
 pub mod corpus;
 
 // dependencies re-exports

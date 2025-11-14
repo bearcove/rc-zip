@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.8](https://github.com/bearcove/rc-zip/compare/rc-zip-cli-v1.1.7...rc-zip-cli-v1.1.8) - 2025-11-14
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [1.1.7](https://github.com/bearcove/rc-zip/compare/rc-zip-cli-v1.1.6...rc-zip-cli-v1.1.7) - 2025-11-05
 
 ### Other

@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.6](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.5...rc-zip-v5.3.6) - 2025-11-14
+
+### Other
+
+- *(rc-zip)* split `corpus` into its own crate
+- add trailing zip to corpus
+
 ## [5.3.5](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.4...rc-zip-v5.3.5) - 2025-11-05
 
 ### Other

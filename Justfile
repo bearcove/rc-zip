@@ -18,7 +18,7 @@ ci-test:
     #!/bin/bash -eux
     export RUSTUP_TOOLCHAIN=nightly
     rustup target add wasm32-unknown-unknown
-    cargo test --no-run -p rc-zip --all-features --target wasm32-unknown-unknown
+    cargo test --no-run -p rc-zip-corpus --all-features --target wasm32-unknown-unknown
     wasmtime target/wasm32-unknown-unknown/debug/deps/integration_tests-*.wasm
 
     rustup component add llvm-tools

@@ -1,8 +1,8 @@
 use rc_zip::{
-    corpus::{self, zips_dir, Case, Files},
     error::Error,
     parse::Archive,
 };
+use rc_zip_corpus::{zips_dir, Case, Files};
 use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
 
 use std::{
@@ -11,7 +11,7 @@ use std::{
 };
 
 fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
-    corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
+    rc_zip_corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
     let archive = match archive {
         Ok(archive) => archive,
         Err(_) => return,
@@ -25,14 +25,14 @@ fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, E
                 .unwrap_or_else(|| panic!("entry {} should exist", file.name));
 
             tracing::info!("got entry for {}", file.name);
-            corpus::check_file_against(file, &entry, &entry.bytes().unwrap()[..])
+            rc_zip_corpus::check_file_against(file, &entry, &entry.bytes().unwrap()[..])
         }
     }
 }
 
 #[test]
 fn read_from_slice() {
-    corpus::install_test_subscriber();
+    rc_zip_corpus::install_test_subscriber();
 
     let bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
     let slice = &bytes[..];
@@ -42,7 +42,7 @@ fn read_from_slice() {
 
 #[test]
 fn read_from_file() {
-    corpus::install_test_subscriber();
+    rc_zip_corpus::install_test_subscriber();
 
     let f = File::open(zips_dir().join("test.zip")).unwrap();
     let archive = f.read_zip().unwrap();
@@ -51,9 +51,9 @@ fn read_from_file() {
 
 #[test]
 fn real_world_files() {
-    corpus::install_test_subscriber();
+    rc_zip_corpus::install_test_subscriber();
 
-    for case in corpus::test_cases() {
+    for case in rc_zip_corpus::test_cases() {
         tracing::info!("============ testing {}", case.name);
 
         let guarded_path = case.absolute_path();
@@ -73,9 +73,9 @@ fn real_world_files() {
 
 #[test]
 fn streaming() {
-    corpus::install_test_subscriber();
+    rc_zip_corpus::install_test_subscriber();
 
-    for case in corpus::streaming_test_cases() {
+    for case in rc_zip_corpus::streaming_test_cases() {
         let guarded_path = case.absolute_path();
         let file = File::open(&guarded_path.path).unwrap();
 

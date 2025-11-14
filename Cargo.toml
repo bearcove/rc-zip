@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["rc-zip-cli", "rc-zip", "rc-zip-sync", "rc-zip-tokio"]
+members = ["rc-zip", "rc-zip-*"]
 exclude = ["fuzz"]
 
 # The profile that 'cargo dist' will build with
@@ -10,6 +10,7 @@ lto = "thin"
 
 [workspace.dependencies]
 rc-zip = { version = "5.3.5", path = "./rc-zip" }
+rc-zip-corpus = { version = "0.1.0", path = "rc-zip-corpus" }
 rc-zip-sync = { version = "4.3.4", path = "./rc-zip-sync" }
 
 bzip2 = "0.6.0"

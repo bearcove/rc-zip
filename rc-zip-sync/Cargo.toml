@@ -24,11 +24,11 @@ tracing.workspace = true
 [features]
 default = ["file", "deflate"]
 file = ["positioned-io"]
-deflate = ["rc-zip/deflate"]
-deflate64 = ["rc-zip/deflate64"]
-lzma = ["rc-zip/lzma"]
-bzip2 = ["rc-zip/bzip2"]
-zstd = ["rc-zip/zstd"]
+deflate = ["rc-zip/deflate", "rc-zip-corpus/deflate"]
+deflate64 = ["rc-zip/deflate64", "rc-zip-corpus/deflate64"]
+lzma = ["rc-zip/lzma", "rc-zip-corpus/lzma"]
+bzip2 = ["rc-zip/bzip2", "rc-zip-corpus/bzip2"]
+zstd = ["rc-zip/zstd", "rc-zip-corpus/zstd"]
 
 [dev-dependencies]
-rc-zip = { workspace = true, features = ["corpus"] }
+rc-zip-corpus.workspace = true

@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.12](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.11...rc-zip-tokio-v4.2.12) - 2025-11-16
+
+### Other
+
+- check `Files` for streaming corpus
+- (poorly) wire up streaming error checking
+- Update
+- *(rc-zip)* split `corpus` into its own crate
+
 ## [4.2.11](https://github.com/bearcove/rc-zip/compare/rc-zip-tokio-v4.2.10...rc-zip-tokio-v4.2.11) - 2025-11-14
 
 ### Other

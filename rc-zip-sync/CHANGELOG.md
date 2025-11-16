@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.6](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.3.5...rc-zip-sync-v4.3.6) - 2025-11-16
+
+### Other
+
+- check `Files` for streaming corpus
+- (poorly) wire up streaming error checking
+- Update
+- *(rc-zip)* split `corpus` into its own crate
+- *(rc-zip-sync)* add a self-extracting zip file example
+
 ## [4.3.5](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.3.4...rc-zip-sync-v4.3.5) - 2025-11-14
 
 ### Other

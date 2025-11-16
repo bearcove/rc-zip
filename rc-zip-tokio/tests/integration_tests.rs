@@ -1,8 +1,5 @@
 use positioned_io::{RandomAccessFile, Size};
-use rc_zip::{
-    error::Error,
-    parse::Archive,
-};
+use rc_zip::{error::Error, parse::Archive};
 use rc_zip_corpus::{zips_dir, Case, Files};
 use rc_zip_tokio::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
@@ -76,10 +73,13 @@ async fn streaming() {
         let guarded_path = case.absolute_path();
         let file = tokio::fs::File::open(&guarded_path.path).await.unwrap();
 
-        let mut entry = file
-            .stream_zip_entries_throwing_caution_to_the_wind()
-            .await
-            .unwrap();
+        let mut entry = match file.stream_zip_entries_throwing_caution_to_the_wind().await {
+            Ok(entry) => entry,
+            Err(err) => {
+                check_case::<&[u8]>(&case, Err(err)).await;
+                return;
+            }
+        };
         loop {
             let mut v = vec![];
             let n = entry.read_to_end(&mut v).await.unwrap();

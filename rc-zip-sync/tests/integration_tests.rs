@@ -1,7 +1,4 @@
-use rc_zip::{
-    error::Error,
-    parse::Archive,
-};
+use rc_zip::{error::Error, parse::Archive};
 use rc_zip_corpus::{zips_dir, Case, Files};
 use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
 
@@ -79,9 +76,13 @@ fn streaming() {
         let guarded_path = case.absolute_path();
         let file = File::open(&guarded_path.path).unwrap();
 
-        let mut entry = file
-            .stream_zip_entries_throwing_caution_to_the_wind()
-            .unwrap();
+        let mut entry = match file.stream_zip_entries_throwing_caution_to_the_wind() {
+            Ok(entry) => entry,
+            Err(err) => {
+                check_case::<&[u8]>(&case, Err(err));
+                return;
+            }
+        };
         loop {
             let mut v = vec![];
             let n = entry.read_to_end(&mut v).unwrap();

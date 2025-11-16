@@ -5,7 +5,7 @@ use std::{fs::File, path::PathBuf};
 use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 use rc_zip::{
     encoding::Encoding,
-    error::Error,
+    error::{Error, FormatError},
     parse::{Archive, Entry, EntryKind},
 };
 use temp_dir::TempDir;
@@ -283,6 +283,11 @@ pub fn streaming_test_cases() -> Vec<Case> {
         Case {
             name: "info-zip-unix-extra.zip",
             files: Files::NumFiles(0),
+            ..Default::default()
+        },
+        Case {
+            name: "readme.trailingzip",
+            error: Some(FormatError::InvalidLocalHeader.into()),
             ..Default::default()
         },
     ]

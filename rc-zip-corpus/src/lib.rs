@@ -168,19 +168,20 @@ fn time_zone(hours: i32) -> FixedOffset {
     FixedOffset::east_opt(hours * 3600).unwrap()
 }
 
+#[track_caller]
 fn date(
     (year, month, day): (i32, u32, u32),
     (hour, min, sec): (u32, u32, u32),
     nsec: u32,
     offset: FixedOffset,
-) -> Option<DateTime<Utc>> {
-    Some(
-        offset
-            .with_ymd_and_hms(year, month, day, hour, min, sec)
-            .single()?
-            .with_nanosecond(nsec)?
-            .into(),
-    )
+) -> DateTime<Utc> {
+    offset
+        .with_ymd_and_hms(year, month, day, hour, min, sec)
+        .single()
+        .unwrap()
+        .with_nanosecond(nsec)
+        .unwrap()
+        .into()
 }
 
 pub fn test_cases() -> Vec<Case> {
@@ -190,7 +191,7 @@ pub fn test_cases() -> Vec<Case> {
             files: CaseFile {
                 name: "README",
                 content: "This small file is in ZIP64 format.\n".into(),
-                modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)).unwrap()),
+                modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0))),
                 mode: Some(0o644),
             }
             .into(),
@@ -204,13 +205,13 @@ pub fn test_cases() -> Vec<Case> {
                 CaseFile {
                     name: "test.txt",
                     content: "This is a test text file.\n".into(),
-                    modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)).unwrap()),
+                    modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10))),
                     mode: Some(0o644),
                 },
                 CaseFile {
                     name: "gophercolor16x16.png",
                     content: FileContent::File("gophercolor16x16.png"),
-                    modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)).unwrap()),
+                    modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10))),
                     mode: Some(0o644),
                 },
             ]
@@ -249,7 +250,7 @@ pub fn test_cases() -> Vec<Case> {
             files: CaseFile {
                 name: "世界",
                 content: "".into(),
-                modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0)).unwrap()),
+                modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0))),
                 ..Default::default()
             }
             .into(),
@@ -286,7 +287,7 @@ pub fn test_cases() -> Vec<Case> {
             files: CaseFile {
                 name: "found-me.txt",
                 content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
                 ..Default::default()
             }
             .into(),
@@ -299,7 +300,7 @@ pub fn test_cases() -> Vec<Case> {
             files: CaseFile {
                 name: "found-me.txt",
                 content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
                 ..Default::default()
             }
             .into(),
@@ -313,7 +314,7 @@ pub fn test_cases() -> Vec<Case> {
             files: CaseFile {
                 name: "found-me.txt",
                 content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
                 ..Default::default()
             }
             .into(),
@@ -327,7 +328,7 @@ pub fn test_cases() -> Vec<Case> {
             files: CaseFile {
                 name: "found-me.txt",
                 content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0)).unwrap()),
+                modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0))),
                 ..Default::default()
             }
             .into(),

@@ -25,11 +25,15 @@ pub enum Files {
 }
 
 impl Files {
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         match self {
             Self::ExhaustiveList(list) => list.len(),
             Self::NumFiles(n) => *n,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -277,12 +281,15 @@ pub fn streaming_test_cases() -> Vec<Case> {
     vec![
         Case {
             name: "meta.zip",
-            files: Files::NumFiles(0),
+            files: Files::NumFiles(33),
             ..Default::default()
         },
         Case {
             name: "info-zip-unix-extra.zip",
-            files: Files::NumFiles(0),
+            files: Files::ExhaustiveList(vec![CaseFile {
+                name: "bun-darwin-x64/",
+                ..Default::default()
+            }]),
             ..Default::default()
         },
         Case {

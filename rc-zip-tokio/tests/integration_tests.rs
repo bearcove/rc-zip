@@ -73,6 +73,7 @@ async fn streaming() {
         let guarded_path = case.absolute_path();
         let file = tokio::fs::File::open(&guarded_path.path).await.unwrap();
 
+        let mut num_files = 0;
         let mut entry = match file.stream_zip_entries_throwing_caution_to_the_wind().await {
             Ok(entry) => entry,
             Err(err) => {
@@ -84,12 +85,28 @@ async fn streaming() {
             let mut v = vec![];
             let n = entry.read_to_end(&mut v).await.unwrap();
             tracing::trace!("entry {} read {} bytes", entry.entry().name, n);
+            num_files += 1;
+            if let Files::ExhaustiveList(files) = &case.files {
+                let file = files
+                    .iter()
+                    .find(|e| e.name == entry.entry().name)
+                    .unwrap_or_else(|| {
+                        panic!("couldn't find expected entry named: {}", entry.entry().name);
+                    });
+                rc_zip_corpus::check_file_against(file, entry.entry(), &v);
+            }
 
             match entry.finish().await.unwrap() {
                 Some(next) => entry = next,
                 None => break,
             }
         }
+
+        let expected_num = case.files.len();
+        assert_eq!(
+            expected_num, num_files,
+            "expected {expected_num} entries, found {num_files}"
+        );
 
         drop(guarded_path)
     }

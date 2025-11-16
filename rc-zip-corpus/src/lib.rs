@@ -5,7 +5,7 @@ use std::{fs::File, path::PathBuf};
 use chrono::{DateTime, FixedOffset, TimeZone, Timelike, Utc};
 use rc_zip::{
     encoding::Encoding,
-    error::Error,
+    error::{Error, FormatError},
     parse::{Archive, Entry, EntryKind},
 };
 use temp_dir::TempDir;
@@ -25,11 +25,39 @@ pub enum Files {
 }
 
 impl Files {
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         match self {
             Self::ExhaustiveList(list) => list.len(),
             Self::NumFiles(n) => *n,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl Default for Files {
+    fn default() -> Self {
+        Self::NumFiles(0)
+    }
+}
+
+impl From<CaseFile> for Files {
+    fn from(file: CaseFile) -> Self {
+        vec![file].into()
+    }
+}
+
+impl From<Vec<CaseFile>> for Files {
+    fn from(files: Vec<CaseFile>) -> Self {
+        Self::ExhaustiveList(files)
+    }
+}
+
+impl From<usize> for Files {
+    fn from(num: usize) -> Self {
+        Self::NumFiles(num)
     }
 }
 
@@ -39,7 +67,7 @@ impl Default for Case {
             name: "test.zip",
             expected_encoding: None,
             comment: None,
-            files: Files::NumFiles(0),
+            files: Files::default(),
             error: None,
         }
     }
@@ -77,6 +105,33 @@ impl Case {
         let gp = self.absolute_path();
         std::fs::read(gp.path).unwrap()
     }
+
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            ..Default::default()
+        }
+    }
+
+    pub fn encoding(mut self, enc: Encoding) -> Self {
+        self.expected_encoding = Some(enc);
+        self
+    }
+
+    pub fn comment(mut self, comment: &'static str) -> Self {
+        self.comment = Some(comment);
+        self
+    }
+
+    pub fn files<F: Into<Files>>(mut self, files: F) -> Self {
+        self.files = files.into();
+        self
+    }
+
+    pub fn error<E: Into<Error>>(mut self, error: E) -> Self {
+        self.error = Some(error.into());
+        self
+    }
 }
 
 pub struct CaseFile {
@@ -86,10 +141,60 @@ pub struct CaseFile {
     pub content: FileContent,
 }
 
+impl CaseFile {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            ..Default::default()
+        }
+    }
+
+    pub fn mode(mut self, mode: u32) -> Self {
+        self.mode = Some(mode);
+        self
+    }
+
+    pub fn modified(mut self, date: DateTime<Utc>) -> Self {
+        self.modified = Some(date);
+        self
+    }
+
+    pub fn content<C: Into<FileContent>>(mut self, content: C) -> Self {
+        self.content = content.into();
+        self
+    }
+}
+
+#[derive(Default)]
 pub enum FileContent {
+    #[default]
     Unchecked,
     Bytes(Vec<u8>),
     File(&'static str),
+}
+
+impl From<&str> for FileContent {
+    fn from(s: &str) -> Self {
+        s.as_bytes().into()
+    }
+}
+
+impl From<&[u8]> for FileContent {
+    fn from(bytes: &[u8]) -> Self {
+        bytes.to_vec().into()
+    }
+}
+
+impl From<String> for FileContent {
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
+    }
+}
+
+impl From<Vec<u8>> for FileContent {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::Bytes(bytes)
+    }
 }
 
 impl Default for CaseFile {
@@ -98,7 +203,7 @@ impl Default for CaseFile {
             name: "default",
             mode: None,
             modified: None,
-            content: FileContent::Unchecked,
+            content: FileContent::default(),
         }
     }
 }
@@ -114,177 +219,107 @@ fn time_zone(hours: i32) -> FixedOffset {
     FixedOffset::east_opt(hours * 3600).unwrap()
 }
 
+#[track_caller]
 fn date(
     (year, month, day): (i32, u32, u32),
     (hour, min, sec): (u32, u32, u32),
     nsec: u32,
     offset: FixedOffset,
-) -> Option<DateTime<Utc>> {
-    Some(
-        offset
-            .with_ymd_and_hms(year, month, day, hour, min, sec)
-            .single()?
-            .with_nanosecond(nsec)?
-            .into(),
-    )
+) -> DateTime<Utc> {
+    offset
+        .with_ymd_and_hms(year, month, day, hour, min, sec)
+        .single()
+        .unwrap()
+        .with_nanosecond(nsec)
+        .unwrap()
+        .into()
 }
 
 pub fn test_cases() -> Vec<Case> {
     vec![
-        Case {
-            name: "zip64.zip",
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "README",
-                content: FileContent::Bytes(
-                    "This small file is in ZIP64 format.\n".as_bytes().into(),
-                ),
-                modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)).unwrap()),
-                mode: Some(0o644),
-            }]),
-            ..Default::default()
-        },
-        Case {
-            name: "test.zip",
-            comment: Some("This is a zipfile comment."),
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![
-                CaseFile {
-                    name: "test.txt",
-                    content: FileContent::Bytes("This is a test text file.\n".as_bytes().into()),
-                    modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)).unwrap()),
-                    mode: Some(0o644),
-                },
-                CaseFile {
-                    name: "gophercolor16x16.png",
-                    content: FileContent::File("gophercolor16x16.png"),
-                    modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)).unwrap()),
-                    mode: Some(0o644),
-                },
+        Case::new("zip64.zip").files(
+            CaseFile::new("README")
+                .content("This small file is in ZIP64 format.\n")
+                .modified(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)))
+                .mode(0o644),
+        ),
+        Case::new("test.zip")
+            .comment("This is a zipfile comment.")
+            .encoding(Encoding::Utf8)
+            .files(vec![
+                CaseFile::new("test.txt")
+                    .content("This is a test text file.\n")
+                    .modified(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)))
+                    .mode(0o644),
+                CaseFile::new("gophercolor16x16.png")
+                    .content(FileContent::File("gophercolor16x16.png"))
+                    .modified(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)))
+                    .mode(0o644),
             ]),
-            ..Default::default()
-        },
-        Case {
-            name: "cp-437.zip",
-            expected_encoding: Some(Encoding::Cp437),
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "français",
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
-        Case {
-            name: "shift-jis.zip",
-            expected_encoding: Some(Encoding::ShiftJis),
-            files: Files::ExhaustiveList(vec![
-                CaseFile {
-                    name: "should-be-jis/",
-                    ..Default::default()
-                },
-                CaseFile {
-                    name: "should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi",
-                    ..Default::default()
-                },
+        Case::new("cp-437.zip")
+            .encoding(Encoding::Cp437)
+            .files(CaseFile::new("français")),
+        Case::new("shift-jis.zip")
+            .encoding(Encoding::ShiftJis)
+            .files(vec![
+                CaseFile::new("should-be-jis/"),
+                CaseFile::new("should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi"),
             ]),
-            ..Default::default()
-        },
-        Case {
-            name: "utf8-winrar.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "世界",
-                content: FileContent::Bytes(vec![]),
-                modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0)).unwrap()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
-        Case {
-            name: "wine-zeroed.zip.bz2",
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::NumFiles(11372),
-            ..Default::default()
-        },
-        Case {
-            name: "info-zip-unix-extra.zip",
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "bun-darwin-x64/",
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
-        Case {
-            name: "readme.trailingzip",
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "README",
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
+        Case::new("utf8-winrar.zip").encoding(Encoding::Utf8).files(
+            CaseFile::new("世界").content("").modified(date(
+                (2017, 11, 6),
+                (21, 9, 27),
+                867862500,
+                time_zone(0),
+            )),
+        ),
+        Case::new("wine-zeroed.zip.bz2")
+            .encoding(Encoding::Utf8)
+            .files(11372),
+        Case::new("info-zip-unix-extra.zip").files(CaseFile::new("bun-darwin-x64/")),
+        Case::new("readme.trailingzip").files(CaseFile::new("README")),
         #[cfg(feature = "lzma")]
-        Case {
-            name: "found-me-lzma.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
+        Case::new("found-me-lzma.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
+            ),
         #[cfg(feature = "deflate64")]
-        Case {
-            name: "found-me-deflate64.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
+        Case::new("found-me-deflate64.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
+            ),
         // same with bzip2
         #[cfg(feature = "bzip2")]
-        Case {
-            name: "found-me-bzip2.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
+        Case::new("found-me-bzip2.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
+            ),
         // same with zstd
         #[cfg(feature = "zstd")]
-        Case {
-            name: "found-me-zstd.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
-                name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
-                modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0)).unwrap()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        },
+        Case::new("found-me-zstd.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0))),
+            ),
     ]
 }
 
 pub fn streaming_test_cases() -> Vec<Case> {
     vec![
-        Case {
-            name: "meta.zip",
-            files: Files::NumFiles(0),
-            ..Default::default()
-        },
-        Case {
-            name: "info-zip-unix-extra.zip",
-            files: Files::NumFiles(0),
-            ..Default::default()
-        },
+        Case::new("meta.zip").files(33),
+        Case::new("info-zip-unix-extra.zip").files(CaseFile::new("bun-darwin-x64/")),
+        Case::new("readme.trailingzip").error(FormatError::InvalidLocalHeader),
     ]
 }
 

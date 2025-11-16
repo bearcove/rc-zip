@@ -37,13 +37,37 @@ impl Files {
     }
 }
 
+impl Default for Files {
+    fn default() -> Self {
+        Self::NumFiles(0)
+    }
+}
+
+impl From<CaseFile> for Files {
+    fn from(file: CaseFile) -> Self {
+        vec![file].into()
+    }
+}
+
+impl From<Vec<CaseFile>> for Files {
+    fn from(files: Vec<CaseFile>) -> Self {
+        Self::ExhaustiveList(files)
+    }
+}
+
+impl From<usize> for Files {
+    fn from(num: usize) -> Self {
+        Self::NumFiles(num)
+    }
+}
+
 impl Default for Case {
     fn default() -> Self {
         Self {
             name: "test.zip",
             expected_encoding: None,
             comment: None,
-            files: Files::NumFiles(0),
+            files: Files::default(),
             error: None,
         }
     }
@@ -90,10 +114,36 @@ pub struct CaseFile {
     pub content: FileContent,
 }
 
+#[derive(Default)]
 pub enum FileContent {
+    #[default]
     Unchecked,
     Bytes(Vec<u8>),
     File(&'static str),
+}
+
+impl From<&str> for FileContent {
+    fn from(s: &str) -> Self {
+        s.as_bytes().into()
+    }
+}
+
+impl From<&[u8]> for FileContent {
+    fn from(bytes: &[u8]) -> Self {
+        bytes.to_vec().into()
+    }
+}
+
+impl From<String> for FileContent {
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
+    }
+}
+
+impl From<Vec<u8>> for FileContent {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::Bytes(bytes)
+    }
 }
 
 impl Default for CaseFile {
@@ -102,7 +152,7 @@ impl Default for CaseFile {
             name: "default",
             mode: None,
             modified: None,
-            content: FileContent::Unchecked,
+            content: FileContent::default(),
         }
     }
 }
@@ -137,24 +187,23 @@ pub fn test_cases() -> Vec<Case> {
     vec![
         Case {
             name: "zip64.zip",
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "README",
-                content: FileContent::Bytes(
-                    "This small file is in ZIP64 format.\n".as_bytes().into(),
-                ),
+                content: "This small file is in ZIP64 format.\n".into(),
                 modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)).unwrap()),
                 mode: Some(0o644),
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         Case {
             name: "test.zip",
             comment: Some("This is a zipfile comment."),
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![
+            files: vec![
                 CaseFile {
                     name: "test.txt",
-                    content: FileContent::Bytes("This is a test text file.\n".as_bytes().into()),
+                    content: "This is a test text file.\n".into(),
                     modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
                 },
@@ -164,22 +213,24 @@ pub fn test_cases() -> Vec<Case> {
                     modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)).unwrap()),
                     mode: Some(0o644),
                 },
-            ]),
+            ]
+            .into(),
             ..Default::default()
         },
         Case {
             name: "cp-437.zip",
             expected_encoding: Some(Encoding::Cp437),
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "français",
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         Case {
             name: "shift-jis.zip",
             expected_encoding: Some(Encoding::ShiftJis),
-            files: Files::ExhaustiveList(vec![
+            files: vec![
                 CaseFile {
                     name: "should-be-jis/",
                     ..Default::default()
@@ -188,64 +239,70 @@ pub fn test_cases() -> Vec<Case> {
                     name: "should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi",
                     ..Default::default()
                 },
-            ]),
+            ]
+            .into(),
             ..Default::default()
         },
         Case {
             name: "utf8-winrar.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "世界",
-                content: FileContent::Bytes(vec![]),
+                content: "".into(),
                 modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0)).unwrap()),
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         Case {
             name: "wine-zeroed.zip.bz2",
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::NumFiles(11372),
+            files: 11372.into(),
             ..Default::default()
         },
         Case {
             name: "info-zip-unix-extra.zip",
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "bun-darwin-x64/",
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         Case {
             name: "readme.trailingzip",
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "README",
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         #[cfg(feature = "lzma")]
         Case {
             name: "found-me-lzma.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
+                content: "Oh no, you found me\n".repeat(5000).into(),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         #[cfg(feature = "deflate64")]
         Case {
             name: "found-me-deflate64.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
+                content: "Oh no, you found me\n".repeat(5000).into(),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         // same with bzip2
@@ -253,12 +310,13 @@ pub fn test_cases() -> Vec<Case> {
         Case {
             name: "found-me-bzip2.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
+                content: "Oh no, you found me\n".repeat(5000).into(),
                 modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0)).unwrap()),
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         // same with zstd
@@ -266,12 +324,13 @@ pub fn test_cases() -> Vec<Case> {
         Case {
             name: "found-me-zstd.zip",
             expected_encoding: Some(Encoding::Utf8),
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "found-me.txt",
-                content: FileContent::Bytes("Oh no, you found me\n".repeat(5000).into()),
+                content: "Oh no, you found me\n".repeat(5000).into(),
                 modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0)).unwrap()),
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
     ]
@@ -281,15 +340,16 @@ pub fn streaming_test_cases() -> Vec<Case> {
     vec![
         Case {
             name: "meta.zip",
-            files: Files::NumFiles(33),
+            files: 33.into(),
             ..Default::default()
         },
         Case {
             name: "info-zip-unix-extra.zip",
-            files: Files::ExhaustiveList(vec![CaseFile {
+            files: CaseFile {
                 name: "bun-darwin-x64/",
                 ..Default::default()
-            }]),
+            }
+            .into(),
             ..Default::default()
         },
         Case {

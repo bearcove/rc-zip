@@ -105,6 +105,33 @@ impl Case {
         let gp = self.absolute_path();
         std::fs::read(gp.path).unwrap()
     }
+
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            ..Default::default()
+        }
+    }
+
+    pub fn encoding(mut self, enc: Encoding) -> Self {
+        self.expected_encoding = Some(enc);
+        self
+    }
+
+    pub fn comment(mut self, comment: &'static str) -> Self {
+        self.comment = Some(comment);
+        self
+    }
+
+    pub fn files<F: Into<Files>>(mut self, files: F) -> Self {
+        self.files = files.into();
+        self
+    }
+
+    pub fn error<E: Into<Error>>(mut self, error: E) -> Self {
+        self.error = Some(error.into());
+        self
+    }
 }
 
 pub struct CaseFile {
@@ -112,6 +139,30 @@ pub struct CaseFile {
     pub mode: Option<u32>,
     pub modified: Option<DateTime<Utc>>,
     pub content: FileContent,
+}
+
+impl CaseFile {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            ..Default::default()
+        }
+    }
+
+    pub fn mode(mut self, mode: u32) -> Self {
+        self.mode = Some(mode);
+        self
+    }
+
+    pub fn modified(mut self, date: DateTime<Utc>) -> Self {
+        self.modified = Some(date);
+        self
+    }
+
+    pub fn content<C: Into<FileContent>>(mut self, content: C) -> Self {
+        self.content = content.into();
+        self
+    }
 }
 
 #[derive(Default)]
@@ -186,178 +237,89 @@ fn date(
 
 pub fn test_cases() -> Vec<Case> {
     vec![
-        Case {
-            name: "zip64.zip",
-            files: CaseFile {
-                name: "README",
-                content: "This small file is in ZIP64 format.\n".into(),
-                modified: Some(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0))),
-                mode: Some(0o644),
-            }
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "test.zip",
-            comment: Some("This is a zipfile comment."),
-            expected_encoding: Some(Encoding::Utf8),
-            files: vec![
-                CaseFile {
-                    name: "test.txt",
-                    content: "This is a test text file.\n".into(),
-                    modified: Some(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10))),
-                    mode: Some(0o644),
-                },
-                CaseFile {
-                    name: "gophercolor16x16.png",
-                    content: FileContent::File("gophercolor16x16.png"),
-                    modified: Some(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10))),
-                    mode: Some(0o644),
-                },
-            ]
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "cp-437.zip",
-            expected_encoding: Some(Encoding::Cp437),
-            files: CaseFile {
-                name: "français",
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "shift-jis.zip",
-            expected_encoding: Some(Encoding::ShiftJis),
-            files: vec![
-                CaseFile {
-                    name: "should-be-jis/",
-                    ..Default::default()
-                },
-                CaseFile {
-                    name: "should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi",
-                    ..Default::default()
-                },
-            ]
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "utf8-winrar.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: CaseFile {
-                name: "世界",
-                content: "".into(),
-                modified: Some(date((2017, 11, 6), (21, 9, 27), 867862500, time_zone(0))),
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "wine-zeroed.zip.bz2",
-            expected_encoding: Some(Encoding::Utf8),
-            files: 11372.into(),
-            ..Default::default()
-        },
-        Case {
-            name: "info-zip-unix-extra.zip",
-            files: CaseFile {
-                name: "bun-darwin-x64/",
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "readme.trailingzip",
-            files: CaseFile {
-                name: "README",
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
+        Case::new("zip64.zip").files(
+            CaseFile::new("README")
+                .content("This small file is in ZIP64 format.\n")
+                .modified(date((2012, 8, 10), (14, 33, 32), 0, time_zone(0)))
+                .mode(0o644),
+        ),
+        Case::new("test.zip")
+            .comment("This is a zipfile comment.")
+            .encoding(Encoding::Utf8)
+            .files(vec![
+                CaseFile::new("test.txt")
+                    .content("This is a test text file.\n")
+                    .modified(date((2010, 9, 5), (12, 12, 1), 0, time_zone(10)))
+                    .mode(0o644),
+                CaseFile::new("gophercolor16x16.png")
+                    .content(FileContent::File("gophercolor16x16.png"))
+                    .modified(date((2010, 9, 5), (15, 52, 58), 0, time_zone(10)))
+                    .mode(0o644),
+            ]),
+        Case::new("cp-437.zip")
+            .encoding(Encoding::Cp437)
+            .files(CaseFile::new("français")),
+        Case::new("shift-jis.zip")
+            .encoding(Encoding::ShiftJis)
+            .files(vec![
+                CaseFile::new("should-be-jis/"),
+                CaseFile::new("should-be-jis/ot_運命のワルツﾈぞなぞ小さな楽しみ遊びま.longboi"),
+            ]),
+        Case::new("utf8-winrar.zip").encoding(Encoding::Utf8).files(
+            CaseFile::new("世界").content("").modified(date(
+                (2017, 11, 6),
+                (21, 9, 27),
+                867862500,
+                time_zone(0),
+            )),
+        ),
+        Case::new("wine-zeroed.zip.bz2")
+            .encoding(Encoding::Utf8)
+            .files(11372),
+        Case::new("info-zip-unix-extra.zip").files(CaseFile::new("bun-darwin-x64/")),
+        Case::new("readme.trailingzip").files(CaseFile::new("README")),
         #[cfg(feature = "lzma")]
-        Case {
-            name: "found-me-lzma.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: CaseFile {
-                name: "found-me.txt",
-                content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
+        Case::new("found-me-lzma.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
+            ),
         #[cfg(feature = "deflate64")]
-        Case {
-            name: "found-me-deflate64.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: CaseFile {
-                name: "found-me.txt",
-                content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
+        Case::new("found-me-deflate64.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
+            ),
         // same with bzip2
         #[cfg(feature = "bzip2")]
-        Case {
-            name: "found-me-bzip2.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: CaseFile {
-                name: "found-me.txt",
-                content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
+        Case::new("found-me-bzip2.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 26), (16, 14, 35), 46003100, time_zone(0))),
+            ),
         // same with zstd
         #[cfg(feature = "zstd")]
-        Case {
-            name: "found-me-zstd.zip",
-            expected_encoding: Some(Encoding::Utf8),
-            files: CaseFile {
-                name: "found-me.txt",
-                content: "Oh no, you found me\n".repeat(5000).into(),
-                modified: Some(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0))),
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
+        Case::new("found-me-zstd.zip")
+            .encoding(Encoding::Utf8)
+            .files(
+                CaseFile::new("found-me.txt")
+                    .content("Oh no, you found me\n".repeat(5000))
+                    .modified(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0))),
+            ),
     ]
 }
 
 pub fn streaming_test_cases() -> Vec<Case> {
     vec![
-        Case {
-            name: "meta.zip",
-            files: 33.into(),
-            ..Default::default()
-        },
-        Case {
-            name: "info-zip-unix-extra.zip",
-            files: CaseFile {
-                name: "bun-darwin-x64/",
-                ..Default::default()
-            }
-            .into(),
-            ..Default::default()
-        },
-        Case {
-            name: "readme.trailingzip",
-            error: Some(FormatError::InvalidLocalHeader.into()),
-            ..Default::default()
-        },
+        Case::new("meta.zip").files(33),
+        Case::new("info-zip-unix-extra.zip").files(CaseFile::new("bun-darwin-x64/")),
+        Case::new("readme.trailingzip").error(FormatError::InvalidLocalHeader),
     ]
 }
 

@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.0](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.7...rc-zip-v5.4.0) - 2025-11-18
+
+### Added
+
+- *(rc-zip)* re-export common items
+- *(rc-zip)* add `rc_zip::error::Result<T>` type alias
+- *(rc-zip)* add `EntryKind::is_*(self)` helpers
+
+### Other
+
+- *(rc-zip)* simplify `Mode` display impl
+
 ## [5.3.7](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.6...rc-zip-v5.3.7) - 2025-11-16
 
 ### Other

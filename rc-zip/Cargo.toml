@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip"
-version = "5.3.7"
+version = "5.4.0"
 description = "An I/O-agnostic implementation of the zip file format"
 repository = "https://github.com/bearcove/rc-zip"
 license = "Apache-2.0 OR MIT"

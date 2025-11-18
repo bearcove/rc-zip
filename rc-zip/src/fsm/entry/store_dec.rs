@@ -1,6 +1,6 @@
 use std::cmp;
 
-use crate::error::Error;
+use crate::Error;
 
 use super::{DecompressOutcome, Decompressor, HasMoreInput};
 

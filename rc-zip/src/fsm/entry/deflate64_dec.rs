@@ -1,6 +1,6 @@
 use deflate64::InflaterManaged;
 
-use crate::{error::Error, parse::Method};
+use crate::{parse::Method, Error};
 
 use super::{DecompressOutcome, Decompressor, HasMoreInput};
 

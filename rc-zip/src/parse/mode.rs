@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 /// Mode represents a file's mode and permission bits.
 /// The bits have the same definition on all systems,
@@ -39,60 +39,29 @@ impl Mode {
 
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut w = 0;
-        if self.has(Self::DIR) {
-            write!(f, "d")?;
-            w += 1;
+        let mut empty = true;
+        let pairs = [
+            (Self::DIR, 'd'),
+            (Self::APPEND, 'a'),
+            (Self::EXCLUSIVE, 'l'),
+            (Self::TEMPORARY, 'T'),
+            (Self::SYMLINK, 'L'),
+            (Self::DEVICE, 'D'),
+            (Self::NAMED_PIPE, 'p'),
+            (Self::SOCKET, 'S'),
+            (Self::SETUID, 'u'),
+            (Self::SETGID, 'g'),
+            (Self::CHAR_DEVICE, 'c'),
+            (Self::STICKY, 't'),
+            (Self::IRREGULAR, '?'),
+        ];
+        for (flag, flag_char) in pairs {
+            if self.has(flag) {
+                f.write_char(flag_char)?;
+                empty = false;
+            }
         }
-        if self.has(Self::APPEND) {
-            write!(f, "a")?;
-            w += 1;
-        }
-        if self.has(Self::EXCLUSIVE) {
-            write!(f, "l")?;
-            w += 1;
-        }
-        if self.has(Self::TEMPORARY) {
-            write!(f, "T")?;
-            w += 1;
-        }
-        if self.has(Self::SYMLINK) {
-            write!(f, "L")?;
-            w += 1;
-        }
-        if self.has(Self::DEVICE) {
-            write!(f, "D")?;
-            w += 1;
-        }
-        if self.has(Self::NAMED_PIPE) {
-            write!(f, "p")?;
-            w += 1;
-        }
-        if self.has(Self::SOCKET) {
-            write!(f, "S")?;
-            w += 1;
-        }
-        if self.has(Self::SETUID) {
-            write!(f, "u")?;
-            w += 1;
-        }
-        if self.has(Self::SETGID) {
-            write!(f, "g")?;
-            w += 1;
-        }
-        if self.has(Self::CHAR_DEVICE) {
-            write!(f, "c")?;
-            w += 1;
-        }
-        if self.has(Self::STICKY) {
-            write!(f, "t")?;
-            w += 1;
-        }
-        if self.has(Self::IRREGULAR) {
-            write!(f, "?")?;
-            w += 1;
-        }
-        if w == 0 {
+        if empty {
             write!(f, "-")?;
         }
 

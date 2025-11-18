@@ -1,4 +1,4 @@
-use rc_zip::{error::Error, parse::Archive};
+use rc_zip::{Archive, Error};
 use rc_zip_corpus::{zips_dir, Case, Files};
 use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
 

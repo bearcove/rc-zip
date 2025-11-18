@@ -236,7 +236,7 @@ impl Entry {
 }
 
 /// The entry's file type: a directory, a file, or a symbolic link.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EntryKind {
     /// The entry is a directory
     Directory,
@@ -246,6 +246,58 @@ pub enum EntryKind {
 
     /// The entry is a symbolic link
     Symlink,
+}
+
+impl EntryKind {
+    /// Returns if this is a [`EntryKind::Directory`]
+    ///
+    /// ```
+    /// # use rc_zip::EntryKind;
+    /// assert!(EntryKind::Directory.is_dir());
+    /// ```
+    pub fn is_dir(self) -> bool {
+        self == Self::Directory
+    }
+
+    /// Returns if this is a [`EntryKind::File`]
+    ///
+    /// ```
+    /// # struct Archive;
+    /// # impl Archive {
+    /// #     fn entries(self) -> std::vec::IntoIter<rc_zip::Entry> {
+    /// #         Vec::new().into_iter()
+    /// #     }
+    /// # }
+    /// # let archive = Archive;
+    /// for entry in archive.entries().filter(|e| e.kind().is_file()) {
+    ///     // ...
+    /// }
+    /// ```
+    pub fn is_file(self) -> bool {
+        self == Self::File
+    }
+
+    /// Returns if this is a [`EntryKind::Symlink`]
+    ///
+    /// ```
+    /// # struct Archive;
+    /// # impl Archive {
+    /// #     fn entries(self) -> Vec<rc_zip::Entry> {
+    /// #         Vec::new()
+    /// #     }
+    /// # }
+    /// # let archive = Archive;
+    /// for entry in archive.entries() {
+    ///     if entry.kind().is_symlink() {
+    ///         continue;
+    ///     }
+    ///
+    ///     // ...
+    /// }
+    /// ```
+    pub fn is_symlink(self) -> bool {
+        self == Self::Symlink
+    }
 }
 
 impl Entry {

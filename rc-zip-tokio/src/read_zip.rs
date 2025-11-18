@@ -11,9 +11,8 @@ use positioned_io::{RandomAccessFile, ReadAt, Size};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use rc_zip::{
-    error::Error,
     fsm::{ArchiveFsm, EntryFsm, FsmResult},
-    parse::{Archive, Entry},
+    Archive, Entry, Error,
 };
 use tracing::trace;
 

@@ -1,6 +1,6 @@
 use rc_zip::{
     fsm::{EntryFsm, FsmResult},
-    parse::Entry,
+    Entry,
 };
 use std::io;
 use tracing::trace;

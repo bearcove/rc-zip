@@ -252,7 +252,7 @@ impl EntryKind {
     /// Returns if this is a [`EntryKind::Directory`]
     ///
     /// ```
-    /// # use rc_zip::parse::EntryKind;
+    /// # use rc_zip::EntryKind;
     /// assert!(EntryKind::Directory.is_dir());
     /// ```
     pub fn is_dir(self) -> bool {
@@ -264,7 +264,7 @@ impl EntryKind {
     /// ```
     /// # struct Archive;
     /// # impl Archive {
-    /// #     fn entries(self) -> std::vec::IntoIter<rc_zip::parse::Entry> {
+    /// #     fn entries(self) -> std::vec::IntoIter<rc_zip::Entry> {
     /// #         Vec::new().into_iter()
     /// #     }
     /// # }
@@ -282,7 +282,7 @@ impl EntryKind {
     /// ```
     /// # struct Archive;
     /// # impl Archive {
-    /// #     fn entries(self) -> Vec<rc_zip::parse::Entry> {
+    /// #     fn entries(self) -> Vec<rc_zip::Entry> {
     /// #         Vec::new()
     /// #     }
     /// # }

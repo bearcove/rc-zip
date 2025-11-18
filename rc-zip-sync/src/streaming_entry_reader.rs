@@ -1,8 +1,8 @@
 use oval::Buffer;
 use rc_zip::{
-    error::{Error, FormatError},
+    error::FormatError,
     fsm::{EntryFsm, FsmResult},
-    parse::Entry,
+    Entry, Error,
 };
 use std::io::{self, Read};
 use tracing::trace;

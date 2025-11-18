@@ -4,7 +4,7 @@ use crate::parse::Method;
 
 use super::encoding;
 
-/// An alias for `Result<T, rc_zip::error::Error>`
+/// An alias for `Result<T, rc_zip::Error>`
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Any zip-related error, from invalid archives to encoding problems.

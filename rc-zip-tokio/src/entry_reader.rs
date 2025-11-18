@@ -3,7 +3,7 @@ use std::{io, pin::Pin, task};
 use pin_project_lite::pin_project;
 use rc_zip::{
     fsm::{EntryFsm, FsmResult},
-    parse::Entry,
+    Entry,
 };
 use tokio::io::{AsyncRead, ReadBuf};
 

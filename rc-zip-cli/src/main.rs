@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
-use rc_zip::parse::{Archive, EntryKind, Method, Version};
+use rc_zip::{Archive, EntryKind};
 use rc_zip_sync::{ReadZip, ReadZipStreaming};
 
 use std::{
@@ -86,8 +86,8 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             println!("Comment:\n{}", archive.comment());
         }
 
-        let mut reader_versions = HashSet::<Version>::new();
-        let mut methods = HashSet::<Method>::new();
+        let mut reader_versions = HashSet::new();
+        let mut methods = HashSet::new();
         let mut compressed_size: u64 = 0;
         let mut uncompressed_size: u64 = 0;
         let mut num_dirs = 0;

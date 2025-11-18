@@ -21,5 +21,9 @@ pub mod parse;
 #[deprecated(since = "5.3.7", note = "Please use the `rc-zip-corpus` crate instead")]
 pub mod corpus;
 
+// re-exports
+pub use error::{Error, Result};
+pub use parse::{Archive, Entry, EntryKind};
+
 // dependencies re-exports
 pub use chrono;

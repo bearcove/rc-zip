@@ -10,7 +10,7 @@ use miniz_oxide::inflate::{
 };
 use tracing::trace;
 
-use crate::{error::Error, fsm::entry::HasMoreInput, parse::Method};
+use crate::{fsm::entry::HasMoreInput, parse::Method, Error};
 
 use super::{DecompressOutcome, Decompressor};
 

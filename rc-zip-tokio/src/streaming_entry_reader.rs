@@ -1,9 +1,9 @@
 use oval::Buffer;
 use pin_project_lite::pin_project;
 use rc_zip::{
-    error::{Error, FormatError},
+    error::FormatError,
     fsm::{EntryFsm, FsmResult},
-    parse::Entry,
+    Entry, Error,
 };
 use std::{io, pin::Pin, task};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};

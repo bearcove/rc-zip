@@ -1,9 +1,7 @@
 use rc_zip::{
-    error::Error,
-    fsm::{ArchiveFsm, FsmResult},
-    parse::Archive,
+    fsm::{ArchiveFsm, EntryFsm, FsmResult},
+    Archive, Entry, Error,
 };
-use rc_zip::{fsm::EntryFsm, parse::Entry};
 use tracing::trace;
 
 use crate::entry_reader::EntryReader;

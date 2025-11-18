@@ -4,6 +4,9 @@ use crate::parse::Method;
 
 use super::encoding;
 
+/// An alias for `Result<T, rc_zip::error::Error>`
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Any zip-related error, from invalid archives to encoding problems.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

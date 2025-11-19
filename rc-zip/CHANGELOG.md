@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.1](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.4.0...rc-zip-v5.4.1) - 2025-11-19
+
+### Other
+
+- *(rc-zip)* manually implement `thiserror` code
+
 ## [5.4.0](https://github.com/bearcove/rc-zip/compare/rc-zip-v5.3.7...rc-zip-v5.4.0) - 2025-11-18
 
 ### Added

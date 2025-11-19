@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/bearcove/rc-zip/compare/rc-zip-corpus-v0.1.2...rc-zip-corpus-v0.1.3) - 2025-11-19
+
+### Other
+
+- updated the following local packages: rc-zip
+
 ## [0.1.2](https://github.com/bearcove/rc-zip/compare/rc-zip-corpus-v0.1.1...rc-zip-corpus-v0.1.2) - 2025-11-18
 
 ### Other

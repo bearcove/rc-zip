@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.2](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.4.1...rc-zip-sync-v4.4.2) - 2025-11-27
+
+### Other
+
+- Merge pull request #138 from CosmicHorrorDev/extract-mt
+- *(rc-zip-sync)* add a multi-threaded byte count example
+
 ## [4.4.1](https://github.com/bearcove/rc-zip/compare/rc-zip-sync-v4.4.0...rc-zip-sync-v4.4.1) - 2025-11-19
 
 ### Other

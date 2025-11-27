@@ -1,6 +1,6 @@
 [package]
 name = "rc-zip-cli"
-version = "1.2.1"
+version = "1.2.2"
 description = "A sample zip decompressor based on rc-zip"
 license = "Apache-2.0 OR MIT"
 authors = ["Amos Wenger <amoswenger@gmail.com>"]

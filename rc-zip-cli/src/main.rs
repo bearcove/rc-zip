@@ -192,20 +192,13 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let bps = (stats.uncompressed_size as f64 / seconds) as u64;
             println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
         }
-        Commands::UnzipStreaming { zipfile, dir, .. } => {
+        Commands::UnzipStreaming { zipfile, dir } => {
             let zipfile = File::open(zipfile)?;
             let dir = PathBuf::from(dir.unwrap_or_else(|| ".".into()));
 
             let mut stats = Stats::default();
 
-            let pbar = ProgressBar::new(100);
-            pbar.set_style(
-                ProgressStyle::default_bar()
-                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
-                    .unwrap()
-                    .progress_chars("=>-"),
-            );
-
+            let pbar = ProgressBar::new_spinner();
             pbar.enable_steady_tick(Duration::from_millis(125));
 
             let start_time = std::time::SystemTime::now();
@@ -220,7 +213,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     &mut stats,
                 )?;
                 let Some(next_entry) = entry_reader.finish()? else {
-                    println!("End of archive!");
+                    // End of archive!
                     break;
                 };
                 entry_reader = next_entry;

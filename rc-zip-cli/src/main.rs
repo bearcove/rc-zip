@@ -191,26 +191,21 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 pbar.set_message(entry_name.to_string());
+                let path = dir.join(entry_name);
+                std::fs::create_dir_all(
+                    path.parent()
+                        .expect("all full entry paths should have parent paths"),
+                )?;
                 match entry.kind() {
                     EntryKind::Symlink => {
                         num_symlinks += 1;
 
                         cfg_if! {
                             if #[cfg(windows)] {
-                                let path = dir.join(entry_name);
-                                std::fs::create_dir_all(
-                                    path.parent()
-                                        .expect("all full entry paths should have parent paths"),
-                                )?;
                                 let mut entry_writer = File::create(path)?;
                                 let mut entry_reader = entry.reader();
                                 std::io::copy(&mut entry_reader, &mut entry_writer)?;
                             } else {
-                                let path = dir.join(entry_name);
-                                std::fs::create_dir_all(
-                                    path.parent()
-                                        .expect("all full entry paths should have parent paths"),
-                                )?;
                                 if let Ok(metadata) = std::fs::symlink_metadata(&path) {
                                     if metadata.is_file() {
                                         std::fs::remove_file(&path)?;
@@ -230,19 +225,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     }
                     EntryKind::Directory => {
                         num_dirs += 1;
-                        let path = dir.join(entry_name);
-                        std::fs::create_dir_all(
-                            path.parent()
-                                .expect("all full entry paths should have parent paths"),
-                        )?;
                     }
                     EntryKind::File => {
                         num_files += 1;
-                        let path = dir.join(entry_name);
-                        std::fs::create_dir_all(
-                            path.parent()
-                                .expect("all full entry paths should have parent paths"),
-                        )?;
                         let mut entry_writer = File::create(path)?;
                         let entry_reader = entry.reader();
                         let before_entry_bytes = done_bytes;
@@ -299,25 +284,20 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 pbar.set_message(entry_name.to_string());
+                let path = dir.join(entry_name);
+                std::fs::create_dir_all(
+                    path.parent()
+                        .expect("all full entry paths should have parent paths"),
+                )?;
                 match entry_reader.entry().kind() {
                     EntryKind::Symlink => {
                         num_symlinks += 1;
 
                         cfg_if! {
                             if #[cfg(windows)] {
-                                let path = dir.join(entry_name);
-                                std::fs::create_dir_all(
-                                    path.parent()
-                                        .expect("all full entry paths should have parent paths"),
-                                )?;
                                 let mut entry_writer = File::create(path)?;
                                 std::io::copy(&mut entry_reader, &mut entry_writer)?;
                             } else {
-                                let path = dir.join(entry_name);
-                                std::fs::create_dir_all(
-                                    path.parent()
-                                        .expect("all full entry paths should have parent paths"),
-                                )?;
                                 if let Ok(metadata) = std::fs::symlink_metadata(&path) {
                                     if metadata.is_file() {
                                         std::fs::remove_file(&path)?;
@@ -337,19 +317,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     }
                     EntryKind::Directory => {
                         num_dirs += 1;
-                        let path = dir.join(entry_name);
-                        std::fs::create_dir_all(
-                            path.parent()
-                                .expect("all full entry paths should have parent paths"),
-                        )?;
                     }
                     EntryKind::File => {
                         num_files += 1;
-                        let path = dir.join(entry_name);
-                        std::fs::create_dir_all(
-                            path.parent()
-                                .expect("all full entry paths should have parent paths"),
-                        )?;
                         let mut entry_writer = File::create(path)?;
                         let before_entry_bytes = done_bytes;
                         let mut progress_reader = ProgressReader::new(entry_reader, |prog| {

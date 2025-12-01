@@ -9,7 +9,7 @@ use std::{
     borrow::Cow,
     collections::HashSet,
     fmt,
-    fs::File,
+    fs::{self, File},
     io::{self, Read},
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -249,7 +249,7 @@ fn extract_entry(
 
     pbar.set_message(entry_name.to_string());
     let path = dir.join(entry_name);
-    std::fs::create_dir_all(
+    fs::create_dir_all(
         path.parent()
             .expect("all full entry paths should have parent paths"),
     )?;
@@ -259,11 +259,11 @@ fn extract_entry(
             cfg_if! {
                 if #[cfg(windows)] {
                     let mut entry_writer = File::create(path)?;
-                    std::io::copy(entry_reader, &mut entry_writer)?;
+                    io::copy(entry_reader, &mut entry_writer)?;
                 } else {
-                    if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+                    if let Ok(metadata) = fs::symlink_metadata(&path) {
                         if metadata.is_file() {
-                            std::fs::remove_file(&path)?;
+                            fs::remove_file(&path)?;
                         }
                     }
 
@@ -278,12 +278,12 @@ fn extract_entry(
                 }
             }
         }
-        EntryKind::Directory => std::fs::create_dir_all(&path)?,
+        EntryKind::Directory => fs::create_dir_all(&path)?,
         EntryKind::File => {
             let mut entry_writer = File::create(path)?;
             let mut progress_reader = pbar.wrap_read(entry_reader);
 
-            let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
+            let copied_bytes = io::copy(&mut progress_reader, &mut entry_writer)?;
             stats.uncompressed_size += copied_bytes;
         }
     }

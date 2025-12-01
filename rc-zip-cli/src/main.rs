@@ -12,7 +12,7 @@ use std::{
     fs::File,
     io::{self, Read},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 struct Optional<T>(Option<T>);
@@ -169,7 +169,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
             pbar.enable_steady_tick(Duration::from_millis(125));
 
-            let start_time = std::time::SystemTime::now();
+            let start_time = Instant::now();
             for entry in reader.entries() {
                 extract_entry(
                     entry.to_owned(),
@@ -180,7 +180,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 )?;
             }
             pbar.finish();
-            let duration = start_time.elapsed()?;
+            let duration = start_time.elapsed();
             println!(
                 "Extracted {} (in {} files, {} dirs, {} symlinks)",
                 format_size(stats.uncompressed_size, BINARY),
@@ -201,7 +201,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let pbar = ProgressBar::new_spinner();
             pbar.enable_steady_tick(Duration::from_millis(125));
 
-            let start_time = std::time::SystemTime::now();
+            let start_time = Instant::now();
 
             let mut entry_reader = zipfile.stream_zip_entries_throwing_caution_to_the_wind()?;
             loop {
@@ -219,7 +219,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 entry_reader = next_entry;
             }
             pbar.finish();
-            let duration = start_time.elapsed()?;
+            let duration = start_time.elapsed();
             println!(
                 "Extracted {} (in {} files, {} dirs, {} symlinks)",
                 format_size(stats.uncompressed_size, BINARY),

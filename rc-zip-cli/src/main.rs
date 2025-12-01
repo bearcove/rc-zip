@@ -288,7 +288,7 @@ fn extract_entry(
         EntryKind::Directory => {}
         EntryKind::File => {
             let mut entry_writer = File::create(path)?;
-            let mut progress_reader = ProgressReader::new(entry_reader, pbar.clone());
+            let mut progress_reader = pbar.wrap_read(entry_reader);
 
             let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
             stats.uncompressed_size += copied_bytes;
@@ -343,35 +343,5 @@ impl Stats {
             EntryKind::Directory => self.num_dirs += 1,
             EntryKind::Symlink => self.num_symlinks += 1,
         }
-    }
-}
-
-struct ProgressReader<R> {
-    inner: R,
-    bar: ProgressBar,
-}
-
-impl<R> ProgressReader<R> {
-    fn new(inner: R, bar: ProgressBar) -> Self {
-        Self { inner, bar }
-    }
-
-    // NOTE(cosmic): this is required for streaming unzip and is the only piece of functionality not
-    // provided by the `ProgressBar::wrap_reader(&self, rdr)` wrapper
-    fn into_inner(self) -> R {
-        self.inner
-    }
-}
-
-impl<R> io::Read for ProgressReader<R>
-where
-    R: io::Read,
-{
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let res = self.inner.read(buf);
-        if let Ok(n) = res {
-            self.bar.inc(n as u64);
-        }
-        res
     }
 }

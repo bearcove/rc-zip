@@ -29,19 +29,6 @@ where
     }
 }
 
-impl<T> fmt::Debug for Optional<T>
-where
-    T: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(x) = self.0.as_ref() {
-            write!(f, "{:?}", x)
-        } else {
-            write!(f, "∅")
-        }
-    }
-}
-
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -259,10 +246,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         let mut entry_writer = File::create(path)?;
                         let entry_reader = entry.reader();
                         let before_entry_bytes = done_bytes;
-                        let mut progress_reader =
-                            ProgressReader::new(entry_reader, entry.uncompressed_size, |prog| {
-                                pbar.set_position(before_entry_bytes + prog.done);
-                            });
+                        let mut progress_reader = ProgressReader::new(entry_reader, |prog| {
+                            pbar.set_position(before_entry_bytes + prog.done);
+                        });
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
                         done_bytes = before_entry_bytes + copied_bytes;
@@ -366,11 +352,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         )?;
                         let mut entry_writer = File::create(path)?;
                         let before_entry_bytes = done_bytes;
-                        let total = entry_reader.entry().uncompressed_size;
-                        let mut progress_reader =
-                            ProgressReader::new(entry_reader, total, |prog| {
-                                pbar.set_position(before_entry_bytes + prog.done);
-                            });
+                        let mut progress_reader = ProgressReader::new(entry_reader, |prog| {
+                            pbar.set_position(before_entry_bytes + prog.done);
+                        });
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
                         uncompressed_size += copied_bytes;
@@ -440,8 +424,6 @@ impl Truncate for String {
 #[derive(Clone, Copy)]
 struct Progress {
     done: u64,
-    #[allow(unused)]
-    total: u64,
 }
 
 struct ProgressReader<F, R>
@@ -459,11 +441,11 @@ where
     R: io::Read,
     F: Fn(Progress),
 {
-    fn new(inner: R, total: u64, callback: F) -> Self {
+    fn new(inner: R, callback: F) -> Self {
         Self {
             inner,
             callback,
-            progress: Progress { total, done: 0 },
+            progress: Progress { done: 0 },
         }
     }
 }

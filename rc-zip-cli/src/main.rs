@@ -1,6 +1,7 @@
 use cfg_if::cfg_if;
 use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
+use indicatif::{ProgressBar, ProgressStyle};
 use rc_zip::{Archive, EntryKind};
 use rc_zip_sync::{ReadZip, ReadZipStreaming};
 
@@ -172,7 +173,6 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 .sum::<u64>();
 
             let mut done_bytes: u64 = 0;
-            use indicatif::{ProgressBar, ProgressStyle};
             let pbar = ProgressBar::new(uncompressed_size);
             pbar.set_style(
                 ProgressStyle::default_bar()
@@ -231,9 +231,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         let mut entry_writer = File::create(path)?;
                         let entry_reader = entry.reader();
                         let before_entry_bytes = done_bytes;
-                        let mut progress_reader = ProgressReader::new(entry_reader, |prog| {
-                            pbar.set_position(before_entry_bytes + prog.done);
-                        });
+                        let mut progress_reader = ProgressReader::new(entry_reader, pbar.clone());
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
                         done_bytes = before_entry_bytes + copied_bytes;
@@ -262,7 +260,6 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let mut num_symlinks = 0;
 
             let mut done_bytes: u64 = 0;
-            use indicatif::{ProgressBar, ProgressStyle};
             let pbar = ProgressBar::new(100);
             pbar.set_style(
                 ProgressStyle::default_bar()
@@ -322,9 +319,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         num_files += 1;
                         let mut entry_writer = File::create(path)?;
                         let before_entry_bytes = done_bytes;
-                        let mut progress_reader = ProgressReader::new(entry_reader, |prog| {
-                            pbar.set_position(before_entry_bytes + prog.done);
-                        });
+                        let mut progress_reader = ProgressReader::new(entry_reader, pbar.clone());
 
                         let copied_bytes = std::io::copy(&mut progress_reader, &mut entry_writer)?;
                         uncompressed_size += copied_bytes;
@@ -391,56 +386,32 @@ impl Truncate for String {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Progress {
-    done: u64,
-}
-
-struct ProgressReader<F, R>
-where
-    R: io::Read,
-    F: Fn(Progress),
-{
+struct ProgressReader<R> {
     inner: R,
-    callback: F,
-    progress: Progress,
+    bar: ProgressBar,
 }
 
-impl<F, R> ProgressReader<F, R>
-where
-    R: io::Read,
-    F: Fn(Progress),
-{
-    fn new(inner: R, callback: F) -> Self {
-        Self {
-            inner,
-            callback,
-            progress: Progress { done: 0 },
-        }
+impl<R> ProgressReader<R> {
+    fn new(inner: R, bar: ProgressBar) -> Self {
+        Self { inner, bar }
+    }
+
+    // NOTE(cosmic): this is required for streaming unzip and is the only piece of functionality not
+    // provided by the `ProgressBar::wrap_reader(&self, rdr)` wrapper
+    fn into_inner(self) -> R {
+        self.inner
     }
 }
 
-impl<F, R> io::Read for ProgressReader<F, R>
+impl<R> io::Read for ProgressReader<R>
 where
     R: io::Read,
-    F: Fn(Progress),
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let res = self.inner.read(buf);
         if let Ok(n) = res {
-            self.progress.done += n as u64;
-            (self.callback)(self.progress);
+            self.bar.inc(n as u64);
         }
         res
-    }
-}
-
-impl<F, R> ProgressReader<F, R>
-where
-    R: io::Read,
-    F: Fn(Progress),
-{
-    fn into_inner(self) -> R {
-        self.inner
     }
 }

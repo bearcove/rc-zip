@@ -278,7 +278,7 @@ fn extract_entry(
                 }
             }
         }
-        EntryKind::Directory => {}
+        EntryKind::Directory => std::fs::create_dir_all(&path)?,
         EntryKind::File => {
             let mut entry_writer = File::create(path)?;
             let mut progress_reader = pbar.wrap_read(entry_reader);

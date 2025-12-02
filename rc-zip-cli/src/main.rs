@@ -51,13 +51,13 @@ enum Commands {
         zipfile: PathBuf,
 
         #[arg(long)]
-        dir: Option<String>,
+        dir: Option<PathBuf>,
     },
     UnzipStreaming {
         zipfile: PathBuf,
 
         #[arg(long)]
-        dir: Option<String>,
+        dir: Option<PathBuf>,
     },
 }
 
@@ -150,7 +150,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Unzip { zipfile, dir } => {
             let zipfile = File::open(zipfile)?;
-            let dir = PathBuf::from(dir.unwrap_or_else(|| ".".into()));
+            let dir = dir.unwrap_or_else(|| ".".into());
             let reader = zipfile.read_zip()?;
 
             let mut stats = Stats::default();
@@ -194,7 +194,7 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::UnzipStreaming { zipfile, dir } => {
             let zipfile = File::open(zipfile)?;
-            let dir = PathBuf::from(dir.unwrap_or_else(|| ".".into()));
+            let dir = dir.unwrap_or_else(|| ".".into());
 
             let mut stats = Stats::default();
 

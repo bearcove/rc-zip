@@ -17,7 +17,7 @@ jobs:
       RUSTC_WRAPPER: "sccache"
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
       - name: Install Rust specified toolchain
@@ -38,7 +38,7 @@ jobs:
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
@@ -52,7 +52,7 @@ jobs:
       RUSTC_WRAPPER: "sccache"
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
       - name: Install Rust specified toolchain
@@ -75,7 +75,7 @@ jobs:
       RUSTC_WRAPPER: "sccache"
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
       - name: Install Rust specified toolchain

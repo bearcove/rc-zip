@@ -148,90 +148,98 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!();
             }
         }
-        Commands::Unzip { zipfile, dir } => {
-            let zipfile = File::open(zipfile)?;
-            let dir = dir.unwrap_or_else(|| ".".into());
-            let reader = zipfile.read_zip()?;
-
-            let mut stats = Stats::default();
-            let total_uncompressed_size = reader
-                .entries()
-                .map(|entry| entry.uncompressed_size)
-                .sum::<u64>();
-
-            let pbar = ProgressBar::new(total_uncompressed_size);
-            pbar.set_style(
-                ProgressStyle::default_bar()
-                    .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
-                    .unwrap()
-                    .progress_chars("=>-"),
-            );
-
-            pbar.enable_steady_tick(Duration::from_millis(125));
-
-            let start_time = Instant::now();
-            for entry in reader.entries() {
-                extract_entry(
-                    entry.to_owned(),
-                    &mut entry.reader(),
-                    &dir,
-                    &pbar,
-                    &mut stats,
-                )?;
-            }
-            pbar.finish();
-            let duration = start_time.elapsed();
-            println!(
-                "Extracted {} (in {} files, {} dirs, {} symlinks)",
-                format_size(stats.uncompressed_size, BINARY),
-                stats.num_files,
-                stats.num_dirs,
-                stats.num_symlinks
-            );
-            let seconds = (duration.as_millis() as f64) / 1000.0;
-            let bps = (stats.uncompressed_size as f64 / seconds) as u64;
-            println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
-        }
-        Commands::UnzipStreaming { zipfile, dir } => {
-            let zipfile = File::open(zipfile)?;
-            let dir = dir.unwrap_or_else(|| ".".into());
-
-            let mut stats = Stats::default();
-
-            let pbar = ProgressBar::new_spinner();
-            pbar.enable_steady_tick(Duration::from_millis(125));
-
-            let start_time = Instant::now();
-
-            let mut entry_reader = zipfile.stream_zip_entries_throwing_caution_to_the_wind()?;
-            loop {
-                extract_entry(
-                    entry_reader.entry().to_owned(),
-                    &mut entry_reader,
-                    &dir,
-                    &pbar,
-                    &mut stats,
-                )?;
-                let Some(next_entry) = entry_reader.finish()? else {
-                    // End of archive!
-                    break;
-                };
-                entry_reader = next_entry;
-            }
-            pbar.finish();
-            let duration = start_time.elapsed();
-            println!(
-                "Extracted {} (in {} files, {} dirs, {} symlinks)",
-                format_size(stats.uncompressed_size, BINARY),
-                stats.num_files,
-                stats.num_dirs,
-                stats.num_symlinks
-            );
-            let seconds = (duration.as_millis() as f64) / 1000.0;
-            let bps = (stats.uncompressed_size as f64 / seconds) as u64;
-            println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
-        }
+        Commands::Unzip { zipfile, dir } => unzip(&zipfile, dir.as_deref())?,
+        Commands::UnzipStreaming { zipfile, dir } => unzip_streaming(&zipfile, dir.as_deref())?,
     }
+
+    Ok(())
+}
+
+fn unzip(zipfile: &Path, dir: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+    let zipfile = File::open(zipfile)?;
+    let dir = dir.unwrap_or_else(|| Path::new("."));
+    let reader = zipfile.read_zip()?;
+
+    let mut stats = Stats::default();
+    let total_uncompressed_size = reader
+        .entries()
+        .map(|entry| entry.uncompressed_size)
+        .sum::<u64>();
+
+    let pbar = ProgressBar::new(total_uncompressed_size);
+    pbar.set_style(
+        ProgressStyle::default_bar()
+            .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+
+    pbar.enable_steady_tick(Duration::from_millis(125));
+
+    let start_time = Instant::now();
+    for entry in reader.entries() {
+        extract_entry(
+            entry.to_owned(),
+            &mut entry.reader(),
+            dir,
+            &pbar,
+            &mut stats,
+        )?;
+    }
+    pbar.finish();
+    let duration = start_time.elapsed();
+    println!(
+        "Extracted {} (in {} files, {} dirs, {} symlinks)",
+        format_size(stats.uncompressed_size, BINARY),
+        stats.num_files,
+        stats.num_dirs,
+        stats.num_symlinks
+    );
+    let seconds = (duration.as_millis() as f64) / 1000.0;
+    let bps = (stats.uncompressed_size as f64 / seconds) as u64;
+    println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
+
+    Ok(())
+}
+
+fn unzip_streaming(zipfile: &Path, dir: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+    let zipfile = File::open(zipfile)?;
+    let dir = dir.unwrap_or_else(|| Path::new("."));
+
+    let mut stats = Stats::default();
+
+    let pbar = ProgressBar::new_spinner();
+    pbar.enable_steady_tick(Duration::from_millis(125));
+
+    let start_time = Instant::now();
+
+    let mut entry_reader = zipfile.stream_zip_entries_throwing_caution_to_the_wind()?;
+    loop {
+        extract_entry(
+            entry_reader.entry().to_owned(),
+            &mut entry_reader,
+            dir,
+            &pbar,
+            &mut stats,
+        )?;
+        let Some(next_entry) = entry_reader.finish()? else {
+            // End of archive!
+            break;
+        };
+        entry_reader = next_entry;
+    }
+    pbar.finish();
+    let duration = start_time.elapsed();
+    println!(
+        "Extracted {} (in {} files, {} dirs, {} symlinks)",
+        format_size(stats.uncompressed_size, BINARY),
+        stats.num_files,
+        stats.num_dirs,
+        stats.num_symlinks
+    );
+    let seconds = (duration.as_millis() as f64) / 1000.0;
+    let bps = (stats.uncompressed_size as f64 / seconds) as u64;
+    println!("Overall extraction speed: {} / s", format_size(bps, BINARY));
 
     Ok(())
 }

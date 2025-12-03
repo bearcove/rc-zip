@@ -31,3 +31,9 @@ humansize.workspace = true
 indicatif.workspace = true
 tracing-subscriber.workspace = true
 cfg-if.workspace = true
+
+[dev-dependencies]
+rc-zip-corpus.workspace = true
+temp-dir.workspace = true
+tracing.workspace = true
+walkdir.workspace = true

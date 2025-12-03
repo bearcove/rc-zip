@@ -36,5 +36,6 @@ thiserror = "2.0.17"
 tokio = { version = "1.43.1", features = ["fs", "io-util", "rt"] }
 tracing = { version = "0.1.40", default-features = false }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+walkdir = "2.5.0"
 winnow = "0.5.36"
 zstd = "0.13.0"

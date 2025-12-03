@@ -15,6 +15,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(test)]
+mod test;
+
 struct Optional<T>(Option<T>);
 
 impl<T> fmt::Display for Optional<T>
@@ -148,14 +151,20 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!();
             }
         }
-        Commands::Unzip { zipfile, dir } => unzip(&zipfile, dir.as_deref())?,
-        Commands::UnzipStreaming { zipfile, dir } => unzip_streaming(&zipfile, dir.as_deref())?,
+        Commands::Unzip { zipfile, dir } => unzip(&zipfile, dir.as_deref(), false)?,
+        Commands::UnzipStreaming { zipfile, dir } => {
+            unzip_streaming(&zipfile, dir.as_deref(), false)?
+        }
     }
 
     Ok(())
 }
 
-fn unzip(zipfile: &Path, dir: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+fn unzip(
+    zipfile: &Path,
+    dir: Option<&Path>,
+    hide_progress: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let zipfile = File::open(zipfile)?;
     let dir = dir.unwrap_or_else(|| Path::new("."));
     let reader = zipfile.read_zip()?;
@@ -166,15 +175,19 @@ fn unzip(zipfile: &Path, dir: Option<&Path>) -> Result<(), Box<dyn std::error::E
         .map(|entry| entry.uncompressed_size)
         .sum::<u64>();
 
-    let pbar = ProgressBar::new(total_uncompressed_size);
-    pbar.set_style(
-        ProgressStyle::default_bar()
-            .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-
-    pbar.enable_steady_tick(Duration::from_millis(125));
+    let pbar = if hide_progress {
+        ProgressBar::hidden()
+    } else {
+        let pbar = ProgressBar::new(total_uncompressed_size);
+        pbar.set_style(
+            ProgressStyle::default_bar()
+                .template("{eta_precise} [{bar:20.cyan/blue}] {wide_msg}")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+        pbar.enable_steady_tick(Duration::from_millis(125));
+        pbar
+    };
 
     let start_time = Instant::now();
     for entry in reader.entries() {
@@ -202,14 +215,23 @@ fn unzip(zipfile: &Path, dir: Option<&Path>) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-fn unzip_streaming(zipfile: &Path, dir: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+fn unzip_streaming(
+    zipfile: &Path,
+    dir: Option<&Path>,
+    hide_progress: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let zipfile = File::open(zipfile)?;
     let dir = dir.unwrap_or_else(|| Path::new("."));
 
     let mut stats = Stats::default();
 
-    let pbar = ProgressBar::new_spinner();
-    pbar.enable_steady_tick(Duration::from_millis(125));
+    let pbar = if hide_progress {
+        ProgressBar::hidden()
+    } else {
+        let pbar = ProgressBar::new_spinner();
+        pbar.enable_steady_tick(Duration::from_millis(125));
+        pbar
+    };
 
     let start_time = Instant::now();
 

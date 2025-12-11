@@ -76,13 +76,15 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::File { zipfile } => {
             let file = File::open(zipfile)?;
             let reader = file.read_zip()?;
-            info(&reader);
+            let mut stdout = io::stdout().lock();
+            let _ = info(&mut stdout, &reader);
         }
         Commands::Ls { zipfile, verbose } => {
             let zipfile = File::open(zipfile)?;
             let reader = zipfile.read_zip()?;
-            info(&reader);
-            list(&reader, verbose);
+            let mut stdout = io::stdout().lock();
+            let _ = info(&mut stdout, &reader);
+            let _ = list(&mut stdout, &reader, verbose);
         }
         Commands::Unzip { zipfile, dir } => unzip(&zipfile, dir.as_deref(), false)?,
         Commands::UnzipStreaming { zipfile, dir } => {
@@ -93,9 +95,9 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn info(archive: &Archive) {
+fn info(out: &mut impl io::Write, archive: &Archive) -> io::Result<()> {
     if !archive.comment().is_empty() {
-        println!("Comment:\n{}", archive.comment());
+        writeln!(out, "Comment:\n{}", archive.comment())?;
     }
 
     let mut reader_versions = HashSet::new();
@@ -112,21 +114,34 @@ fn info(archive: &Archive) {
             stats.uncompressed_size += entry.uncompressed_size;
         }
     }
-    println!("Versions: {:?}", reader_versions);
-    println!("Encoding: {}, Methods: {:?}", archive.encoding(), methods);
-    println!(
+    writeln!(out, "Versions: {:?}", reader_versions)?;
+    writeln!(
+        out,
+        "Encoding: {}, Methods: {:?}",
+        archive.encoding(),
+        methods
+    )?;
+    writeln!(
+        out,
         "{} ({:.2}% compression) ({} files, {} dirs, {} symlinks)",
         format_size(stats.uncompressed_size, BINARY),
         compressed_size as f64 / stats.uncompressed_size as f64 * 100.0,
         stats.num_files,
         stats.num_dirs,
         stats.num_symlinks,
-    );
+    )?;
+
+    Ok(())
 }
 
-fn list(archive: &ArchiveHandle<'_, File>, verbose: bool) {
+fn list(
+    out: &mut impl io::Write,
+    archive: &ArchiveHandle<'_, File>,
+    verbose: bool,
+) -> io::Result<()> {
     for entry in archive.entries() {
-        print!(
+        write!(
+            out,
             "{mode:>9} {size:>12} {name}",
             mode = entry.mode,
             name = if verbose {
@@ -135,18 +150,20 @@ fn list(archive: &ArchiveHandle<'_, File>, verbose: bool) {
                 Cow::Owned(entry.name.truncate_path(55))
             },
             size = format_size(entry.uncompressed_size, BINARY),
-        );
+        )?;
         if verbose {
-            print!(
+            write!(
+                out,
                 " ({} compressed)",
                 format_size(entry.compressed_size, BINARY)
-            );
-            print!(
+            )?;
+            write!(
+                out,
                 " {modified} {uid} {gid}",
                 modified = entry.modified,
                 uid = Optional(entry.uid),
                 gid = Optional(entry.gid),
-            );
+            )?;
 
             if let EntryKind::Symlink = entry.kind() {
                 let mut target = String::new();
@@ -154,13 +171,15 @@ fn list(archive: &ArchiveHandle<'_, File>, verbose: bool) {
                 print!("\t{target}", target = target);
             }
 
-            print!("\t{:?}", entry.method);
+            write!(out, "\t{:?}", entry.method)?;
             if !entry.comment.is_empty() {
-                print!("\t{comment}", comment = entry.comment);
+                write!(out, "\t{comment}", comment = entry.comment)?;
             }
         }
-        println!();
+        writeln!(out)?;
     }
+
+    Ok(())
 }
 
 fn unzip(

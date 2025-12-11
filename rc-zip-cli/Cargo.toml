@@ -33,6 +33,7 @@ tracing-subscriber.workspace = true
 cfg-if.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 rc-zip-corpus.workspace = true
 temp-dir.workspace = true
 tracing.workspace = true

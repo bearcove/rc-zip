@@ -278,9 +278,13 @@ pub fn test_cases() -> Vec<Case> {
             .files(11372),
         Case::new("info-zip-unix-extra.zip").files(CaseFile::new("bun-darwin-x64/")),
         Case::new("readme.trailingzip").files(CaseFile::new("README")),
-        Case::new("archive-oob.zip").error(std::io::Error::other(format!(
-            "archive tried reading beyond zip archive end. 65536 goes beyond 42"
-        ))),
+        Case::new("archive-oob.zip").error(std::io::Error::other(
+            "archive tried reading beyond zip archive end. 65536 goes beyond 42",
+        )),
+        Case::new("symlink.zip").files(vec![
+            CaseFile::new("empty").content(""),
+            CaseFile::new("symlink"),
+        ]),
         #[cfg(feature = "lzma")]
         Case::new("found-me-lzma.zip")
             .encoding(Encoding::Utf8)

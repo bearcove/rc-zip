@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use indicatif::{ProgressBar, ProgressStyle};
 use rc_zip::{Archive, Entry, EntryKind};
-use rc_zip_sync::{ReadZip, ReadZipStreaming};
+use rc_zip_sync::{ArchiveHandle, ReadZip, ReadZipStreaming};
 
 use std::{
     borrow::Cow,
@@ -72,89 +72,111 @@ fn main() {
 }
 
 fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    fn info(archive: &Archive) {
-        if !archive.comment().is_empty() {
-            println!("Comment:\n{}", archive.comment());
-        }
-
-        let mut reader_versions = HashSet::new();
-        let mut methods = HashSet::new();
-        let mut compressed_size: u64 = 0;
-        let mut stats = Stats::default();
-
-        for entry in archive.entries() {
-            reader_versions.insert(entry.reader_version);
-            stats.inc_by_kind(entry.kind());
-            if entry.kind().is_file() {
-                methods.insert(entry.method);
-                compressed_size += entry.compressed_size;
-                stats.uncompressed_size += entry.uncompressed_size;
-            }
-        }
-        println!("Versions: {:?}", reader_versions);
-        println!("Encoding: {}, Methods: {:?}", archive.encoding(), methods);
-        println!(
-            "{} ({:.2}% compression) ({} files, {} dirs, {} symlinks)",
-            format_size(stats.uncompressed_size, BINARY),
-            compressed_size as f64 / stats.uncompressed_size as f64 * 100.0,
-            stats.num_files,
-            stats.num_dirs,
-            stats.num_symlinks,
-        );
-    }
-
     match cli.command {
         Commands::File { zipfile } => {
             let file = File::open(zipfile)?;
             let reader = file.read_zip()?;
-            info(&reader);
+            let mut stdout = io::stdout().lock();
+            let _ = info(&mut stdout, &reader);
         }
         Commands::Ls { zipfile, verbose } => {
             let zipfile = File::open(zipfile)?;
             let reader = zipfile.read_zip()?;
-            info(&reader);
-
-            for entry in reader.entries() {
-                print!(
-                    "{mode:>9} {size:>12} {name}",
-                    mode = entry.mode,
-                    name = if verbose {
-                        Cow::Borrowed(&entry.name)
-                    } else {
-                        Cow::Owned(entry.name.truncate_path(55))
-                    },
-                    size = format_size(entry.uncompressed_size, BINARY),
-                );
-                if verbose {
-                    print!(
-                        " ({} compressed)",
-                        format_size(entry.compressed_size, BINARY)
-                    );
-                    print!(
-                        " {modified} {uid} {gid}",
-                        modified = entry.modified,
-                        uid = Optional(entry.uid),
-                        gid = Optional(entry.gid),
-                    );
-
-                    if let EntryKind::Symlink = entry.kind() {
-                        let mut target = String::new();
-                        entry.reader().read_to_string(&mut target).unwrap();
-                        print!("\t{target}", target = target);
-                    }
-
-                    print!("\t{:?}", entry.method);
-                    if !entry.comment.is_empty() {
-                        print!("\t{comment}", comment = entry.comment);
-                    }
-                }
-                println!();
-            }
+            let mut stdout = io::stdout().lock();
+            let _ = info(&mut stdout, &reader);
+            let _ = list(&mut stdout, &reader, verbose);
         }
         Commands::Unzip { zipfile, dir } => unzip(&zipfile, dir.as_deref(), false)?,
         Commands::UnzipStreaming { zipfile, dir } => {
             unzip_streaming(&zipfile, dir.as_deref(), false)?
         }
+    }
+
+    Ok(())
+}
+
+fn info(out: &mut impl io::Write, archive: &Archive) -> io::Result<()> {
+    if !archive.comment().is_empty() {
+        writeln!(out, "Comment:\n{}", archive.comment())?;
+    }
+
+    let mut reader_versions = HashSet::new();
+    let mut methods = HashSet::new();
+    let mut compressed_size: u64 = 0;
+    let mut stats = Stats::default();
+
+    for entry in archive.entries() {
+        reader_versions.insert(entry.reader_version);
+        stats.inc_by_kind(entry.kind());
+        if entry.kind().is_file() {
+            methods.insert(entry.method);
+            compressed_size += entry.compressed_size;
+            stats.uncompressed_size += entry.uncompressed_size;
+        }
+    }
+    writeln!(out, "Versions: {:?}", reader_versions)?;
+    writeln!(
+        out,
+        "Encoding: {}, Methods: {:?}",
+        archive.encoding(),
+        methods
+    )?;
+    writeln!(
+        out,
+        "{} ({:.2}% compression) ({} files, {} dirs, {} symlinks)",
+        format_size(stats.uncompressed_size, BINARY),
+        compressed_size as f64 / stats.uncompressed_size as f64 * 100.0,
+        stats.num_files,
+        stats.num_dirs,
+        stats.num_symlinks,
+    )?;
+
+    Ok(())
+}
+
+fn list(
+    out: &mut impl io::Write,
+    archive: &ArchiveHandle<'_, File>,
+    verbose: bool,
+) -> io::Result<()> {
+    for entry in archive.entries() {
+        write!(
+            out,
+            "{mode:>9} {size:>12} {name}",
+            mode = entry.mode,
+            name = if verbose {
+                Cow::Borrowed(&entry.name)
+            } else {
+                Cow::Owned(entry.name.truncate_path(55))
+            },
+            size = format_size(entry.uncompressed_size, BINARY),
+        )?;
+        if verbose {
+            write!(
+                out,
+                " ({} compressed)",
+                format_size(entry.compressed_size, BINARY)
+            )?;
+            write!(
+                out,
+                " {modified} {uid} {gid}",
+                modified = entry.modified,
+                uid = Optional(entry.uid),
+                gid = Optional(entry.gid),
+            )?;
+
+            if let EntryKind::Symlink = entry.kind() {
+                let mut target = String::new();
+                entry.reader().read_to_string(&mut target).unwrap();
+                print!("\t{target}", target = target);
+            }
+
+            write!(out, "\t{:?}", entry.method)?;
+            if !entry.comment.is_empty() {
+                write!(out, "\t{comment}", comment = entry.comment)?;
+            }
+        }
+        writeln!(out)?;
     }
 
     Ok(())

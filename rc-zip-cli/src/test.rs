@@ -1,8 +1,9 @@
-use std::path::Path;
+use std::{fs, path::Path};
 
 use crate::{unzip, unzip_streaming};
 
 use rc_zip_corpus::{zips_dir, Case, CaseFile, FileContent, Files};
+use rc_zip_sync::ReadZip;
 use temp_dir::TempDir;
 use walkdir::WalkDir;
 
@@ -94,4 +95,59 @@ fn corpus_streaming() {
         tracing::info!("============ testing {}", case.name);
         check_case(&case, unzip_streaming);
     }
+}
+
+#[test]
+fn cli() {
+    use clap::CommandFactory;
+    crate::Cli::command().debug_assert();
+}
+
+#[test]
+fn info() {
+    #[track_caller]
+    fn info_str(zip_name: &str) -> String {
+        let zip_path = zips_dir().join(zip_name);
+        let zip_file = fs::File::open(&zip_path).unwrap();
+        let archive = zip_file.read_zip().unwrap();
+        let mut output = Vec::new();
+        crate::info(&mut output, &archive).unwrap();
+        String::from_utf8(output).unwrap()
+    }
+
+    insta::assert_snapshot!(info_str("unix.zip"), @r"
+    Versions: {MsDos v10}
+    Encoding: utf-8, Methods: {Store}
+    26 B (100.00% compression) (3 files, 1 dirs, 0 symlinks)
+    ");
+    insta::assert_snapshot!(info_str("meta.zip"), @r"
+    Versions: {Unix v20}
+    Encoding: utf-8, Methods: {Deflate}
+    138.16 KiB (28.68% compression) (26 files, 7 dirs, 0 symlinks)
+    ");
+}
+
+#[test]
+fn list() {
+    #[track_caller]
+    fn list_str(zip_name: &str, verbose: bool) -> String {
+        let zip_path = zips_dir().join(zip_name);
+        let zip_file = fs::File::open(&zip_path).unwrap();
+        let archive = zip_file.read_zip().unwrap();
+        let mut output = Vec::new();
+        crate::list(&mut output, &archive, verbose).unwrap();
+        String::from_utf8(output).unwrap()
+    }
+
+    insta::assert_snapshot!(list_str("symlink.zip", true), @r"
+    -rw-r--r--          0 B empty (0 B compressed) 2025-12-11 03:59:41 UTC 1000 1000	Store
+    -rw-r--r--          0 B symlink (0 B compressed) 2025-12-11 03:59:41 UTC 1000 1000	Store
+    ");
+    insta::assert_snapshot!(list_str("utf8-infozip.zip", false), @"-rw-r--r--          0 B 世界");
+    insta::assert_snapshot!(list_str("unix.zip", false), @r"
+    -rw-rw-rw-          8 B hello
+    -rw-rw-rw-          6 B dir/bar
+    drwxrwxrwx          0 B dir/empty/
+    -r--r--r--         12 B readonly
+    ");
 }

@@ -3,7 +3,8 @@ use ownable::{IntoOwned, ToOwned};
 use winnow::{binary::le_u16, PResult, Partial};
 
 use crate::{
-    encoding::Encoding,
+    encoding::{is_entry_non_utf8, Encoding},
+    error::FormatError,
     parse::{Mode, Version},
 };
 
@@ -54,6 +55,133 @@ impl Archive {
     #[inline(always)]
     pub fn comment(&self) -> &str {
         &self.comment
+    }
+}
+
+/// An intermediate entry before being fully resolved when finished parsing
+///
+/// Crucially this structure has _the exact same_ underlying structure as [`Entry`] (a `String` is
+/// effectively a new-type around `Vec<u8>`), which means that we can (fallibly) go from a
+/// `Vec<RawEntry>` to a `Vec<Entry>` without needing any allocations 🥳
+pub(crate) struct RawEntry {
+    pub name: Vec<u8>,
+    pub method: Method,
+    pub comment: Vec<u8>,
+    pub modified: DateTime<Utc>,
+    pub created: Option<DateTime<Utc>>,
+    pub accessed: Option<DateTime<Utc>>,
+    pub header_offset: u64,
+    pub reader_version: Version,
+    pub flags: u16,
+    pub uid: Option<u32>,
+    pub gid: Option<u32>,
+    pub crc32: u32,
+    pub compressed_size: u64,
+    pub uncompressed_size: u64,
+    pub mode: Mode,
+}
+
+impl RawEntry {
+    pub(crate) fn is_non_utf8(&self) -> bool {
+        is_entry_non_utf8(&self.name, &self.comment, self.flags)
+    }
+
+    // TODO(cosmic): duplicate of `Entry::set_extra_field`, but can't reconcile the types without a
+    // breaking change ;-;
+    /// Apply the extra field to the entry, updating its metadata.
+    pub(crate) fn set_extra_field(&mut self, ef: &ExtraField) {
+        match &ef {
+            ExtraField::Zip64(z64) => {
+                self.uncompressed_size = z64.uncompressed_size;
+                self.compressed_size = z64.compressed_size;
+                self.header_offset = z64.header_offset;
+            }
+            ExtraField::Timestamp(ts) => {
+                self.modified = Utc
+                    .timestamp_opt(ts.mtime as i64, 0)
+                    .single()
+                    .unwrap_or_else(zero_datetime);
+            }
+            ExtraField::Ntfs(nf) => {
+                for attr in &nf.attrs {
+                    // note: other attributes are unsupported
+                    if let NtfsAttr::Attr1(attr) = attr {
+                        self.modified = attr.mtime.to_datetime().unwrap_or_else(zero_datetime);
+                        self.created = attr.ctime.to_datetime();
+                        self.accessed = attr.atime.to_datetime();
+                    }
+                }
+            }
+            ExtraField::Unix(uf) => {
+                self.modified = Utc
+                    .timestamp_opt(uf.mtime as i64, 0)
+                    .single()
+                    .unwrap_or_else(zero_datetime);
+
+                if self.uid.is_none() {
+                    self.uid = Some(uf.uid as u32);
+                }
+
+                if self.gid.is_none() {
+                    self.gid = Some(uf.gid as u32);
+                }
+            }
+            ExtraField::NewUnix(uf) => {
+                self.uid = Some(uf.uid as u32);
+                self.gid = Some(uf.uid as u32);
+            }
+            _ => {}
+        };
+    }
+
+    pub(crate) fn resolve(self, encoding: Encoding, global_offset: u64) -> crate::Result<Entry> {
+        let Self {
+            name,
+            method,
+            comment,
+            modified,
+            created,
+            accessed,
+            header_offset,
+            reader_version,
+            flags,
+            uid,
+            gid,
+            crc32,
+            compressed_size,
+            uncompressed_size,
+            mut mode,
+        } = self;
+
+        let name = encoding.decode_vec(name)?;
+        let comment = encoding.decode_vec(comment)?;
+        let header_offset = header_offset
+            .checked_add(global_offset)
+            .ok_or(FormatError::InvalidHeaderOffset)?;
+
+        // now that the name is decoded we can check if it's a dir
+        if name.ends_with('/') {
+            // believe it or not, this is straight from the APPNOTE
+            mode |= Mode::DIR
+        };
+
+        Ok(Entry {
+            name,
+            method,
+            comment,
+            modified,
+            created,
+            accessed,
+            header_offset,
+            reader_version,
+            flags,
+            uid,
+            gid,
+            crc32,
+            compressed_size,
+            uncompressed_size,
+            mode,
+        })
     }
 }
 

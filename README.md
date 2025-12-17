@@ -8,31 +8,25 @@
 
 _Logo by [MisiasArt](https://misiasart.com)_
 
-### Motivation
+### Motivasyon
 
-Have a pure rust, highly compatible, I/O-model-independent, zip reading and
-writing library.
+Saf Rust ile yazılmış, yüksek uyumluluğa sahip, G/Ç (I/O) modelinden bağımsız bir zip okuma ve yazma kütüphanesi olmak.
 
-(Note: as of now, rc-zip does reading only)
+(Not: Şu an itibariyle rc-zip yalnızca okuma yapabilmektedir.)
 
-### Funding
+### Finansman
 
-Thanks to these companies for contracting work on rc-zip:
+rc-zip üzerindeki sözleşmeli çalışmaları için bu şirketlere teşekkürler:
 
-<a href="https://rowzero.io"><img src="./static/rowzero-e.svg" height="40"></a>
+<a href="[https://rowzero.io](https://rowzero.io)"><img src="./static/rowzero-e.svg" height="40"></a>
 
-And thanks to all my [individual sponsors](https://fasterthanli.me/donate).
+Ve tüm [bireysel sponsorlarıma](https://fasterthanli.me/donate) teşekkürler.
 
-### Design decisions
+### Tasarım Kararları
 
-The core of this crate does not perform I/O directly. Instead, it uses a state
-machine, and asks for reads at specific offsets. This allows it to work under
-different I/O models: blocking, non-blocking, and async. It has no expectations
-of the zip archive being present on disk (ie. it doesn't assume `std::fs`), just
-that random access is possible.
+Bu kütüphanenin (crate) çekirdeği doğrudan G/Ç işlemi gerçekleştirmez. Bunun yerine bir durum makinesi (state machine) kullanır ve belirli ofsetlerde okuma yapılmasını talep eder. Bu, kütüphanenin farklı G/Ç modelleri altında çalışmasına olanak tanır: bloklayan (blocking), bloklamayan (non-blocking) ve asenkron (async). Zip arşivinin diskte bulunması gibi bir beklentisi yoktur (yani `std::fs` varlığını varsaymaz); sadece rastgele erişimin (random access) mümkün olması yeterlidir.
 
-The recommended interface relies on the central directory rather than local headers:
-
+Önerilen arayüz, yerel başlıklar (local headers) yerine merkezi dizine (central directory) dayanır:
 ```
 [local file header 1] // <---------------- ignored
 [file data 1]
@@ -43,70 +37,38 @@ The recommended interface relies on the central directory rather than local head
 [end of central directory record]
 ```
 
-The reason for that is that the central directory is the canonical list of
-entries in a zip. Archives that have been repacked may contain duplicate local
-file headers (and data), along with headers for entries that have been removed.
-Only the central directory is authoritative when it comes to the contents of a
-zip archive.
+Bunun nedeni, merkezi dizinin (central directory) bir zip dosyasındaki girişlerin asıl (canonical) listesi olmasıdır. Yeniden paketlenen arşivler, silinmiş girişlerin başlıklarının yanı sıra mükerrer yerel dosya başlıkları (ve verileri) içerebilir. Bir zip arşivinin içeriği söz konusu olduğunda yalnızca merkezi dizin yetkilidir.
 
-However, as of v4.0.0, a streaming decompression interface was added to both
-`rc-zip-sync` and `rc-zip-tokio`, in the form of the `ReadZipStreaming` traits.
+Bununla birlikte, v4.0.0 itibarıyla, `ReadZipStreaming` trait'leri şeklinde hem `rc-zip-sync` hem de `rc-zip-tokio` kütüphanelerine akışlı (streaming) bir sıkıştırma açma arayüzü eklenmiştir.
 
-This crate accepts what is known as "trailing zips" - for example, files that
-are valid ELF or PE executables, and merely have a valid zip archive appended.
-This covers some forms of self-extracting archives and installers.
+Bu kütüphane, "trailing zips" (sondaki zipler) olarak bilinen dosyaları kabul eder; örneğin geçerli ELF veya PE yürütülebilir dosyaları olan ve sonuna geçerli bir zip arşivi eklenmiş dosyalar. Bu, bazı kendi kendine açılan arşivleri ve yükleyicileri kapsar.
 
-This crate recognizes and uses zip64 metadata. This allows for a large number
-of entries (above 65536) and large entries (above 4GiB). This crate attempts to
-forgives some non-standard behavior from common tools. Such behavior has been
-observed in the wild and is, whenever possible, tested.
+Bu kütüphane zip64 meta verilerini tanır ve kullanır. Bu, çok sayıda girişe (65536'nın üzerinde) ve büyük girişe (4GiB'ın üzerinde) izin verir. Bu kütüphane, yaygın araçlardan kaynaklanan bazı standart dışı davranışları tolere etmeye çalışır. Bu tür davranışlar gerçek dünyada gözlemlenmiş ve mümkün olduğunca test edilmiştir.
 
-This crate attempts to recognize as much metadata as possible, and normalize
-it. For example, MSDOS timestamps, NTFS timestamps, Extended timestamps and
-Unix timestamps are supported, and they're all converted to a [chrono
-DateTime<Utc>](https://crates.io/crates/chrono).
+Bu kütüphane mümkün olduğunca fazla meta veriyi tanımaya ve normalleştirmeye çalışır. Örneğin; MSDOS zaman damgaları, NTFS zaman damgaları, Genişletilmiş zaman damgaları ve Unix zaman damgaları desteklenir ve bunların tamamı bir [chrono DateTime<Utc>](https://crates.io/crates/chrono) nesnesine dönüştürülür.
 
-Although the normalized version of metadata (names, timestamps, UID, GID, etc.)
-is put front and center, this crate attempts to expose a "raw" version of
-that same metadata whenever the authors felt it was necessary.
+Meta verilerin normalleştirilmiş versiyonu (isimler, zaman damgaları, UID, GID vb.) ön planda tutulsa da, bu kütüphane yazarların gerekli hissettiği her an aynı meta verilerin "ham" (raw) versiyonunu da sunmaya çalışır.
 
-Whenever the zip archive doesn't explicitly specify UTF-8 encoding, this crate
-relies on encoding detection to decide between CP-437 and Shift-JIS. It uses
-[encoding_rs](https://crates.io/crates/encoding_rs) to deal with Shift-JIS.
+Zip arşivi açıkça UTF-8 kodlaması belirtmediğinde, bu kütüphane CP-437 ve Shift-JIS arasında karar vermek için kodlama algılamasına (encoding detection) güvenir. Shift-JIS ile başa çıkmak için [encoding_rs](https://crates.io/crates/encoding_rs) kullanır.
 
-Due to the history of the zip format, some compatibility issues are to be
-expected: for example, for archives with only MSDOS timestamps, the results
-might be in the wrong timezone. For archive with very few files and non-UTF8
-names, the encoding might not be detected properly, and thus decoding may fail.
+Zip formatının geçmişi nedeniyle bazı uyumluluk sorunları beklenebilir: örneğin, yalnızca MSDOS zaman damgalarına sahip arşivler için sonuçlar yanlış saat diliminde olabilir. Çok az dosyası ve UTF-8 olmayan isimleri olan arşivlerde, kodlama düzgün algılanamayabilir ve bu nedenle kod çözme işlemi başarısız olabilir.
 
-As much as possible, [winnow](https://crates.io/crates/winnow) is used to parse the
-various data structures used in the zip archive format. This allows a
-semi-declarative style that is easier to write, read, and amend if needed.
-Some (hygienic) macros are used to avoid repetition.
+Zip arşivi formatında kullanılan çeşitli veri yapılarını ayrıştırmak için mümkün olduğunca [winnow](https://crates.io/crates/winnow) kullanılır. Bu, yazılması, okunması ve gerektiğinde değiştirilmesi daha kolay olan yarı bildirimsel (semi-declarative) bir stil sağlar. Tekrardan kaçınmak için bazı (hijyenik) makrolar kullanılmıştır.
 
-### API design
+### API Tasarımı
 
-The design of the API is constrained by several parameters:
+API tasarımı birkaç parametreyle kısıtlanmıştır:
 
-  * A compliant zip reader *must* first read the central directory, located
-  near the end of the zip archive. This means simply taking an `Read` won't do.
-  * Multiple I/O models must be supported. Whereas other crates focus on
-  taking a `Read`, a `Read + Seek`, or simply a byte slice, this crate aims
-  to support synchronous *and* asynchronous I/O.
-  * Not everyone wants a compliant zip reader. Some may want to rely on local
-  headers instead, completely ignoring the central directory, thus throwing
-  caution to the wind.
+* Uyumlu bir zip okuyucusu, önce zip arşivinin sonuna yakın bir yerde bulunan merkezi dizini **okumalıdır**. Bu, sadece bir `Read` almanın yeterli olmayacağı anlamına gelir.
+* Birden fazla G/Ç (I/O) modeli desteklenmelidir. Diğer kütüphaneler bir `Read`, bir `Read + Seek` veya sadece bir bayt dilimi almaya odaklanırken; bu kütüphane senkron **ve** asenkron G/Ç'yi desteklemeyi amaçlar.
+* Herkes uyumlu bir zip okuyucusu istemez. Bazıları merkezi dizini tamamen görmezden gelerek sadece yerel başlıklara güvenmek ve risk almak isteyebilir.
 
-As a result, the structs in this crate are state machines, that advertise their
-need to read (and from where), to process data, or to write. I/O errors are
-cleanly separated from the rest, and calls to this crate never block.
+Sonuç olarak, bu kütüphanedeki struct'lar; okuma yapma (ve nereden), veri işleme veya yazma ihtiyaçlarını bildiren durum makineleridir (state machines). G/Ç hataları diğerlerinden temiz bir şekilde ayrılmıştır ve bu kütüphaneye yapılan çağrılar asla bloklamaz (block).
 
-Separate crates add specific I/O models on top of rc-zip, see the [rc-zip-sync](https://crates.io/crates/rc-zip-sync)
-and [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio) crates.
+rc-zip üzerine belirli G/Ç modelleri ekleyen ayrı kütüphaneler için [rc-zip-sync](https://crates.io/crates/rc-zip-sync) ve [rc-zip-tokio](https://crates.io/crates/rc-zip-tokio) kütüphanelerine bakınız.
 
-## License
+## Lisans
 
-This project is primarily distributed under the terms of both the MIT license
-and the Apache License (Version 2.0).
+Bu proje öncelikli olarak hem MIT lisansı hem de Apache Lisansı (Sürüm 2.0) koşulları altında dağıtılmaktadır.
 
-See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.
+Detaylar için [LICENSE-APACHE](https://www.google.com/search?q=LICENSE-APACHE) ve [LICENSE-MIT](https://www.google.com/search?q=LICENSE-MIT) dosyalarına bakınız.

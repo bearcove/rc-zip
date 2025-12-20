@@ -31,4 +31,9 @@ bzip2 = ["rc-zip/bzip2", "rc-zip-corpus/bzip2"]
 zstd = ["rc-zip/zstd", "rc-zip-corpus/zstd"]
 
 [dev-dependencies]
+divan.workspace = true
 rc-zip-corpus.workspace = true
+
+[[bench]]
+name = "read"
+harness = false

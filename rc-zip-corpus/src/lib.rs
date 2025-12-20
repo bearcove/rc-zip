@@ -273,6 +273,7 @@ pub fn test_cases() -> Vec<Case> {
                 time_zone(0),
             )),
         ),
+        Case::new("meta.zip").files(33),
         Case::new("wine-zeroed.zip.bz2")
             .encoding(Encoding::Utf8)
             .files(11372),

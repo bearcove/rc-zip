@@ -35,6 +35,9 @@ jobs:
       - name: Run cargo clippy
         run: |
           cargo hack clippy --each-feature
+      - name: Check benches
+        run: |
+          cargo bench -- --test
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information

@@ -34,5 +34,10 @@ bzip2 = ["rc-zip/bzip2", "rc-zip-corpus/bzip2"]
 zstd = ["rc-zip/zstd", "rc-zip-corpus/zstd"]
 
 [dev-dependencies]
+divan.workspace = true
 rc-zip-corpus.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[[bench]]
+name = "read"
+harness = false

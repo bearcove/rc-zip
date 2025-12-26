@@ -327,6 +327,7 @@ pub fn streaming_test_cases() -> Vec<Case> {
         Case::new("meta.zip").files(33),
         Case::new("info-zip-unix-extra.zip").files(CaseFile::new("bun-darwin-x64/")),
         Case::new("readme.trailingzip").error(FormatError::InvalidLocalHeader),
+        Case::new("cp-437.zip").files(CaseFile::new("français")),
     ]
 }
 

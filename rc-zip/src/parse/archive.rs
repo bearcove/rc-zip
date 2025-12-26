@@ -86,8 +86,6 @@ impl RawEntry {
         is_entry_non_utf8(&self.name, &self.comment, self.flags)
     }
 
-    // TODO(cosmic): duplicate of `Entry::set_extra_field`, but can't reconcile the types without a
-    // breaking change ;-;
     /// Apply the extra field to the entry, updating its metadata.
     pub(crate) fn set_extra_field(&mut self, ef: &ExtraField) {
         match &ef {
@@ -314,52 +312,6 @@ impl Entry {
             }
             Some(name)
         }
-    }
-
-    /// Apply the extra field to the entry, updating its metadata.
-    pub(crate) fn set_extra_field(&mut self, ef: &ExtraField) {
-        match &ef {
-            ExtraField::Zip64(z64) => {
-                self.uncompressed_size = z64.uncompressed_size;
-                self.compressed_size = z64.compressed_size;
-                self.header_offset = z64.header_offset;
-            }
-            ExtraField::Timestamp(ts) => {
-                self.modified = Utc
-                    .timestamp_opt(ts.mtime as i64, 0)
-                    .single()
-                    .unwrap_or_else(zero_datetime);
-            }
-            ExtraField::Ntfs(nf) => {
-                for attr in &nf.attrs {
-                    // note: other attributes are unsupported
-                    if let NtfsAttr::Attr1(attr) = attr {
-                        self.modified = attr.mtime.to_datetime().unwrap_or_else(zero_datetime);
-                        self.created = attr.ctime.to_datetime();
-                        self.accessed = attr.atime.to_datetime();
-                    }
-                }
-            }
-            ExtraField::Unix(uf) => {
-                self.modified = Utc
-                    .timestamp_opt(uf.mtime as i64, 0)
-                    .single()
-                    .unwrap_or_else(zero_datetime);
-
-                if self.uid.is_none() {
-                    self.uid = Some(uf.uid as u32);
-                }
-
-                if self.gid.is_none() {
-                    self.gid = Some(uf.gid as u32);
-                }
-            }
-            ExtraField::NewUnix(uf) => {
-                self.uid = Some(uf.uid as u32);
-                self.gid = Some(uf.uid as u32);
-            }
-            _ => {}
-        };
     }
 }
 

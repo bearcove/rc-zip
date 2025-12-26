@@ -155,10 +155,6 @@ impl EntryFsm {
                     self.entry.as_ref().map(|entry| entry.uncompressed_size),
                 )?;
 
-                if self.entry.is_none() {
-                    self.entry = Some(header.as_entry()?);
-                }
-
                 self.state = State::ReadData {
                     is_zip64: header.compressed_size == u32::MAX
                         || header.uncompressed_size == u32::MAX,
@@ -168,6 +164,14 @@ impl EntryFsm {
                     hasher: crc32fast::Hasher::new(),
                     decompressor,
                 };
+
+                if self.entry.is_none() {
+                    let encoding = header.detect_encoding();
+                    // trailing zips are unsupported for streaming readers
+                    let global_offset = 0;
+                    self.entry = Some(header.into_raw_entry()?.resolve(encoding, global_offset)?);
+                }
+
                 self.buffer.consume(consumed);
                 Ok(true)
             }

@@ -10,12 +10,11 @@ use winnow::{
 };
 
 use crate::{
-    encoding::detect_utf8,
-    encoding::Encoding,
+    encoding::{is_entry_non_utf8, Encoding},
     error::{Error, FormatError},
     parse::{
         zero_datetime, Entry, ExtraField, ExtraFieldSettings, HostSystem, Mode, MsdosMode,
-        MsdosTimestamp, UnixMode, Version,
+        MsdosTimestamp, RawEntry, UnixMode, Version,
     },
 };
 
@@ -119,38 +118,27 @@ impl<'a> CentralDirectoryFileHeader<'a> {
 impl CentralDirectoryFileHeader<'_> {
     /// Returns true if the name or comment is not valid UTF-8
     pub fn is_non_utf8(&self) -> bool {
-        let (valid1, require1) = detect_utf8(&self.name[..]);
-        let (valid2, require2) = detect_utf8(&self.comment[..]);
-        if !valid1 || !valid2 {
-            // definitely not utf-8
-            return true;
-        }
-
-        if !require1 && !require2 {
-            // name and comment only use single-byte runes that overlap with UTF-8
-            return false;
-        }
-
-        // Might be UTF-8, might be some other encoding; preserve existing flag.
-        // Some ZIP writers use UTF-8 encoding without setting the UTF-8 flag.
-        // Since it is impossible to always distinguish valid UTF-8 from some
-        // other encoding (e.g., GBK or Shift-JIS), we trust the flag.
-        self.flags & 0x800 == 0
+        is_entry_non_utf8(&self.name, &self.comment, self.flags)
     }
 
     /// Converts the directory header into a entry: this involves
     /// parsing the extra fields and converting the timestamps.
     pub fn as_entry(&self, encoding: Encoding, global_offset: u64) -> Result<Entry, Error> {
-        let mut entry = Entry {
-            name: encoding.decode(&self.name[..])?,
+        self.to_owned()
+            .into_raw_entry()?
+            .resolve(encoding, global_offset)
+    }
+
+    /// Converts the directory header into an intermediate entry type
+    pub(crate) fn into_raw_entry(self) -> crate::Result<RawEntry> {
+        let mut entry = RawEntry {
+            name: self.name.into_owned(),
             method: self.method,
-            comment: encoding.decode(&self.comment[..])?,
+            comment: self.comment.into_owned(),
             modified: self.modified.to_datetime().unwrap_or_else(zero_datetime),
             created: None,
             accessed: None,
-            header_offset: (self.header_offset as u64)
-                .checked_add(global_offset)
-                .ok_or(FormatError::InvalidHeaderOffset)?,
+            header_offset: self.header_offset as u64,
             reader_version: self.reader_version,
             flags: self.flags,
             uid: None,
@@ -167,10 +155,6 @@ impl CentralDirectoryFileHeader<'_> {
                 MsdosMode(self.external_attrs).into()
             }
             _ => Mode(0),
-        };
-        if entry.name.ends_with('/') {
-            // believe it or not, this is straight from the APPNOTE
-            entry.mode |= Mode::DIR
         };
 
         let settings = ExtraFieldSettings {

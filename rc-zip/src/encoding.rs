@@ -77,7 +77,7 @@ impl Encoding {
     pub(crate) fn decode(&self, i: &[u8]) -> Result<String, DecodingError> {
         match self {
             Encoding::Utf8 => {
-                let s = std::str::from_utf8(i)?;
+                let s = str::from_utf8(i)?;
                 Ok(s.to_string())
             }
             Encoding::Cp437 => Ok(oem_cp::decode_string_complete_table(
@@ -85,6 +85,14 @@ impl Encoding {
                 &oem_cp::code_table::DECODING_TABLE_CP437,
             )),
             Encoding::ShiftJis => self.decode_as(i, encoding_rs::SHIFT_JIS),
+        }
+    }
+
+    pub(crate) fn decode_vec(&self, v: Vec<u8>) -> Result<String, DecodingError> {
+        if *self == Encoding::Utf8 {
+            String::from_utf8(v).map_err(|e| e.utf8_error().into())
+        } else {
+            self.decode(&v)
         }
     }
 
@@ -107,6 +115,26 @@ impl Encoding {
         v.resize(decoder_written, 0u8);
         Ok(unsafe { String::from_utf8_unchecked(v) })
     }
+}
+
+pub(crate) fn is_entry_non_utf8(name: &[u8], comment: &[u8], flags: u16) -> bool {
+    let (valid1, require1) = detect_utf8(name);
+    let (valid2, require2) = detect_utf8(comment);
+    if !valid1 || !valid2 {
+        // definitely not utf-8
+        return true;
+    }
+
+    if !require1 && !require2 {
+        // name and comment only use single-byte runes that overlap with UTF-8
+        return false;
+    }
+
+    // Might be UTF-8, might be some other encoding; preserve existing flag.
+    // Some ZIP writers use UTF-8 encoding without setting the UTF-8 flag.
+    // Since it is impossible to always distinguish valid UTF-8 from some
+    // other encoding (e.g., GBK or Shift-JIS), we trust the flag.
+    flags & 0x800 == 0
 }
 
 // detect_utf8 reports whether s is a valid UTF-8 string, and whether the string

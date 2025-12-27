@@ -1,10 +1,10 @@
 use super::FsmResult;
 use crate::{
     encoding::Encoding,
-    error::{Error, FormatError},
+    error::{FormatError, Result},
     parse::{
         Archive, CentralDirectoryFileHeader, EndOfCentralDirectory, EndOfCentralDirectory64Locator,
-        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Entry, Located,
+        EndOfCentralDirectory64Record, EndOfCentralDirectoryRecord, Located, RawEntry,
     },
 };
 
@@ -67,7 +67,7 @@ enum State {
     /// Reading all headers from the central directory
     ReadCentralDirectory {
         eocd: EndOfCentralDirectory<'static>,
-        directory_headers: Vec<CentralDirectoryFileHeader<'static>>,
+        directory_headers: Vec<RawEntry>,
     },
 
     #[default]
@@ -127,7 +127,7 @@ impl ArchiveFsm {
     ///
     /// A result of [FsmResult::Done] consumes the state machine and returns
     /// a fully-parsed [Archive].
-    pub fn process(mut self) -> Result<FsmResult<Self, Archive>, Error> {
+    pub fn process(mut self) -> Result<FsmResult<Self, Archive>> {
         use State as S;
         match self.state {
             S::ReadEocd { haystack_size } => {
@@ -269,7 +269,7 @@ impl ArchiveFsm {
                                 "ReadCentralDirectory | parsed directory header"
                             );
                             valid_consumed = input.as_bytes().offset_from(&self.buffer.data());
-                            directory_headers.push(dh.into_owned());
+                            directory_headers.push(dh.into_raw_entry()?);
                         }
                         Err(ErrMode::Incomplete(_needed)) => {
                             // need more data to read the full header
@@ -356,11 +356,15 @@ impl ArchiveFsm {
                             };
 
                             let global_offset = eocd.global_offset as u64;
-                            let entries: Result<Vec<Entry>, Error> = directory_headers
-                                .iter()
-                                .map(|x| x.as_entry(encoding, global_offset))
-                                .collect();
-                            let entries = entries?;
+                            // we're consuming the FSM, so we're free to `take()` our things and
+                            // leave
+                            let mut entries = std::mem::take(directory_headers)
+                                .into_iter()
+                                .map(|e| e.resolve(encoding, global_offset))
+                                .collect::<Result<Vec<_>>>()?;
+                            // this should re-use the same `Vec` from `directory_headers`, so get
+                            // rid of any spare capacity it had
+                            entries.shrink_to_fit();
 
                             let comment = encoding.decode(eocd.comment())?;
 

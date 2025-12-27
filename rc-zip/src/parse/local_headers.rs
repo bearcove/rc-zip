@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 
 use crate::{
-    encoding::{detect_utf8, Encoding},
+    encoding::{is_entry_non_utf8, Encoding},
     error::{Error, FormatError, UnsupportedError},
-    parse::{Method, MsdosTimestamp, Version},
+    parse::{Method, MsdosTimestamp, RawEntry, Version},
 };
 
 use ownable::{IntoOwned, ToOwned};
@@ -122,19 +122,26 @@ impl<'a> LocalFileHeader<'a> {
         self.flags & 0b1000 != 0
     }
 
+    pub(crate) fn detect_encoding(&self) -> Encoding {
+        if is_entry_non_utf8(&self.name, &[], self.flags) {
+            Encoding::Cp437
+        } else {
+            Encoding::Utf8
+        }
+    }
+
     /// Converts the local file header into an entry.
     pub fn as_entry(&self) -> Result<Entry, Error> {
-        // see APPNOTE 4.4.4: Bit 11 is the language encoding flag (EFS)
-        let has_utf8_flag = self.flags & 0x800 == 0;
-        let encoding = if has_utf8_flag && detect_utf8(&self.name[..]).0 {
-            Encoding::Utf8
-        } else {
-            Encoding::Cp437
-        };
-        let name = encoding.decode(&self.name[..])?;
+        let encoding = self.detect_encoding();
+        let global_offset = 0;
+        self.to_owned()
+            .into_raw_entry()?
+            .resolve(encoding, global_offset)
+    }
 
-        let mut entry = Entry {
-            name,
+    pub(crate) fn into_raw_entry(self) -> Result<RawEntry, Error> {
+        let mut entry = RawEntry {
+            name: self.name.into_owned(),
             method: self.method,
             comment: Default::default(),
             modified: self.modified.to_datetime().unwrap_or_else(zero_datetime),
@@ -149,11 +156,6 @@ impl<'a> LocalFileHeader<'a> {
             compressed_size: self.compressed_size as _,
             uncompressed_size: self.uncompressed_size as _,
             mode: Mode(0),
-        };
-
-        if entry.name.ends_with('/') {
-            // believe it or not, this is straight from the APPNOTE
-            entry.mode |= Mode::DIR
         };
 
         let mut slice = Partial::new(&self.extra[..]);

@@ -1,6 +1,7 @@
 [![MIT OR Apache-2.0 licensed](https://img.shields.io/badge/license-MIT+Apache_2.0-blue.svg)](./LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/rc-zip)](https://crates.io/crates/rc-zip)
 [![docs.rs](https://docs.rs/rc-zip/badge.svg)](https://docs.rs/rc-zip)
+[![codecov](https://codecov.io/gh/bearcove/rc-zip/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bearcove/rc-zip)
 
 # rc-zip
 

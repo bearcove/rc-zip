@@ -7,14 +7,15 @@ on:
   pull_request:
   merge_group:
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+
 jobs:
   test-linux:
     runs-on: ubuntu-latest
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_INCREMENTAL: 0
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
     steps:
       - name: Check out repository code
         uses: actions/checkout@v6
@@ -22,6 +23,8 @@ jobs:
           fetch-depth: 2
       - name: Install Rust specified toolchain
         run: rustup show
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
       - name: Install just, nextest, cargo-llvm-cov, cargo-hack, and wasmtime
@@ -46,13 +49,11 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
           verbose: true
-  test-windows:
-    runs-on: windows-2022
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_INCREMENTAL: 0
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+  test:
+    strategy:
+      matrix:
+        os: [windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository code
         uses: actions/checkout@v6
@@ -60,29 +61,8 @@ jobs:
           fetch-depth: 2
       - name: Install Rust specified toolchain
         run: rustup show
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-      - name: Run cargo nextest
-        run: |
-          cargo nextest run --profile ci --all-features
-  test-macos:
-    runs-on: macos-15
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_INCREMENTAL: 0
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-      - name: Install Rust specified toolchain
-        run: rustup show
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
       - name: Install cargo-nextest

@@ -211,7 +211,8 @@ where
 
     /// Reads the entire entry into a vector.
     pub async fn bytes(&self) -> io::Result<Vec<u8>> {
-        let mut v = Vec::new();
+        let size = self.uncompressed_size.try_into().unwrap_or(0);
+        let mut v = Vec::with_capacity(size);
         self.reader().read_to_end(&mut v).await?;
         Ok(v)
     }

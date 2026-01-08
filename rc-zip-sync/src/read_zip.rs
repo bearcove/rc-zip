@@ -6,7 +6,7 @@ use tracing::trace;
 
 use crate::entry_reader::EntryReader;
 use crate::streaming_entry_reader::StreamingEntryReader;
-use std::{io::Read, ops::Deref};
+use std::{io::Read, ops::Deref, sync::Arc};
 
 /// A trait for reading something as a zip archive
 ///
@@ -16,7 +16,7 @@ pub trait ReadZipWithSize {
     type File: HasCursor;
 
     /// Reads self as a zip archive.
-    fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, Self::File>, Error>;
+    fn read_zip_with_size(self, size: u64) -> Result<ArchiveHandle<Self::File>, Error>;
 }
 
 /// A trait for reading something as a zip archive when we can tell size from
@@ -28,7 +28,7 @@ pub trait ReadZip {
     type File: HasCursor;
 
     /// Reads self as a zip archive.
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error>;
+    fn read_zip(self) -> Result<ArchiveHandle<Self::File>, Error>;
 }
 
 struct CursorState<'a, F: HasCursor + 'a> {
@@ -52,64 +52,66 @@ impl<'a, F: HasCursor + 'a> CursorState<'a, F> {
 
 impl<F> ReadZipWithSize for F
 where
-    F: HasCursor,
+    F: HasCursor + Sized,
 {
     type File = F;
 
-    fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, F>, Error> {
-        let mut cstate: Option<CursorState<'_, F>> = None;
+    fn read_zip_with_size(self, size: u64) -> Result<ArchiveHandle<F>, Error> {
+        let archive = {
+            let mut cstate: Option<CursorState<'_, F>> = None;
+            let mut fsm = ArchiveFsm::new(size);
+            loop {
+                if let Some(offset) = fsm.wants_read() {
+                    trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
 
-        let mut fsm = ArchiveFsm::new(size);
-        loop {
-            if let Some(offset) = fsm.wants_read() {
-                trace!(%offset, "read_zip_with_size: wants_read, space len = {}", fsm.space().len());
-
-                let mut cstate_next = match cstate.take() {
-                    // all good, re-using
-                    Some(cstate) if cstate.offset == offset => cstate,
-                    Some(cstate) => {
-                        trace!(%offset, %cstate.offset, "read_zip_with_size: making new cursor (had wrong offset)");
-                        CursorState::try_new(self, offset, size)?
-                    }
-                    None => {
-                        trace!(%offset, "read_zip_with_size: making new cursor (had none)");
-                        CursorState::try_new(self, offset, size)?
-                    }
-                };
-
-                match cstate_next.cursor.read(fsm.space()) {
-                    Ok(read_bytes) => {
-                        cstate_next.offset += read_bytes as u64;
-                        cstate = Some(cstate_next);
-
-                        trace!(%read_bytes, "read_zip_with_size: read");
-                        if read_bytes == 0 {
-                            return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
+                    let mut cstate_next = match cstate.take() {
+                        // all good, re-using
+                        Some(cstate) if cstate.offset == offset => cstate,
+                        Some(cstate) => {
+                            trace!(%offset, %cstate.offset, "read_zip_with_size: making new cursor (had wrong offset)");
+                            CursorState::try_new(&self, offset, size)?
                         }
-                        fsm.fill(read_bytes);
-                    }
-                    Err(err) => return Err(Error::IO(err)),
-                }
-            }
+                        None => {
+                            trace!(%offset, "read_zip_with_size: making new cursor (had none)");
+                            CursorState::try_new(&self, offset, size)?
+                        }
+                    };
 
-            fsm = match fsm.process()? {
-                FsmResult::Done(archive) => {
-                    trace!("read_zip_with_size: done");
-                    return Ok(ArchiveHandle {
-                        file: self,
-                        archive,
-                    });
+                    match cstate_next.cursor.read(fsm.space()) {
+                        Ok(read_bytes) => {
+                            cstate_next.offset += read_bytes as u64;
+                            cstate = Some(cstate_next);
+
+                            trace!(%read_bytes, "read_zip_with_size: read");
+                            if read_bytes == 0 {
+                                return Err(Error::IO(std::io::ErrorKind::UnexpectedEof.into()));
+                            }
+                            fsm.fill(read_bytes);
+                        }
+                        Err(err) => return Err(Error::IO(err)),
+                    }
                 }
-                FsmResult::Continue(fsm) => fsm,
+
+                fsm = match fsm.process()? {
+                    FsmResult::Done(archive) => {
+                        trace!("read_zip_with_size: done");
+                        break archive;
+                    }
+                    FsmResult::Continue(fsm) => fsm,
+                }
             }
-        }
+        };
+        return Ok(ArchiveHandle {
+            file: self,
+            archive,
+        });
     }
 }
 
 impl ReadZip for &[u8] {
     type File = Self;
 
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
+    fn read_zip(self) -> Result<ArchiveHandle<Self::File>, Error> {
         self.read_zip_with_size(self.len() as u64)
     }
 }
@@ -117,8 +119,27 @@ impl ReadZip for &[u8] {
 impl ReadZip for Vec<u8> {
     type File = Self;
 
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
-        self.read_zip_with_size(self.len() as u64)
+    fn read_zip(self) -> Result<ArchiveHandle<Self::File>, Error> {
+        let len = self.len();
+        self.read_zip_with_size(len as u64)
+    }
+}
+
+impl ReadZip for Box<[u8]> {
+    type File = Self;
+
+    fn read_zip(self) -> Result<ArchiveHandle<Self::File>, Error> {
+        let len = self.len();
+        self.read_zip_with_size(len as u64)
+    }
+}
+
+impl ReadZip for Arc<[u8]> {
+    type File = Self;
+
+    fn read_zip(self) -> Result<ArchiveHandle<Self::File>, Error> {
+        let len = self.len();
+        self.read_zip_with_size(len as u64)
     }
 }
 
@@ -127,15 +148,15 @@ impl ReadZip for Vec<u8> {
 /// This only contains metadata for the archive and its entries. Separate
 /// readers can be created for arbitraries entries on-demand using
 /// [EntryHandle::reader].
-pub struct ArchiveHandle<'a, F>
+pub struct ArchiveHandle<F>
 where
     F: HasCursor,
 {
-    file: &'a F,
+    file: F,
     archive: Archive,
 }
 
-impl<F> Deref for ArchiveHandle<'_, F>
+impl<F> Deref for ArchiveHandle<F>
 where
     F: HasCursor,
 {
@@ -146,14 +167,14 @@ where
     }
 }
 
-impl<F> ArchiveHandle<'_, F>
+impl<F> ArchiveHandle<F>
 where
     F: HasCursor,
 {
     /// Iterate over all files in this zip, read from the central directory.
     pub fn entries(&self) -> impl Iterator<Item = EntryHandle<'_, F>> {
         self.archive.entries().map(move |entry| EntryHandle {
-            file: self.file,
+            file: &self.file,
             entry,
         })
     }
@@ -165,7 +186,7 @@ where
             .entries()
             .find(|&x| x.name == name.as_ref())
             .map(|entry| EntryHandle {
-                file: self.file,
+                file: &self.file,
                 entry,
             })
     }
@@ -214,7 +235,7 @@ pub trait HasCursor {
     fn cursor_at(&self, offset: u64) -> Self::Cursor<'_>;
 }
 
-impl HasCursor for &[u8] {
+impl HasCursor for [u8] {
     type Cursor<'a>
         = &'a [u8]
     where
@@ -236,6 +257,37 @@ impl HasCursor for Vec<u8> {
     }
 }
 
+impl<T: HasCursor + ?Sized> HasCursor for &T {
+    type Cursor<'a>
+        = T::Cursor<'a>
+    where
+        Self: 'a;
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
+        let inner: &T = self;
+        inner.cursor_at(offset)
+    }
+}
+
+impl<T: HasCursor + ?Sized> HasCursor for Arc<T> {
+    type Cursor<'a>
+        = T::Cursor<'a>
+    where
+        Self: 'a;
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
+        self.deref().cursor_at(offset)
+    }
+}
+
+impl<T: HasCursor + ?Sized> HasCursor for Box<T> {
+    type Cursor<'a>
+        = T::Cursor<'a>
+    where
+        Self: 'a;
+    fn cursor_at(&self, offset: u64) -> Self::Cursor<'_> {
+        self.deref().cursor_at(offset)
+    }
+}
+
 #[cfg(feature = "file")]
 impl HasCursor for std::fs::File {
     type Cursor<'a>
@@ -252,7 +304,27 @@ impl HasCursor for std::fs::File {
 impl ReadZip for std::fs::File {
     type File = Self;
 
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self>, Error> {
+    fn read_zip(self) -> Result<ArchiveHandle<Self>, Error> {
+        let size = self.metadata()?.len();
+        self.read_zip_with_size(size)
+    }
+}
+
+#[cfg(feature = "file")]
+impl ReadZip for &std::fs::File {
+    type File = Self;
+
+    fn read_zip(self) -> Result<ArchiveHandle<Self>, Error> {
+        let size = self.metadata()?.len();
+        self.read_zip_with_size(size)
+    }
+}
+
+#[cfg(feature = "file")]
+impl ReadZip for Arc<std::fs::File> {
+    type File = Self;
+
+    fn read_zip(self) -> Result<ArchiveHandle<Self>, Error> {
         let size = self.metadata()?.len();
         self.read_zip_with_size(size)
     }

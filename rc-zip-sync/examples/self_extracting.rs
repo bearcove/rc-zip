@@ -74,9 +74,9 @@ fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
                     use std::ffi::OsString;
                     use std::os::unix::ffi::OsStringExt;
 
-                    if let Ok(metadata) = fs::symlink_metadata(&path) {
+                    if let Ok(metadata) = fs::symlink_metadata(path) {
                         if metadata.is_file() {
-                            fs::remove_file(&path)?;
+                            fs::remove_file(path)?;
                         }
                     }
 
@@ -84,7 +84,7 @@ fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
                     entry.reader().read_to_end(&mut src)?;
                     let src = OsString::from_vec(src);
 
-                    std::os::unix::fs::symlink(&src, &path)?;
+                    std::os::unix::fs::symlink(&src, path)?;
                 }
                 #[cfg(not(any(windows, unix)))]
                 {

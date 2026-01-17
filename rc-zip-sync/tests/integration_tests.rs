@@ -58,10 +58,10 @@ fn real_world_files() {
         if let Ok("1") = std::env::var("ONE_BYTE_READ").as_deref() {
             let size = file.metadata().unwrap().len();
             let file = OneByteReadWrapper(file);
-            let archive = file.read_zip_with_size(size).map_err(Error::from);
+            let archive = file.read_zip_with_size(size);
             check_case(&case, archive);
         } else {
-            let archive = file.read_zip().map_err(Error::from);
+            let archive = file.read_zip();
             check_case(&case, archive);
         };
         drop(guarded_path)

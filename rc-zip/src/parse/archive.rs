@@ -32,6 +32,11 @@ impl Archive {
         self.size
     }
 
+    /// Owned iteration over all files in this zip, read from the central directory.
+    pub fn into_entries(self) -> impl Iterator<Item = Entry> {
+        self.entries.into_iter()
+    }
+
     /// Iterate over all files in this zip, read from the central directory.
     pub fn entries(&self) -> impl Iterator<Item = &Entry> {
         self.entries.iter()

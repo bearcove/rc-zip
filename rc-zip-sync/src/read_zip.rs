@@ -195,7 +195,7 @@ where
     }
     /// Returns a reader for the entry.
     pub fn reader(&self) -> EntryReader<<F as HasCursor>::Cursor<'a>> {
-        EntryReader::new(self.entry, self.file.cursor_at(self.entry.header_offset))
+        self.file.reader_at(self.entry)
     }
 
     /// Reads the entire entry into a vector.
@@ -216,6 +216,10 @@ pub trait HasCursor {
 
     /// Returns a [Read] at the given offset.
     fn cursor_at(&self, offset: u64) -> Self::Cursor<'_>;
+    /// Returns a [`EntryReader`] for the given [`Entry`].
+    fn reader_at(&self, entry: &Entry) -> EntryReader<Self::Cursor<'_>> {
+        EntryReader::new(entry, self.cursor_at(entry.header_offset))
+    }
 }
 
 impl HasCursor for &[u8] {

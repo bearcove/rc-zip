@@ -207,3 +207,29 @@ where
         }
     }
 }
+
+#[ignore]
+#[test]
+fn t_can_read() {
+    use super::*;
+    use std::fs::File;
+    use std::sync::Arc;
+
+    let f = Arc::new(File::open("").unwrap());
+    f.read_zip().unwrap();
+
+    let f = File::open("").unwrap();
+    f.read_zip().unwrap();
+
+    let f: Vec<u8> = Vec::new();
+    f.read_zip().unwrap();
+
+    let f: &[u8] = &[];
+    f.read_zip().unwrap();
+
+    let f: Box<[u8]> = [].into();
+    (*f).read_zip().unwrap();
+
+    let f: Arc<[u8]> = [].into();
+    (*f).read_zip().unwrap();
+}

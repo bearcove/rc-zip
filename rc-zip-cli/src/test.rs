@@ -135,7 +135,7 @@ fn list() {
         let zip_file = fs::File::open(&zip_path).unwrap();
         let archive = zip_file.read_zip().unwrap();
         let mut output = Vec::new();
-        crate::list(&mut output, &archive, verbose).unwrap();
+        crate::list(&mut output, &zip_file, &archive, verbose).unwrap();
         String::from_utf8(output).unwrap()
     }
 

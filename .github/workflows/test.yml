@@ -26,7 +26,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
       - name: Install just, nextest, cargo-llvm-cov, cargo-hack, and wasmtime
         uses: taiki-e/install-action@v2
         with:
@@ -44,7 +44,7 @@ jobs:
       - name: Run tests and collect coverage
         run: just ci-test
       - name: Upload coverage information
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
@@ -52,7 +52,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [windows-2022, macos-15]
+        os: [windows-2025-vs2026, macos-26]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository code
@@ -64,7 +64,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:

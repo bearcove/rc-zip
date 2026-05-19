@@ -16,7 +16,7 @@ test *args:
 # Run all tests with nextest and cargo-llvm-cov
 ci-test:
     #!/bin/bash -eux
-    export RUSTUP_TOOLCHAIN=nightly
+    export RUSTUP_TOOLCHAIN=nightly-2026-05-10
     rustup target add wasm32-unknown-unknown
     cargo test --no-run -p rc-zip-corpus --all-features --target wasm32-unknown-unknown
     wasmtime target/wasm32-unknown-unknown/debug/deps/integration_tests-*.wasm

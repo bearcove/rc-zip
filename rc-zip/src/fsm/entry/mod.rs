@@ -246,7 +246,7 @@ impl EntryFsm {
                     let bytes_fed_this_turn = in_buf.len();
 
                     let fed_bytes_after_this = *compressed_bytes + in_buf.len() as u64;
-                    let has_more_input = if fed_bytes_after_this == entry.compressed_size as _ {
+                    let has_more_input = if fed_bytes_after_this == entry.compressed_size {
                         HasMoreInput::No
                     } else {
                         HasMoreInput::Yes

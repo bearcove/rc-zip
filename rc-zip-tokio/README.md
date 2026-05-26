@@ -1,4 +1,5 @@
-[![MIT OR Apache-2.0 licensed](https://img.shields.io/badge/license-MIT+Apache_2.0-blue.svg)](./LICENSE)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE-MIT)
+[![Apache-2.0 licensed](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](../LICENSE-APACHE)
 [![Crates.io](https://img.shields.io/crates/v/rc-zip-tokio)](https://crates.io/crates/rc-zip-tokio)
 [![docs.rs](https://docs.rs/rc-zip-tokio/badge.svg)](https://docs.rs/rc-zip-tokio)
 

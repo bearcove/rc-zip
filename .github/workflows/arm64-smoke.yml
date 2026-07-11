@@ -1,0 +1,34 @@
+name: arm64-smoke
+
+# First real workload through the bearcove arm64 ARC scale set
+# (MS-R1 pool — xayah). Smoke run: deliberately minimal, no sccache
+# or coverage, so a failure points at the runner, not the trimmings.
+
+on:
+  push:
+    branches:
+      - arm64-smoke
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test-linux-arm64:
+    runs-on: bearcove-ubuntu-24.04-arm64
+    steps:
+      - name: Runner identity
+        run: uname -a && nproc && cat /proc/cpuinfo | grep -m1 -i 'model name\|cpu part' || true
+      - name: Check out repository code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - name: Install Rust specified toolchain
+        run: rustup show
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Run cargo nextest
+        run: |
+          cargo nextest run --profile ci --all-features

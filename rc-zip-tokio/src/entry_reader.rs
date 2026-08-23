@@ -50,8 +50,8 @@ where
                 None => return Ok(()).into(),
             };
 
-            let filled_bytes;
-            if fsm.wants_read() {
+            
+            let filled_bytes = if fsm.wants_read() {
                 tracing::trace!(space_avail = fsm.space().len(), "fsm wants read");
                 let mut buf = ReadBuf::new(fsm.space());
                 match this.rd.as_mut().poll_read(cx, &mut buf) {
@@ -65,11 +65,11 @@ where
 
                 tracing::trace!("read {} bytes", n);
                 fsm.fill(n);
-                filled_bytes = n;
+                n
             } else {
                 tracing::trace!("fsm does not want read");
-                filled_bytes = 0;
-            }
+                0
+            };
 
             match fsm.process(buf.initialize_unfilled())? {
                 FsmResult::Continue((fsm, outcome)) => {

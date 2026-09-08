@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use ownable::{traits as ownable_traits, IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, length_take},
@@ -12,7 +11,7 @@ use winnow::{
 use crate::error::{Error, FormatError};
 
 /// 4.3.16  End of central directory record:
-#[derive(Debug, ToOwned, IntoOwned, Clone)]
+#[derive(Debug, Clone)]
 pub struct EndOfCentralDirectoryRecord<'a> {
     /// number of this disk
     pub disk_nbr: u16,
@@ -69,6 +68,28 @@ impl<'a> EndOfCentralDirectoryRecord<'a> {
         }}
         .parse_next(i)
     }
+    pub fn into_owned(self) -> EndOfCentralDirectoryRecord<'static> {
+        EndOfCentralDirectoryRecord {
+            disk_nbr: self.disk_nbr,
+            dir_disk_nbr: self.dir_disk_nbr,
+            dir_records_this_disk: self.dir_records_this_disk,
+            directory_records: self.directory_records,
+            directory_size: self.directory_size,
+            directory_offset: self.directory_offset,
+            comment: Cow::Owned(self.comment.into_owned())
+        }
+    }
+    pub fn to_owned(&self) -> EndOfCentralDirectoryRecord<'static> {
+        EndOfCentralDirectoryRecord {
+            disk_nbr: self.disk_nbr,
+            dir_disk_nbr: self.dir_disk_nbr,
+            dir_records_this_disk: self.dir_records_this_disk,
+            directory_records: self.directory_records,
+            directory_size: self.directory_size,
+            directory_offset: self.directory_offset,
+            comment: Cow::Owned(self.comment.as_ref().to_owned())
+        }
+    }
 }
 
 /// 4.3.15 Zip64 end of central directory locator
@@ -100,7 +121,7 @@ impl EndOfCentralDirectory64Locator {
 }
 
 /// 4.3.14  Zip64 end of central directory record
-#[derive(Debug, Clone, ToOwned, IntoOwned)]
+#[derive(Debug, Clone, Copy)]
 pub struct EndOfCentralDirectory64Record {
     /// size of zip64 end of central directory record
     pub record_size: u64,
@@ -162,36 +183,16 @@ pub struct Located<T> {
     pub inner: T,
 }
 
-impl<T> ownable_traits::ToOwned for Located<T>
-where
-    T: ownable_traits::ToOwned,
-{
-    type Owned = Located<T::Owned>;
-
-    fn to_owned(&self) -> Self::Owned {
+impl<T> Located<T> {
+    pub(crate) fn map<U, F: Fn(T) -> U>(self, f: F) -> Located<U> {
         Located {
             offset: self.offset,
-            inner: self.inner.to_owned(),
-        }
-    }
-}
-
-impl<T> ownable_traits::IntoOwned for Located<T>
-where
-    T: ownable_traits::IntoOwned,
-{
-    type Owned = Located<T::Owned>;
-
-    fn into_owned(self) -> Self::Owned {
-        Located {
-            offset: self.offset,
-            inner: self.inner.into_owned(),
+            inner: f(self.inner),
         }
     }
 }
 
 /// Coalesces zip and zip64 "end of central directory" record info
-#[derive(ToOwned, IntoOwned)]
 pub struct EndOfCentralDirectory<'a> {
     /// The end of central directory record
     pub dir: Located<EndOfCentralDirectoryRecord<'a>>,
@@ -317,5 +318,22 @@ impl<'a> EndOfCentralDirectory<'a> {
     #[inline]
     pub(crate) fn comment(&self) -> &[u8] {
         &self.dir.inner.comment
+    }
+    pub fn into_owned(self) -> EndOfCentralDirectory<'static> {
+        EndOfCentralDirectory {
+            dir: self.dir.map(|dir| dir.into_owned()),
+            dir64: self.dir64,
+            global_offset: self.global_offset,
+        }
+    }
+    pub fn to_owned(&self) -> EndOfCentralDirectory<'static> {
+        EndOfCentralDirectory {
+            dir: Located {
+                offset: self.dir.offset,
+                inner: self.dir.inner.to_owned(),
+            },
+            dir64: self.dir64.to_owned(),
+            global_offset: self.global_offset,
+        }
     }
 }

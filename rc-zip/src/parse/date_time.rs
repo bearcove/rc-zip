@@ -2,7 +2,6 @@ use chrono::{
     offset::{LocalResult, TimeZone, Utc},
     DateTime, Timelike,
 };
-use ownable::{IntoOwned, ToOwned};
 use std::fmt;
 use winnow::{
     binary::{le_u16, le_u64},
@@ -12,7 +11,7 @@ use winnow::{
 /// A timestamp in MS-DOS format
 ///
 /// Represents dates from year 1980 to 2180, with 2 second precision.
-#[derive(Clone, Copy, Eq, PartialEq, IntoOwned, ToOwned)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct MsdosTimestamp {
     /// Time in 2-second intervals
     pub time: u16,

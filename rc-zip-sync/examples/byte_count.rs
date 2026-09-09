@@ -1,6 +1,12 @@
 use std::{ffi::OsString, fmt, fs::File, io::Read, sync::Mutex, thread, time};
 
-use rc_zip_sync::{ArchiveHandle, EntryHandle, ReadZip};
+use rc_zip::{Archive, Entry};
+use rc_zip_sync::{HasCursor, ReadZip};
+
+struct EntryHandle<'e, F> {
+    entr: &'e Entry,
+    f: &'e F,
+}
 
 /// Display counts for each byte in a zip's entries
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let archive = zip_file.read_zip()?;
 
     let start = time::Instant::now();
-    let counts = byte_count_multi_threaded(&archive);
+    let counts = byte_count_multi_threaded(&zip_file, &archive);
     print_stats(counts, start.elapsed());
 
     Ok(())
@@ -60,9 +66,9 @@ impl Counts {
 /// The work is split across a pool of worker threads where each worker takes turns fetching an
 /// entry from the archive to then read over the entry and reduce it down to counts. Then the final
 /// counts are totaled together as each worker finishes.
-fn byte_count_multi_threaded(archive: &ArchiveHandle<'_, File>) -> Counts {
+fn byte_count_multi_threaded(file: &File, archive: &Archive) -> Counts {
     let mut total_counts = Counts::new();
-    let entries = Mutex::new(archive.entries());
+    let entries = Mutex::new(archive.entries().map(|entr| EntryHandle { f: file, entr }));
     let num_workers = thread::available_parallelism().unwrap();
     thread::scope(|s| {
         let worker_handles: Vec<_> = (1..num_workers.into())
@@ -104,9 +110,9 @@ fn byte_count_worker<'zip>(entries: &Mutex<impl Iterator<Item = ZipEntry<'zip>>>
 }
 
 fn entry_add_byte_counts(entry: ZipEntry<'_>, counts: &mut Counts) -> rc_zip::Result<()> {
-    if entry.kind().is_file() {
+    if entry.entr.kind().is_file() {
         let mut buf = [0; 8 * 1024];
-        let mut entry_reader = entry.reader();
+        let mut entry_reader = entry.f.reader_at(entry.entr);
         while let Ok(num_bytes) = entry_reader.read(&mut buf) {
             if num_bytes == 0 {
                 // finished reading!

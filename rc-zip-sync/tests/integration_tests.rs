@@ -1,13 +1,13 @@
 use rc_zip::{Archive, Error};
 use rc_zip_corpus::{zips_dir, Case, Files};
-use rc_zip_sync::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
+use rc_zip_sync::{HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
 
 use std::{
     fs::File,
     io::{self, Read},
 };
 
-fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
+fn check_case<F: HasCursor>(test: &Case, f: &F, archive: Result<Archive, Error>) {
     rc_zip_corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
     let archive = match archive {
         Ok(archive) => archive,
@@ -22,7 +22,7 @@ fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, E
                 .unwrap_or_else(|| panic!("entry {} should exist", file.name));
 
             tracing::info!("got entry for {}", file.name);
-            rc_zip_corpus::check_file_against(file, &entry, &entry.bytes().unwrap()[..])
+            rc_zip_corpus::check_file_against(file, entry, &f.bytes_at(entry).unwrap()[..])
         }
     }
 }
@@ -40,7 +40,7 @@ fn read_from_slice() {
     fn consume_file_names<'a>(file_names: impl Iterator<Item = &'a String>) {
         assert_eq!(file_names.count(), 2);
     }
-    consume_file_names(archive.entries().map(|entr| &entr.entry().name));
+    consume_file_names(archive.entries().map(|entr| &entr.name));
 }
 
 #[test]
@@ -64,11 +64,11 @@ fn real_world_files() {
         if let Ok("1") = std::env::var("ONE_BYTE_READ").as_deref() {
             let size = file.metadata().unwrap().len();
             let file = OneByteReadWrapper(file);
-            let archive = file.read_zip_with_size(size);
-            check_case(&case, archive);
+            let archive = file.read_zip_with_size(size).map_err(Error::from);
+            check_case(&case, &file, archive);
         } else {
-            let archive = file.read_zip();
-            check_case(&case, archive);
+            let archive = file.read_zip().map_err(Error::from);
+            check_case(&case, &file, archive);
         };
         drop(guarded_path)
     }
@@ -86,7 +86,7 @@ fn streaming() {
         let mut entry = match file.stream_zip_entries_throwing_caution_to_the_wind() {
             Ok(entry) => entry,
             Err(err) => {
-                check_case::<&[u8]>(&case, Err(err));
+                check_case(&case, &[].as_slice(), Err(err));
                 return;
             }
         };

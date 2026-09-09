@@ -60,7 +60,7 @@ impl Counts {
 /// The work is split across a pool of worker threads where each worker takes turns fetching an
 /// entry from the archive to then read over the entry and reduce it down to counts. Then the final
 /// counts are totaled together as each worker finishes.
-fn byte_count_multi_threaded(archive: &ArchiveHandle<'_, File>) -> Counts {
+fn byte_count_multi_threaded(archive: &ArchiveHandle<File>) -> Counts {
     let mut total_counts = Counts::new();
     let entries = Mutex::new(archive.entries());
     let num_workers = thread::available_parallelism().unwrap();

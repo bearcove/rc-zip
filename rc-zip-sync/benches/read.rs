@@ -1,4 +1,4 @@
-use std::{hint::black_box, time::Duration};
+use std::{hint::black_box, ops::Deref, time::Duration};
 
 use divan::{bench, counter::ItemsCount, Bencher, Divan};
 use rc_zip_corpus::test_cases;
@@ -15,10 +15,10 @@ fn main() {
 fn archive_entries(bencher: Bencher, name: &'static str) {
     let case = test_cases().into_iter().find(|c| c.name == name).unwrap();
     let zip_contents = case.bytes();
-    let archive = zip_contents.read_zip().unwrap();
+    let archive = zip_contents.deref().read_zip().unwrap();
     let num_entries = ItemsCount::new(archive.entries().count());
 
     bencher
         .counter(num_entries)
-        .bench(|| black_box(&zip_contents).read_zip().unwrap());
+        .bench(|| black_box(zip_contents.deref()).read_zip().unwrap());
 }

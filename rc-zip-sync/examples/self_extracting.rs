@@ -41,7 +41,7 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
+fn extract(archive: &ArchiveHandle<File>) -> Result<(), Error> {
     for entry in archive.entries() {
         println!("extracting {}", entry.name);
         let Some(entry_name) = entry.sanitized_name() else {

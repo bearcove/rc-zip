@@ -118,6 +118,73 @@ async fn streaming() {
     }
 }
 
+#[tokio::test]
+async fn stream_truncated_file() {
+    rc_zip_corpus::install_test_subscriber();
+
+    let mut bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
+    bytes.truncate(173);
+    assert!(bytes.ends_with(b"PNG"));
+
+    let mut entry = bytes
+        .stream_zip_entries_throwing_caution_to_the_wind()
+        .await
+        .unwrap();
+
+    let mut v = Vec::new();
+    entry.read_to_end(&mut v).await.unwrap();
+    assert_eq!(v, b"This is a test text file.\n");
+    entry.read_to_end(&mut v).await.unwrap();
+
+    entry = entry.finish().await.unwrap().unwrap();
+
+    let mut v = Vec::new();
+    entry.read_to_end(&mut v).await.unwrap();
+    assert_eq!(v, b"\x89PNG");
+    entry.read_to_end(&mut v).await.unwrap();
+
+    assert!(matches!(
+        entry.finish().await.map(|_| ()).unwrap_err(),
+        Error::UnexpectedEOF
+    ));
+
+    // -----------------------------------------
+
+    let mut bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
+    bytes.truncate(91);
+    assert!(bytes.ends_with(b"\xaa\xc7\x05\x00"));
+
+    let mut entry = bytes
+        .stream_zip_entries_throwing_caution_to_the_wind()
+        .await
+        .unwrap();
+
+    let mut v = Vec::new();
+    entry.read_to_end(&mut v).await.unwrap();
+    assert_eq!(v, b"This is a test text file.\n");
+    assert!(entry.finish().await.unwrap().is_none());
+
+    // -----------------------------------------
+
+    let mut bytes = std::fs::read(zips_dir().join("test.zip")).unwrap();
+    bytes.truncate(85);
+    assert!(bytes.ends_with(b"\x51\xa2\x90\x96"));
+
+    let mut entry = bytes
+        .stream_zip_entries_throwing_caution_to_the_wind()
+        .await
+        .unwrap();
+
+    let mut v = Vec::new();
+    entry.read_to_end(&mut v).await.unwrap();
+    assert_eq!(v, b"This is a test text f");
+
+    assert!(matches!(
+        entry.finish().await.map(|_| ()).unwrap_err(),
+        Error::UnexpectedEOF
+    ));
+}
+
 // This helps find bugs in state machines!
 
 struct OneByteReadWrapper<R>(R);

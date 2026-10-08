@@ -34,6 +34,9 @@ pub enum Error {
 
     /// Could not read as a zip because size could not be determined
     UnknownSize,
+
+    /// Found end of file while decompressing data. The decompressed file may not be complete
+    UnexpectedEOF,
 }
 
 impl Error {
@@ -92,6 +95,7 @@ impl fmt::Display for Error {
                 write!(f, "{method:?} decompression error: {msg}")
             }
             Self::UnknownSize => f.write_str("size must be known to open zip file"),
+            Self::UnexpectedEOF => f.write_str("reached unexpected end of file while reading data"),
         }
     }
 }

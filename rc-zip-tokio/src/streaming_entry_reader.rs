@@ -33,6 +33,7 @@ enum State {
         /// remaining buffer for next entry
         remain: Buffer,
     },
+    UnexpectedEOF,
     #[default]
     Transition,
 }
@@ -94,6 +95,7 @@ where
                         } else if outcome.bytes_read == 0 {
                             trace!("no bytes have been written or read");
                             // that's EOF, baby!
+                            *this.state = State::UnexpectedEOF;
                         } else {
                             trace!("read some bytes, hopefully will write more later");
                             // loop, it happens
@@ -110,6 +112,9 @@ where
             State::Finished { remain } => {
                 // wait for them to call finish
                 *this.state = State::Finished { remain };
+            }
+            State::UnexpectedEOF => {
+                *this.state = State::UnexpectedEOF;
             }
             State::Transition => unreachable!(),
         }
@@ -148,10 +153,12 @@ where
                 let mut fsm = EntryFsm::new(None, Some(remain));
 
                 loop {
+                    let mut eof = false;
                     if fsm.wants_read() {
                         let n = self.rd.read(fsm.space()).await?;
                         trace!("read {} bytes into buf for first zip entry", n);
                         fsm.fill(n);
+                        eof = n == 0 && !fsm.space().is_empty();
                     }
 
                     match fsm.process_till_header() {
@@ -161,6 +168,10 @@ where
                         }
                         Ok(None) => {
                             // needs more turns
+                            if eof {
+                                // No more data to read: we reached EOF
+                                return Ok(None);
+                            }
                         }
                         Err(e) => match e {
                             Error::Format(FormatError::InvalidLocalHeader) => {
@@ -173,6 +184,7 @@ where
                     }
                 }
             }
+            State::UnexpectedEOF => Err(Error::UnexpectedEOF),
             State::Transition => unreachable!(),
         }
     }

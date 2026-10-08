@@ -7,6 +7,7 @@ use rc_zip_sync::ReadZip;
 use temp_dir::TempDir;
 use walkdir::WalkDir;
 
+#[allow(clippy::type_complexity)]
 fn check_case(
     case: &Case,
     unzip_fn: fn(&Path, Option<&Path>, bool) -> Result<(), Box<dyn std::error::Error>>,
@@ -18,7 +19,7 @@ fn check_case(
     let zip_path = &guarded_path.path;
 
     let hide_progress = true;
-    let res = (unzip_fn)(zip_path, Some(out_path), hide_progress);
+    let res = unzip_fn(zip_path, Some(out_path), hide_progress);
     match (res, &case.error) {
         (Ok(()), None) => { /* checked after */ }
         (Err(actual), Some(expected)) => {

@@ -294,7 +294,7 @@ impl Entry {
         let name = self.name.as_str();
 
         // refuse entries with traversed/absolute path to mitigate zip slip
-        if name.contains("..") {
+        if self.name.split(['/', '\\']).any(|part| part == "..") {
             return None;
         }
 

@@ -291,8 +291,6 @@ impl Entry {
     ///
     /// Other than that, it will strip any leading slashes on non-Windows OSes.
     pub fn sanitized_name(&self) -> Option<&str> {
-        let name = self.name.as_str();
-
         // refuse entries with traversed/absolute path to mitigate zip slip
         if self.name.split(['/', '\\']).any(|part| part == "..") {
             return None;
@@ -300,22 +298,15 @@ impl Entry {
 
         #[cfg(windows)]
         {
-            if name.contains(":\\") || name.starts_with("\\") {
+            if self.name.contains(":\\") || self.name.starts_with("\\") {
                 return None;
             }
-            Some(name)
+            Some(&self.name)
         }
 
         #[cfg(not(windows))]
         {
-            // strip absolute prefix on entries pointing to root path
-            let mut entry_chars = name.chars();
-            let mut name = name;
-            while name.starts_with('/') {
-                entry_chars.next();
-                name = entry_chars.as_str()
-            }
-            Some(name)
+            Some(self.name.trim_start_matches('/'))
         }
     }
 }

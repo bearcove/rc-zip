@@ -7,9 +7,11 @@ use rc_zip_sync::ReadZip;
 use temp_dir::TempDir;
 use walkdir::WalkDir;
 
+type UnzipResult = Result<(), Box<dyn std::error::Error>>;
+
 fn check_case(
     case: &Case,
-    unzip_fn: fn(&Path, Option<&Path>, bool) -> Result<(), Box<dyn std::error::Error>>,
+    unzip_fn: fn(&Path, Option<&Path>, bool) -> UnzipResult,
 ) {
     let out_dir = TempDir::with_prefix("rc-zip-test-").unwrap();
     let out_path = out_dir.path();

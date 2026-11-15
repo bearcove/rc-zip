@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use ownable::{IntoOwned, ToOwned};
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8, length_take},
     combinator::{opt, preceded, repeat_till},
@@ -185,7 +184,7 @@ impl ExtraTimestampField {
 }
 
 /// 4.5.7 -UNIX Extra Field (0x000d):
-#[derive(Clone, ToOwned, IntoOwned)]
+#[derive(Clone)]
 pub struct ExtraUnixField<'a> {
     /// file last access time
     pub atime: u32,
@@ -223,6 +222,24 @@ impl<'a> ExtraUnixField<'a> {
             data: take(t_size).map(Cow::Borrowed),
         }}
         .parse_next(i)
+    }
+    pub fn into_owned(self) -> ExtraUnixField<'static> {
+        ExtraUnixField {
+            atime: self.atime,
+            mtime: self.mtime,
+            uid: self.uid,
+            gid: self.gid,
+            data: Cow::Owned(self.data.into_owned()),
+        }
+    }
+    pub fn to_owned(&self) -> ExtraUnixField<'static> {
+        ExtraUnixField {
+            atime: self.atime,
+            mtime: self.mtime,
+            uid: self.uid,
+            gid: self.gid,
+            data: Cow::Owned(self.data.as_ref().to_owned()),
+        }
     }
 }
 

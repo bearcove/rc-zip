@@ -8,7 +8,6 @@ use crate::{
     },
 };
 
-use ownable::traits::IntoOwned;
 use tracing::trace;
 use winnow::{
     error::ErrMode,
@@ -148,7 +147,7 @@ impl ArchiveFsm {
                             size = self.size,
                             "ReadEocd | found end of central directory record"
                         );
-                        let mut eocdr = eocdr.into_owned();
+                        let mut eocdr = eocdr.map(|dir| dir.into_owned());
                         self.buffer.reset();
                         eocdr.offset += self.size - haystack_size;
 

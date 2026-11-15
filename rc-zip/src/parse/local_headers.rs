@@ -6,7 +6,6 @@ use crate::{
     parse::{Method, MsdosTimestamp, RawEntry, Version},
 };
 
-use ownable::{IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32, le_u64, le_u8},
@@ -19,7 +18,7 @@ use winnow::{
 
 use super::{zero_datetime, Entry, ExtraField, ExtraFieldSettings, Mode};
 
-#[derive(Debug, ToOwned, IntoOwned)]
+#[derive(Debug)]
 /// 4.3.7 Local file header
 pub struct LocalFileHeader<'a> {
     /// version needed to extract
@@ -53,7 +52,7 @@ pub struct LocalFileHeader<'a> {
     pub method_specific: MethodSpecific,
 }
 
-#[derive(Debug, ToOwned, IntoOwned)]
+#[derive(Clone, Debug)]
 /// Method-specific properties following the local file header
 pub enum MethodSpecific {
     /// No method-specific properties
@@ -179,6 +178,34 @@ impl<'a> LocalFileHeader<'a> {
 
         Ok(entry)
     }
+    pub fn into_owned(self) -> LocalFileHeader<'static> {
+        LocalFileHeader {
+            reader_version: self.reader_version,
+            flags: self.flags,
+            method: self.method,
+            modified: self.modified,
+            crc32: self.crc32,
+            compressed_size: self.compressed_size,
+            uncompressed_size: self.uncompressed_size,
+            name: Cow::Owned(self.name.into_owned()),
+            extra: Cow::Owned(self.extra.into_owned()),
+            method_specific: self.method_specific.clone(),
+        }
+    }
+    pub fn to_owned(&self) -> LocalFileHeader<'static> {
+        LocalFileHeader {
+            reader_version: self.reader_version,
+            flags: self.flags,
+            method: self.method,
+            modified: self.modified,
+            crc32: self.crc32,
+            compressed_size: self.compressed_size,
+            uncompressed_size: self.uncompressed_size,
+            name: Cow::Owned(self.name.as_ref().to_owned()),
+            extra: Cow::Owned(self.extra.as_ref().to_owned()),
+            method_specific: self.method_specific.to_owned(),
+        }
+    }
 }
 
 /// 4.3.9  Data descriptor:
@@ -228,7 +255,7 @@ impl DataDescriptorRecord {
 }
 
 /// 5.8.5 LZMA Properties header
-#[derive(Debug, ToOwned, IntoOwned)]
+#[derive(Clone, Debug)]
 pub struct LzmaProperties {
     /// major version
     pub major: u8,

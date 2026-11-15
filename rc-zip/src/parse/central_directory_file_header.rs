@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use ownable::{IntoOwned, ToOwned};
 use tracing::trace;
 use winnow::{
     binary::{le_u16, le_u32},
@@ -21,7 +20,6 @@ use crate::{
 use super::Method;
 
 /// 4.3.12 Central directory structure: File header
-#[derive(IntoOwned, ToOwned)]
 pub struct CentralDirectoryFileHeader<'a> {
     /// version made by
     pub creator_version: Version,
@@ -112,6 +110,45 @@ impl<'a> CentralDirectoryFileHeader<'a> {
             extra: Cow::Borrowed(extra),
             comment: Cow::Borrowed(comment),
         })
+    }
+
+    pub fn into_owned(self) -> CentralDirectoryFileHeader<'static> {
+        CentralDirectoryFileHeader {
+            creator_version: self.creator_version,
+            reader_version: self.reader_version,
+            flags: self.flags,
+            method: self.method,
+            modified: self.modified,
+            crc32: self.crc32,
+            compressed_size: self.compressed_size,
+            uncompressed_size: self.uncompressed_size,
+            disk_nbr_start: self.disk_nbr_start,
+            internal_attrs: self.internal_attrs,
+            external_attrs: self.external_attrs,
+            header_offset: self.header_offset,
+            name: Cow::Owned(self.name.into_owned()),
+            extra: Cow::Owned(self.extra.into_owned()),
+            comment: Cow::Owned(self.comment.into_owned()),
+        }
+    }
+    pub fn to_owned(&self) -> CentralDirectoryFileHeader<'static> {
+        CentralDirectoryFileHeader {
+            creator_version: self.creator_version,
+            reader_version: self.reader_version,
+            flags: self.flags,
+            method: self.method,
+            modified: self.modified,
+            crc32: self.crc32,
+            compressed_size: self.compressed_size,
+            uncompressed_size: self.uncompressed_size,
+            disk_nbr_start: self.disk_nbr_start,
+            internal_attrs: self.internal_attrs,
+            external_attrs: self.external_attrs,
+            header_offset: self.header_offset,
+            name: Cow::Owned(self.name.as_ref().to_owned()),
+            extra: Cow::Owned(self.extra.as_ref().to_owned()),
+            comment: Cow::Owned(self.comment.as_ref().to_owned()),
+        }
     }
 }
 

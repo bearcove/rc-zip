@@ -29,7 +29,6 @@ deflate64 = { workspace = true, optional = true }
 bzip2 = { workspace = true, optional = true }
 lzma-rs = { workspace = true, optional = true }
 zstd = { workspace = true, optional = true }
-ownable.workspace = true
 temp-dir = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 

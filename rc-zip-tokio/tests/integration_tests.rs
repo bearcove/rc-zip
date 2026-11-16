@@ -4,7 +4,7 @@ use rc_zip_corpus::{zips_dir, Case, Files};
 use rc_zip_tokio::{ArchiveHandle, HasCursor, ReadZip, ReadZipStreaming, ReadZipWithSize};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
-use std::{pin::Pin, sync::Arc, task};
+use std::{collections::HashMap, pin::Pin, sync::Arc, task};
 
 async fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
     rc_zip_corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
@@ -115,6 +115,45 @@ async fn streaming() {
         );
 
         drop(guarded_path)
+    }
+}
+
+#[tokio::test]
+async fn zip_slip() {
+    rc_zip_corpus::install_test_subscriber();
+
+    let file = Arc::new(RandomAccessFile::open(zips_dir().join("zip_slip.zip")).unwrap());
+    let archive = file.read_zip().await.unwrap();
+    assert_eq!(archive.entries().count(), 13);
+
+    let expected = HashMap::from([
+        ("..", None),
+        ("/..", None),
+        ("./..", None),
+        ("../../etc/passwd", None),
+        ("../escape.txt", None),
+        ("a/../../../etc/shadow", None),
+        (".", Some(".")),
+        ("...", Some("...")),
+        ("..hidden", Some("..hidden")),
+        ("fo..o/notes.txt", Some("fo..o/notes.txt")),
+        ("backup..2020/config.yaml", Some("backup..2020/config.yaml")),
+        (
+            "release..archive/README.md",
+            Some("release..archive/README.md"),
+        ),
+        (
+            "./..././.../a.b..c...d..txt",
+            Some("./..././.../a.b..c...d..txt"),
+        ),
+    ]);
+    assert_eq!(archive.entries().count(), expected.len());
+
+    for entry in archive.entries() {
+        let exp = expected
+            .get(entry.name.as_str())
+            .unwrap_or_else(|| panic!("Path '{}' not found in expected values", entry.name));
+        assert_eq!(&entry.sanitized_name(), exp);
     }
 }
 

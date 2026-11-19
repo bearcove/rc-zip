@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use rc_zip::{
     fsm::{ArchiveFsm, EntryFsm, FsmResult},
     Archive, Entry, Error,
@@ -6,17 +8,13 @@ use tracing::trace;
 
 use crate::entry_reader::EntryReader;
 use crate::streaming_entry_reader::StreamingEntryReader;
-use std::{io::Read, ops::Deref};
 
 /// A trait for reading something as a zip archive
 ///
 /// See also [ReadZip].
 pub trait ReadZipWithSize {
-    /// The type of the file to read from.
-    type File: HasCursor;
-
     /// Reads self as a zip archive.
-    fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, Self::File>, Error>;
+    fn read_zip_with_size(&self, size: u64) -> Result<Archive, Error>;
 }
 
 /// A trait for reading something as a zip archive when we can tell size from
@@ -24,11 +22,8 @@ pub trait ReadZipWithSize {
 ///
 /// See also [ReadZipWithSize].
 pub trait ReadZip {
-    /// The type of the file to read from.
-    type File: HasCursor;
-
     /// Reads self as a zip archive.
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error>;
+    fn read_zip(&self) -> Result<Archive, Error>;
 }
 
 struct CursorState<'a, F: HasCursor + 'a> {
@@ -54,9 +49,7 @@ impl<F> ReadZipWithSize for F
 where
     F: HasCursor,
 {
-    type File = F;
-
-    fn read_zip_with_size(&self, size: u64) -> Result<ArchiveHandle<'_, F>, Error> {
+    fn read_zip_with_size(&self, size: u64) -> Result<Archive, Error> {
         let mut cstate: Option<CursorState<'_, F>> = None;
 
         let mut fsm = ArchiveFsm::new(size);
@@ -95,10 +88,7 @@ where
             fsm = match fsm.process()? {
                 FsmResult::Done(archive) => {
                     trace!("read_zip_with_size: done");
-                    return Ok(ArchiveHandle {
-                        file: self,
-                        archive,
-                    });
+                    return Ok(archive);
                 }
                 FsmResult::Continue(fsm) => fsm,
             }
@@ -106,104 +96,9 @@ where
     }
 }
 
-impl ReadZip for &[u8] {
-    type File = Self;
-
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
+impl ReadZip for [u8] {
+    fn read_zip(&self) -> Result<Archive, Error> {
         self.read_zip_with_size(self.len() as u64)
-    }
-}
-
-impl ReadZip for Vec<u8> {
-    type File = Self;
-
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self::File>, Error> {
-        self.read_zip_with_size(self.len() as u64)
-    }
-}
-
-/// A zip archive, read synchronously from a file or other I/O resource.
-///
-/// This only contains metadata for the archive and its entries. Separate
-/// readers can be created for arbitraries entries on-demand using
-/// [EntryHandle::reader].
-pub struct ArchiveHandle<'a, F>
-where
-    F: HasCursor,
-{
-    file: &'a F,
-    archive: Archive,
-}
-
-impl<F> Deref for ArchiveHandle<'_, F>
-where
-    F: HasCursor,
-{
-    type Target = Archive;
-
-    fn deref(&self) -> &Self::Target {
-        &self.archive
-    }
-}
-
-impl<F> ArchiveHandle<'_, F>
-where
-    F: HasCursor,
-{
-    /// Iterate over all files in this zip, read from the central directory.
-    pub fn entries(&self) -> impl Iterator<Item = EntryHandle<'_, F>> {
-        self.archive.entries().map(move |entry| EntryHandle {
-            file: self.file,
-            entry,
-        })
-    }
-
-    /// Attempts to look up an entry by name. This is usually a bad idea,
-    /// as names aren't necessarily normalized in zip archives.
-    pub fn by_name<N: AsRef<str>>(&self, name: N) -> Option<EntryHandle<'_, F>> {
-        self.archive
-            .entries()
-            .find(|&x| x.name == name.as_ref())
-            .map(|entry| EntryHandle {
-                file: self.file,
-                entry,
-            })
-    }
-}
-
-/// A zip entry, read synchronously from a file or other I/O resource.
-pub struct EntryHandle<'a, F> {
-    file: &'a F,
-    entry: &'a Entry,
-}
-
-impl<F> Deref for EntryHandle<'_, F> {
-    type Target = Entry;
-
-    fn deref(&self) -> &Self::Target {
-        self.entry
-    }
-}
-
-impl<'a, F> EntryHandle<'a, F>
-where
-    F: HasCursor,
-{
-    /// Get the underlying `Entry`
-    pub fn entry(&self) -> &'a Entry {
-        self.entry
-    }
-    /// Returns a reader for the entry.
-    pub fn reader(&self) -> EntryReader<<F as HasCursor>::Cursor<'a>> {
-        self.file.reader_at(self.entry)
-    }
-
-    /// Reads the entire entry into a vector.
-    pub fn bytes(&self) -> std::io::Result<Vec<u8>> {
-        let size = self.uncompressed_size.try_into().unwrap_or(0);
-        let mut v = Vec::with_capacity(size);
-        self.reader().read_to_end(&mut v)?;
-        Ok(v)
     }
 }
 
@@ -219,6 +114,13 @@ pub trait HasCursor {
     /// Returns a [`EntryReader`] for the given [`Entry`].
     fn reader_at(&self, entry: &Entry) -> EntryReader<Self::Cursor<'_>> {
         EntryReader::new(entry, self.cursor_at(entry.header_offset))
+    }
+    /// Reads the entire entry into a vector.
+    fn bytes_at(&self, entr: &Entry) -> std::io::Result<Vec<u8>> {
+        let size = entr.uncompressed_size.try_into().unwrap_or(0);
+        let mut v = Vec::with_capacity(size);
+        self.reader_at(entr).read_to_end(&mut v)?;
+        Ok(v)
     }
 }
 
@@ -258,9 +160,7 @@ impl HasCursor for std::fs::File {
 
 #[cfg(feature = "file")]
 impl ReadZip for std::fs::File {
-    type File = Self;
-
-    fn read_zip(&self) -> Result<ArchiveHandle<'_, Self>, Error> {
+    fn read_zip(&self) -> Result<Archive, Error> {
         let size = self.metadata()?.len();
         self.read_zip_with_size(size)
     }
@@ -306,4 +206,30 @@ where
             }
         }
     }
+}
+
+#[ignore]
+#[test]
+fn t_can_read() {
+    use super::*;
+    use std::fs::File;
+    use std::sync::Arc;
+
+    let f = Arc::new(File::open("").unwrap());
+    f.read_zip().unwrap();
+
+    let f = File::open("").unwrap();
+    f.read_zip().unwrap();
+
+    let f: Vec<u8> = Vec::new();
+    f.read_zip().unwrap();
+
+    let f: &[u8] = &[];
+    f.read_zip().unwrap();
+
+    let f: Box<[u8]> = [].into();
+    (*f).read_zip().unwrap();
+
+    let f: Arc<[u8]> = [].into();
+    (*f).read_zip().unwrap();
 }

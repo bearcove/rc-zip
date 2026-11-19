@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use humansize::{format_size, BINARY};
 use indicatif::{ProgressBar, ProgressStyle};
 use rc_zip::{Archive, Entry, EntryKind};
-use rc_zip_sync::{ArchiveHandle, ReadZip, ReadZipStreaming};
+use rc_zip_sync::{HasCursor, ReadZip, ReadZipStreaming};
 
 use std::{
     borrow::Cow,
@@ -81,10 +81,10 @@ fn do_main(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Ls { zipfile, verbose } => {
             let zipfile = File::open(zipfile)?;
-            let reader = zipfile.read_zip()?;
+            let archive = zipfile.read_zip()?;
             let mut stdout = io::stdout().lock();
-            let _ = info(&mut stdout, &reader);
-            let _ = list(&mut stdout, &reader, verbose);
+            let _ = info(&mut stdout, &archive);
+            let _ = list(&mut stdout, &zipfile, &archive, verbose);
         }
         Commands::Unzip { zipfile, dir } => unzip(&zipfile, dir.as_deref(), false)?,
         Commands::UnzipStreaming { zipfile, dir } => {
@@ -134,11 +134,7 @@ fn info(out: &mut impl io::Write, archive: &Archive) -> io::Result<()> {
     Ok(())
 }
 
-fn list(
-    out: &mut impl io::Write,
-    archive: &ArchiveHandle<'_, File>,
-    verbose: bool,
-) -> io::Result<()> {
+fn list(out: &mut impl io::Write, f: &File, archive: &Archive, verbose: bool) -> io::Result<()> {
     for entry in archive.entries() {
         write!(
             out,
@@ -167,7 +163,7 @@ fn list(
 
             if let EntryKind::Symlink = entry.kind() {
                 let mut target = String::new();
-                entry.reader().read_to_string(&mut target).unwrap();
+                f.reader_at(entry).read_to_string(&mut target).unwrap();
                 print!("\t{target}", target = target);
             }
 
@@ -189,10 +185,10 @@ fn unzip(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let zipfile = File::open(zipfile)?;
     let dir = dir.unwrap_or_else(|| Path::new("."));
-    let reader = zipfile.read_zip()?;
+    let archive = zipfile.read_zip()?;
 
     let mut stats = Stats::default();
-    let total_uncompressed_size = reader
+    let total_uncompressed_size = archive
         .entries()
         .map(|entry| entry.uncompressed_size)
         .sum::<u64>();
@@ -212,10 +208,10 @@ fn unzip(
     };
 
     let start_time = Instant::now();
-    for entry in reader.entries() {
+    for entry in archive.entries() {
         extract_entry(
             entry.to_owned(),
-            &mut entry.reader(),
+            &mut zipfile.reader_at(entry),
             dir,
             &pbar,
             &mut stats,

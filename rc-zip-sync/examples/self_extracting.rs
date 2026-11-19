@@ -8,7 +8,8 @@ use rc_zip::{
     error::{Error, FormatError},
     parse::EntryKind,
 };
-use rc_zip_sync::{ArchiveHandle, ReadZip};
+use rc_zip_sync::rc_zip::Archive;
+use rc_zip_sync::{HasCursor, ReadZip};
 
 /// The executable side of a self-extracting zip file
 ///
@@ -36,12 +37,12 @@ fn main() -> Result<(), Error> {
         }
     })?;
 
-    extract(&archive)?;
+    extract(&zip_file, &archive)?;
 
     Ok(())
 }
 
-fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
+fn extract(file: &File, archive: &Archive) -> Result<(), Error> {
     for entry in archive.entries() {
         println!("extracting {}", entry.name);
         let Some(entry_name) = entry.sanitized_name() else {
@@ -57,7 +58,7 @@ fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
             EntryKind::Directory => fs::create_dir_all(path)?,
             EntryKind::File => {
                 let mut entry_writer = File::create(path)?;
-                let mut entry_reader = entry.reader();
+                let mut entry_reader = file.reader_at(entry);
                 io::copy(&mut entry_reader, &mut entry_writer)?;
             }
             EntryKind::Symlink => {
@@ -66,7 +67,7 @@ fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
                     // creating a symlink on windows is a privileged action, so instead we create a
                     // regular file
                     let mut entry_writer = File::create(path)?;
-                    let mut entry_reader = entry.reader();
+                    let mut entry_reader = file.reader_at(entry);
                     io::copy(&mut entry_reader, &mut entry_writer)?;
                 }
                 #[cfg(unix)]
@@ -81,7 +82,7 @@ fn extract(archive: &ArchiveHandle<'_, File>) -> Result<(), Error> {
                     }
 
                     let mut src = Vec::new();
-                    entry.reader().read_to_end(&mut src)?;
+                    file.reader_at(entry).read_to_end(&mut src)?;
                     let src = OsString::from_vec(src);
 
                     std::os::unix::fs::symlink(&src, path)?;

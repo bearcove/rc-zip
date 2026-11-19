@@ -320,6 +320,13 @@ pub fn test_cases() -> Vec<Case> {
                     .content("Oh no, you found me\n".repeat(5000))
                     .modified(date((2024, 1, 31), (6, 10, 25), 800491400, time_zone(0))),
             ),
+        // the zstd decoder can't take all of this one's input in a single call
+        #[cfg(feature = "zstd")]
+        Case::new("found-me-zstd-large.zip").files(
+            CaseFile::new("found-me.txt")
+                .content("Oh no, you found me\n".repeat(20000))
+                .modified(date((2026, 10, 28), (12, 0, 0), 0, time_zone(0))),
+        ),
     ]
 }
 

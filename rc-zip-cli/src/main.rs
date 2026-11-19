@@ -136,7 +136,7 @@ fn info(out: &mut impl io::Write, archive: &Archive) -> io::Result<()> {
 
 fn list(
     out: &mut impl io::Write,
-    archive: &ArchiveHandle<'_, File>,
+    archive: &ArchiveHandle<File>,
     verbose: bool,
 ) -> io::Result<()> {
     for entry in archive.entries() {

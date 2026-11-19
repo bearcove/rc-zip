@@ -7,7 +7,7 @@ use std::{
     io::{self, Read},
 };
 
-fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<'_, F>, Error>) {
+fn check_case<F: HasCursor>(test: &Case, archive: Result<ArchiveHandle<F>, Error>) {
     rc_zip_corpus::check_case(test, archive.as_ref().map(|ar| -> &Archive { ar }));
     let archive = match archive {
         Ok(archive) => archive,
